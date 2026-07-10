@@ -66,6 +66,28 @@ GitHub Pages / Netlify / Vercel 어디든 이 폴더를 그대로 올리면 HTTP
 - `type` 없는 미가공 줄은 **정리 필요**로 모인다(지금 실제 `inbox.md`가 이 상태).
 - 분류 필드가 붙으면 자동으로 제자리 버킷·다이제스트로 흘러간다.
 
+## 다른 컴퓨터에서 이어서 개발하기 (예: 집 Mac mini)
+
+코드는 GitHub, 데이터는 iCloud라 이동이 간단하다.
+
+```bash
+# 1) 코드 받기 (원하는 위치에)
+git clone https://github.com/eswi/SecondBrain.git
+cd SecondBrain
+
+# 2) 분류기 의존성
+pip install anthropic
+
+# 3) 웹 앱 로컬 실행 (선택 — 배포본은 이미 https://eswi.github.io/SecondBrain/ 에서 동작)
+python3 -m http.server 8765     # → http://localhost:8765
+```
+
+- **데이터(`inbox.md`)는 옮길 필요 없다.** 같은 Apple ID로 iCloud에 로그인돼 있으면 `~/Library/Mobile Documents/com~apple~CloudDocs/SecondBrain/inbox.md`가 자동 동기화된다. (Mac mini에서 iCloud Drive 켜져 있는지만 확인. 파일이 "다운로드 대기" 상태면 Finder에서 한 번 열어 내려받기.)
+- **API 키는 저장소에 없다(의도).** Mac mini에서 다시 설정: 환경변수 `ANTHROPIC_API_KEY` 또는 `~/.config/secondbrain/anthropic_key`. 키를 안 적어뒀으면 console.anthropic.com에서 새로 발급.
+- **크레딧/결제는 계정 단위**라 기기와 무관하게 그대로다(현재 미해결 — 충전 후 분류기 사용 가능).
+- **작업 이어가기:** Claude Code로 이 폴더를 열고 "README와 `second-brain-v0-spec.md`를 읽고 이어서 작업하자"고 하면 맥락을 잡는다. 다음 할 일은 아래 "다음 단계" 참고.
+- 커밋/푸시는 평소처럼: `git add -A && git commit -m "..." && git push` → GitHub Pages 자동 재빌드.
+
 ## 자동 분류 (설계서 §3·§6-2) — `classify.py`
 
 데스크톱(Mac/Windows)에서 수동 실행하는 얇은 분류기. **아이폰=읽기, 데스크톱=분류/쓰기**로 역할이 나뉘고 서버는 필요 없다. iCloud가 분류된 `inbox.md`를 아이폰에 동기화한다.
