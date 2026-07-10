@@ -66,6 +66,30 @@ GitHub Pages / Netlify / Vercel 어디든 이 폴더를 그대로 올리면 HTTP
 - `type` 없는 미가공 줄은 **정리 필요**로 모인다(지금 실제 `inbox.md`가 이 상태).
 - 분류 필드가 붙으면 자동으로 제자리 버킷·다이제스트로 흘러간다.
 
+## 자동 분류 (설계서 §3·§6-2) — `classify.py`
+
+데스크톱(Mac/Windows)에서 수동 실행하는 얇은 분류기. **아이폰=읽기, 데스크톱=분류/쓰기**로 역할이 나뉘고 서버는 필요 없다. iCloud가 분류된 `inbox.md`를 아이폰에 동기화한다.
+
+```bash
+# 1) API 키 (저장소·iCloud엔 절대 두지 않음)
+export ANTHROPIC_API_KEY=sk-ant-...          # 또는 홈 설정폴더에 저장(아래)
+# 2) 미리보기 (API 호출 없이 분류 대상만)
+python3 classify.py --plan
+# 3) 분류만 해보기 (저장 안 함)
+python3 classify.py --dry-run
+# 4) 실제 분류 + 저장
+python3 classify.py
+```
+
+- **미분류 줄만** 처리한다(아래에 `type:` 필드가 없는 항목). 이미 분류된 건 스킵 — 반복 실행해도 안전(멱등).
+- **원문은 절대 바꾸지 않는다.** 원문은 인덱스로만 모델에 전달되고, 결과(JSON)만 받아 각 항목 아래에 `type/due/resurface/status` 필드만 덧붙인다.
+- **시점**은 내용 맥락에서 추출하되 확정이 아니라 추정 — 앱이 "~까지 ?"로 표시(재확인).
+- **안전장치:** 쓰기 전 `backups/`에 타임스탬프 백업, 임시파일→원자적 교체.
+- **모델 교체 가능:** `classify.py`의 `MODEL` 상수(기본 `claude-opus-4-8`)를 `claude-sonnet-5`(저렴)/`claude-haiku-4-5`로 바꿀 수 있다(지능 층은 소모품, §0).
+- **키 보관 대안:** 환경변수 대신 홈 설정폴더 파일에 둬도 된다 — `~/.config/secondbrain/anthropic_key`(Mac) / `%APPDATA%\secondbrain\anthropic_key`(Windows).
+
+의존성: `pip install anthropic`.
+
 ## 파일 구조
 
 ```
@@ -76,13 +100,13 @@ parser.js             inbox.md 파서 (순수 함수, DOM 무관)
 manifest.webmanifest  PWA 매니페스트
 sw.js                 서비스워커 (앱 셸만 오프라인 캐시, 개인 데이터 캐시 안 함)
 icons/                PWA 아이콘 (192/512/apple-touch)
+classify.py           자동 분류기 (§3·§6-2, Mac/Win, 읽기 앱과 분리)
 second-brain-v0-spec.md  설계서 사본 (코드와 근거 동봉)
 add-2-inbox.ps1       0층 Windows 수집 스크립트 (참고용)
 ```
 
-## 다음 단계 (설계서 §6, 이번 범위 밖)
+## 다음 단계 (설계서 §6, 아직 범위 밖)
 
-2. **자동 분류:** `inbox.md` 새 줄 → §3 프롬프트로 분류 → `type/due/resurface` 덧붙이기. 시점 자동 추출("~까지 ?").
 3. **기기별 얇은 입구 재정비:** 이미지 입구 4경로(촬영/복붙/파일지정/앱공유), URL 원클릭.
 4. **네이티브 전환:** 웹 사용성 검증 후 iPhone 네이티브(진짜 백그라운드 알림·위젯).
 

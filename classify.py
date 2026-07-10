@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""classify.py — 받은함 자동 분류기 (설계서 §3·§6-2)
+
+데스크톱(Mac/Windows)에서 수동 실행한다. iCloud의 inbox.md에서 '아직 분류 안 된 줄'만
+골라 Claude로 분류하고, 원문은 절대 바꾸지 않고 그 아래에 type/due/resurface/status
+필드만 덧붙여 저장한다. iCloud가 결과를 아이폰에 동기화 → 웹 앱(리더)이 읽는다.
+
+  실행:   python3 classify.py            # 실제 분류 + 저장
+          python3 classify.py --dry-run  # 분류만 해보고 저장 안 함(미리보기)
+          python3 classify.py --plan     # API 없이, 어떤 줄이 분류 대상인지만 표시
+          python3 classify.py --inbox /경로/inbox.md   # 경로 직접 지정
+
+  API 키: 환경변수 ANTHROPIC_API_KEY 우선. 없으면 홈 설정폴더의 anthropic_key.
+          (저장소·iCloud 어디에도 키를 두지 않는다.)
+"""
+import argparse
+import json
+import os
+import platform
+import re
+import shutil
+import sys
+from datetime import datetime
+
+# 지능 층은 소모품(설계서 §0) — 필요하면 claude-sonnet-5(저렴) / claude-haiku-4-5로 교체.
+MODEL = "claude-opus-4-8"
+
+# 한 줄 항목: "- 날짜 시각 | source | 원문"  /  필드: 들여쓴 "key: value"
+ITEM_RE = re.compile(r"^-\s+(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+\|\s+([^|]+?)\s+\|\s+(.*)$")
+FIELD_RE = re.compile(r"^\s+([A-Za-z_]+):\s*(.*)$")
+INDENTED_RE = re.compile(r"^\s+\S")
+
+SYSTEM_PROMPT = """다음은 사용자의 받은함(inbox)의 미가공 수집 줄들이다. 각 줄을 아래 규칙으로 분류하라.
+
+분류(type): event(예정된 일) / promise(부탁·약속) / info-action(이걸로 뭘 해야겠다) / idea(생각) / discard(버릴 것)
+
+각 항목에 붙일 것:
+- type
+- due: 날짜가 명시되거나 맥락에서 추론되면 YYYY-MM-DD, 없으면 "none"
+- resurface: due가 있으면 그 며칠 전 날짜(YYYY-MM-DD), 없으면 "weekly"
+- status: 항상 "open"
+- question: info-action인데 "구체적으로 뭘, 언제 할지"가 불명확하면 그 한 줄 질문. 아니면 빈 문자열.
+
+규칙:
+- 애매하면 버리는 쪽(discard)을 권하라. 받은함은 무덤이 아니다.
+- 사람과의 약속(promise)은 절대 놓치지 말고 보수적으로 잡아라.
+- 시점은 내용 맥락에서 뽑되("다음주까지", "내일" 등) 확정이 아니라 추정이다.
+- 하루를 시작할 때의 다짐·생활 원칙 같은 반복 인지용 문장은 type을 principle 로 하라(원칙).
+- 원문은 절대 바꾸지 마라. 너는 분류 결과(JSON)만 돌려준다. 원문 텍스트는 반환하지 않는다.
+- 각 입력 줄에는 index가 붙어 있다. 반드시 그 index로 결과를 대응시키고, 모든 줄을 빠짐없이 분류하라."""
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "classifications": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "type": {"type": "string", "enum": ["event", "promise", "info-action", "idea", "principle", "discard"]},
+                    "due": {"type": "string"},
+                    "resurface": {"type": "string"},
+                    "status": {"type": "string"},
+                    "question": {"type": "string"},
+                },
+                "required": ["index", "type", "due", "resurface", "status", "question"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["classifications"],
+    "additionalProperties": False,
+}
+
+
+def default_inbox_path():
+    sysname = platform.system()
+    if sysname == "Darwin":
+        return os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs/SecondBrain/inbox.md")
+    if sysname == "Windows":
+        # iCloud Drive on Windows: %USERPROFILE%\iCloudDrive\SecondBrain (실제 사용자 홈으로 해석)
+        return os.path.join(os.path.expanduser("~"), "iCloudDrive", "SecondBrain", "inbox.md")
+    # Linux 등: 명시 지정 필요
+    return os.path.expanduser("~/SecondBrain/inbox.md")
+
+
+def get_api_key():
+    k = os.environ.get("ANTHROPIC_API_KEY")
+    if k:
+        return k
+    if platform.system() == "Windows":
+        p = os.path.join(os.environ.get("APPDATA", ""), "secondbrain", "anthropic_key")
+    else:
+        p = os.path.expanduser("~/.config/secondbrain/anthropic_key")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as f:
+            return f.read().strip()
+    return None
+
+
+def parse_blocks(lines):
+    """각 항목을 블록으로 나눈다. classified = 이미 type: 필드가 있는지.
+    insert_after = 이 인덱스의 줄 '뒤'에 새 필드를 끼워 넣는다(= 블록의 마지막 줄)."""
+    blocks = []
+    i, n = 0, len(lines)
+    while i < n:
+        m = ITEM_RE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        start = i
+        last = i  # 블록의 마지막 줄 인덱스
+        classified = False
+        j = i + 1
+        while j < n:
+            line = lines[j]
+            if ITEM_RE.match(line) or line.strip() == "":
+                break
+            if INDENTED_RE.match(line):
+                fm = FIELD_RE.match(line)
+                if fm and fm.group(1).lower() == "type":
+                    classified = True
+                last = j
+                j += 1
+            else:
+                break
+        blocks.append({
+            "start": start, "insert_after": last, "classified": classified,
+            "date": m.group(1), "time": m.group(2), "source": m.group(3).strip(), "raw": m.group(4).strip(),
+        })
+        i = j
+    return blocks
+
+
+def field_lines(c):
+    out = [
+        f"  type: {c['type']}",
+        f"  due: {(c.get('due') or 'none').strip() or 'none'}",
+        f"  resurface: {(c.get('resurface') or 'weekly').strip() or 'weekly'}",
+        f"  status: {(c.get('status') or 'open').strip() or 'open'}",
+    ]
+    q = (c.get("question") or "").strip()
+    if q:
+        out.append(f"  ? {q}")
+    return out
+
+
+def classify_via_api(api_key, unclassified):
+    """unclassified: [(index, raw), ...] → {index: classification}"""
+    try:
+        import anthropic
+    except ImportError:
+        sys.exit("anthropic SDK가 필요합니다.  설치:  pip install anthropic")
+
+    client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+    today = datetime.now().strftime("%Y-%m-%d")
+    listing = "\n".join(f"[{idx}] {raw}" for idx, raw in unclassified)
+    user = f"오늘 날짜: {today}\n\n미가공 줄:\n{listing}"
+
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=16000,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "high", "format": {"type": "json_schema", "schema": SCHEMA}},
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user}],
+    )
+    if resp.stop_reason == "refusal":
+        sys.exit("분류가 거부되었습니다(refusal). 내용을 확인하세요.")
+    if resp.stop_reason == "max_tokens":
+        sys.exit("출력이 max_tokens에 걸렸습니다. 줄 수를 나눠 다시 실행하세요.")
+
+    text = next((b.text for b in resp.content if b.type == "text"), None)
+    if not text:
+        sys.exit("모델 응답에 텍스트가 없습니다.")
+    data = json.loads(text)
+    return {c["index"]: c for c in data["classifications"]}
+
+
+def main():
+    ap = argparse.ArgumentParser(description="받은함 자동 분류기")
+    ap.add_argument("--inbox", help="inbox.md 경로(미지정 시 OS별 iCloud 경로 자동)")
+    ap.add_argument("--dry-run", action="store_true", help="분류만 하고 저장 안 함")
+    ap.add_argument("--plan", action="store_true", help="API 없이 분류 대상 줄만 표시")
+    args = ap.parse_args()
+
+    path = args.inbox or os.environ.get("SECONDBRAIN_INBOX") or default_inbox_path()
+    if not os.path.exists(path):
+        sys.exit(f"inbox.md를 찾을 수 없습니다: {path}\n  --inbox 로 경로를 지정하세요.")
+    print(f"받은함: {path}")
+
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    lines = text.split("\n")
+
+    blocks = parse_blocks(lines)
+    unclassified = [(b["start"], b["raw"]) for b in blocks if not b["classified"]]
+    print(f"전체 항목 {len(blocks)}개 · 이미 분류됨 {len(blocks) - len(unclassified)}개 · 분류 대상 {len(unclassified)}개")
+
+    if not unclassified:
+        print("분류할 새 줄이 없습니다.")
+        return
+
+    if args.plan:
+        print("\n--- 분류 대상(미리보기, API 호출 안 함) ---")
+        for idx, raw in unclassified:
+            print(f"  line {idx + 1}: {raw}")
+        return
+
+    key = get_api_key()
+    if not key and not os.environ.get("ANTHROPIC_API_KEY"):
+        # anthropic SDK가 ant 프로필로도 인증될 수 있으니 키가 없어도 시도는 가능.
+        print("경고: ANTHROPIC_API_KEY가 없습니다. `ant auth login` 프로필이 있으면 그대로 진행합니다.")
+
+    results = classify_via_api(key, unclassified)
+
+    # 미리보기 출력
+    TYPE_KO = {"event": "예정", "promise": "약속", "info-action": "정보·행동", "idea": "생각", "principle": "원칙", "discard": "버림"}
+    print("\n--- 분류 결과 ---")
+    for idx, raw in unclassified:
+        c = results.get(idx)
+        if not c:
+            print(f"  [!] line {idx + 1} 분류 누락: {raw}")
+            continue
+        due = c.get("due", "none")
+        tail = f" · ~{due}까지?" if due and due != "none" else ""
+        q = (c.get("question") or "").strip()
+        qtail = f"  (?: {q})" if q else ""
+        print(f"  {TYPE_KO.get(c['type'], c['type'])}{tail}{qtail}  ← {raw[:50]}")
+
+    missing = [idx for idx, _ in unclassified if idx not in results]
+    if missing:
+        sys.exit(f"\n일부 줄이 분류되지 않아 저장을 중단합니다(줄 {[m+1 for m in missing]}).")
+
+    if args.dry_run:
+        print("\n[dry-run] 저장하지 않았습니다.")
+        return
+
+    # 새 파일 구성: 원문 줄은 그대로, 미분류 블록의 마지막 줄 뒤에 필드만 삽입
+    inserts = {}  # insert_after 인덱스 -> [필드 줄...]
+    for b in blocks:
+        if b["classified"]:
+            continue
+        c = results.get(b["start"])
+        if c:
+            inserts[b["insert_after"]] = field_lines(c)
+
+    new_lines = []
+    for idx, line in enumerate(lines):
+        new_lines.append(line)
+        if idx in inserts:
+            new_lines.extend(inserts[idx])
+    new_text = "\n".join(new_lines)
+
+    # 안전: 타임스탬프 백업 → 임시파일 → 원자적 교체
+    folder = os.path.dirname(path)
+    backup_dir = os.path.join(folder, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = os.path.join(backup_dir, f"inbox.md.bak-{stamp}")
+    shutil.copy2(path, backup)
+
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(new_text)
+    os.replace(tmp, path)
+
+    print(f"\n저장 완료 · {len(inserts)}개 항목에 분류 필드 추가")
+    print(f"백업: {backup}")
+
+
+if __name__ == "__main__":
+    main()

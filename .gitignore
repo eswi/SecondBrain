@@ -5,3 +5,8 @@ node_modules/
 inbox.md
 inbox*.txt
 assets/
+backups/
+# API 키는 저장소·iCloud 어디에도 두지 않는다 (환경변수 또는 홈 설정폴더)
+*.local
+anthropic_key
+.env
