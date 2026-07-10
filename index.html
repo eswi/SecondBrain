@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>세컨드 브레인 — 받은함 검토</title>
+  <meta name="description" content="받은함(inbox.md)을 종류별로 분류·검색·다시보기 하는 1층 검토 앱" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#131218" media="(prefers-color-scheme: dark)" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="세컨드 브레인" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="app">
+    <div class="header-row">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <span>세컨드 브레인<span class="sub">받은함 검토</span></span>
+      </div>
+      <div class="header-actions">
+        <button id="themeBtn" class="icon" title="테마 전환" aria-label="테마 전환">◐</button>
+        <button id="reloadBtn" class="icon" title="다시 불러오기" aria-label="다시 불러오기" hidden>↻</button>
+        <button id="loadBtn" class="primary" title="inbox.md 불러오기">불러오기</button>
+      </div>
+    </div>
+    <div class="meta-line" id="metaLine"></div>
+  </header>
+
+  <main class="wrap">
+    <!-- 첫 화면 / 데이터 없을 때 -->
+    <div id="loaderScreen" class="loader-screen">
+      <div class="empty">
+        <div class="big">🧠</div>
+        <h2>받은함을 불러오세요</h2>
+        <p>iCloud Drive의 <code>SecondBrain/inbox.md</code>를 선택하면</p>
+        <p>종류별 분류·검색·다시보기가 시작됩니다.</p>
+        <p style="color:var(--text-faint);font-size:12.5px;margin-top:12px">데이터는 이 기기 안에서만 읽힙니다. 어디로도 전송되지 않아요.</p>
+        <div class="cta"><button id="loadBtn2" class="primary">inbox.md 불러오기</button></div>
+      </div>
+    </div>
+
+    <!-- 앱 본문 -->
+    <div id="appBody" hidden>
+      <section id="ambientSec" hidden>
+        <div class="ambient">
+          <h2 class="section-title"><span class="pill-icon">🌅</span> 오늘의 원칙</h2>
+          <div id="ambientList"></div>
+        </div>
+      </section>
+
+      <section id="digestSec">
+        <div class="digest">
+          <h2 class="section-title"><span class="pill-icon">⏰</span> 곧 닥칠 것 <span class="count" id="digestCount">0</span></h2>
+          <div id="digestList" class="cards"></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="search-box">
+          <span class="search-ico">🔍</span>
+          <input id="search" type="search" inputmode="search" placeholder="받은함 검색 (원문·왜·URL)" autocomplete="off" />
+          <button id="clearSearch" class="clear" hidden aria-label="검색 지우기">×</button>
+        </div>
+        <div class="filters">
+          <div class="chips" id="catChips"></div>
+          <div class="chips" id="srcChips"></div>
+        </div>
+        <div id="listRoot"></div>
+      </section>
+
+      <p class="footnote">
+        읽기 전용 · 원문은 절대 바꾸지 않습니다 · 상태(확인·점)는 이 기기에만 저장됩니다<br />
+        분류·시점은 다음 단계(자동 분류)에서 채워집니다.
+      </p>
+    </div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="parser.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

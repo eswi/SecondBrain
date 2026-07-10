@@ -1,0 +1,7 @@
+.DS_Store
+*.log
+node_modules/
+# 개인 데이터는 이 코드 저장소에 절대 넣지 않는다 (데이터는 iCloud의 inbox.md에만)
+inbox.md
+inbox*.txt
+assets/

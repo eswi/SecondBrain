@@ -1,0 +1,16 @@
+{
+  "name": "세컨드 브레인 — 받은함 검토",
+  "short_name": "세컨드 브레인",
+  "description": "받은함(inbox.md)을 종류별로 분류·검색·다시보기 하는 1층 검토 앱",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#131218",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
