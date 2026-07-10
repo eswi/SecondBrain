@@ -10,3 +10,5 @@ backups/
 *.local
 anthropic_key
 .env
+__pycache__/
+*.pyc
