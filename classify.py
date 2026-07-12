@@ -32,7 +32,7 @@ INDENTED_RE = re.compile(r"^\s+\S")
 
 SYSTEM_PROMPT = """다음은 사용자의 받은함(inbox)의 미가공 수집 줄들이다. 각 줄을 아래 규칙으로 분류하라.
 
-분류(type): event(예정된 일) / promise(부탁·약속) / info-action(이걸로 뭘 해야겠다) / idea(생각) / discard(버릴 것)
+분류(type): event(예정된 일) / promise(부탁·약속) / info-action(이걸로 뭘 해야겠다) / info(행동은 필요 없지만 나중에 참고할 사실·정보) / idea(생각) / discard(버릴 것)
 
 각 항목에 붙일 것:
 - type
@@ -42,7 +42,9 @@ SYSTEM_PROMPT = """다음은 사용자의 받은함(inbox)의 미가공 수집 �
 - question: info-action인데 "구체적으로 뭘, 언제 할지"가 불명확하면 그 한 줄 질문. 아니면 빈 문자열.
 
 규칙:
-- 애매하면 버리는 쪽(discard)을 권하라. 받은함은 무덤이 아니다.
+- 짧다는 이유만으로 버리지 마라. 파편이라도 다음이면 info(정보·참고)로 보존하라:
+  (1) 장소·위치 정보(예: 주차 위치 "지하 왼쪽 구멍"), (2) 특정 인물에 대한 메모·평가(예: "김형석대표는 책임감으로 산 책 다 읽는다"), (3) 나중에 참고할 사실.
+- discard는 테스트/시스템 입력('시험 중', '음성 메모 추가' 등)이나, 받아쓰기 실패로 의미를 알 수 없는 조각에만 한정하라.
 - 사람과의 약속(promise)은 절대 놓치지 말고 보수적으로 잡아라.
 - 시점은 내용 맥락에서 뽑되("다음주까지", "내일" 등) 확정이 아니라 추정이다.
 - 하루를 시작할 때의 다짐·생활 원칙 같은 반복 인지용 문장은 type을 principle 로 하라(원칙).
@@ -58,7 +60,7 @@ SCHEMA = {
                 "type": "object",
                 "properties": {
                     "index": {"type": "integer"},
-                    "type": {"type": "string", "enum": ["event", "promise", "info-action", "idea", "principle", "discard"]},
+                    "type": {"type": "string", "enum": ["event", "promise", "info-action", "info", "idea", "principle", "discard"]},
                     "due": {"type": "string"},
                     "resurface": {"type": "string"},
                     "status": {"type": "string"},
@@ -216,7 +218,7 @@ def main():
     results = classify_via_api(key, unclassified)
 
     # 미리보기 출력
-    TYPE_KO = {"event": "예정", "promise": "약속", "info-action": "정보·행동", "idea": "생각", "principle": "원칙", "discard": "버림"}
+    TYPE_KO = {"event": "예정", "promise": "약속", "info-action": "정보·행동", "info": "정보·참고", "idea": "생각", "principle": "원칙", "discard": "버림"}
     print("\n--- 분류 결과 ---")
     for idx, raw in unclassified:
         c = results.get(idx)
