@@ -64,6 +64,17 @@
         </div>
       </section>
 
+      <section id="pendingSec" hidden>
+        <div class="pending-box">
+          <h2 class="section-title">
+            <span class="pill-icon">⏳</span> 확정 대기 <span class="count" id="pendingCount">0</span>
+            <button id="confirmAllBtn" class="mini primary" hidden>모두 확정</button>
+          </h2>
+          <p class="pending-note" id="pendingNote"></p>
+          <div id="pendingList"></div>
+        </div>
+      </section>
+
       <section>
         <div class="search-box">
           <span class="search-ico">🔍</span>
@@ -78,8 +89,8 @@
       </section>
 
       <p class="footnote">
-        읽기 전용 · 원문은 절대 바꾸지 않습니다 · 상태(확인·점)는 이 기기에만 저장됩니다<br />
-        분류·시점은 다음 단계(자동 분류)에서 채워집니다.
+        원문은 바꾸지 않습니다 · 시점(due)은 데스크톱에서만 파일에 덧붙습니다 · 폰에서 찍은 시점은 이 기기 임시(확정 대기)<br />
+        상태(확인·점)는 이 기기에만 저장됩니다.
       </p>
     </div>
   </main>

@@ -3,7 +3,7 @@
 // 데이터는 파일 선택기로 각 기기에서 직접 로드 → 어디로도 전송하지 않는다.
 (() => {
   "use strict";
-  const { parseInbox } = window.SBParser;
+  const { parseInbox, applyDueToText } = window.SBParser;
 
   // ---------- 종류(카테고리) 정의 ----------
   const CATS = [
@@ -24,16 +24,25 @@
 
   // ---------- 로컬 상태 (이 기기 전용) ----------
   const LS = {
-    confirmed: "sb_confirmed_dues",
     dismissed: "sb_dismissed_dots",
+    pending: "sb_pending_dues",     // 폰에서 찍은 "임시" 시점 (아직 파일에 안 남은 것)
     theme: "sb_theme",
     cachedText: "sb_cached_inbox",
     cachedMeta: "sb_cached_meta",
+    backup: "sb_backup_before_write", // 파일 쓰기 직전 원문 스냅샷(되돌리기용 안전망)
   };
   const loadSet = (k) => new Set(JSON.parse(localStorage.getItem(k) || "[]"));
   const saveSet = (k, set) => localStorage.setItem(k, JSON.stringify([...set]));
-  const confirmed = loadSet(LS.confirmed);
   const dismissed = loadSet(LS.dismissed);
+
+  // pending: { [id]: { due, resurface, pickedAt, key:{date,time,source,raw} } }
+  // 직렬화 가능한 평면 객체 — 나중에 "텍스트 전달"로 데스크톱에 넘길 여지를 열어둔다.
+  const pending = JSON.parse(localStorage.getItem(LS.pending) || "{}");
+  const savePending = () => localStorage.setItem(LS.pending, JSON.stringify(pending));
+
+  // 쓰기 가능 = File System Access API가 있는 기기(데스크톱 Chrome/Edge).
+  // iOS Safari 등은 false → 시점 지정이 "임시(pending)"로만 저장된다(§0-A: 쓰기=데스크톱).
+  const CAN_WRITE = "showOpenFilePicker" in window;
 
   const state = {
     items: [],
@@ -95,14 +104,142 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
   }
 
-  // ---------- push: "곧 닥칠 것" 판정 (§4 매일 다이제스트) ----------
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+  // 유효 시점: 파일에 확정된 due가 있으면 그것(source:"file"),
+  // 없고 이 기기에서 찍은 임시가 있으면 그것(source:"pending"), 둘 다 없으면 null.
+  function effectiveDue(it) {
+    if (it.due && it.due !== "none" && ISO.test(it.due)) {
+      return { date: it.due, source: "file" };
+    }
+    const p = pending[it.id];
+    if (p && ISO.test(p.due)) return { date: p.due, source: "pending" };
+    return null;
+  }
+
+  // D-day 배지: 지남(D+n·경고) / 오늘(D-DAY) / 남음(D-n)
+  function dday(dateStr) {
+    const d = toDate(dateStr);
+    if (!d) return null;
+    const n = daysBetween(new Date(), d); // 남은 일수(음수=지남)
+    if (n < 0) return { text: `D+${-n}`, kind: "over", n };
+    if (n === 0) return { text: "D-DAY", kind: "today", n };
+    return { text: `D-${n}`, kind: "soon", n };
+  }
+
+  // ---------- push: "곧 닥칠 것" 판정 (§4·§5) ----------
+  // 확정/임시 유효 시점이 이번 주(7일) 안이거나 지났으면 임박. resurface 도래도 포함.
+  const IMMINENT_DAYS = 7;
   function isImminent(it) {
-    const today = new Date();
-    const due = toDate(it.due);
-    if (due && daysBetween(today, due) <= 3) return true; // due 3일 전~지남
+    const eff = effectiveDue(it);
+    if (eff && daysBetween(new Date(), toDate(eff.date)) <= IMMINENT_DAYS) return true;
     const rs = toDate(it.resurface);
-    if (rs && daysBetween(today, rs) <= 0) return true;    // resurface 도래
+    if (rs && daysBetween(new Date(), rs) <= 0) return true; // resurface 도래
     return false;
+  }
+
+  // ---------- 시점 지정 컨트롤 ----------
+  // 카드마다: 유효 시점이 있으면 D-day 칩(파일=실선·임시=점선⏳), 없으면 "＋ 시점" 버튼.
+  // 탭하면 네이티브 달력. 데스크톱은 고르는 즉시 파일에 확정, 폰은 임시(pending)로 저장.
+  function makeDueControl(it) {
+    const wrap = el("span", "duewrap");
+    const input = el("input", "dateinput-hidden");
+    input.type = "date";
+    input.addEventListener("change", () => { if (input.value) setDate(it, input.value); });
+    const openPicker = (prefill) => {
+      input.value = prefill && ISO.test(prefill) ? prefill : "";
+      try { input.showPicker(); } catch (e) { input.focus(); input.click(); }
+    };
+    wrap.appendChild(input);
+
+    const eff = effectiveDue(it);
+    if (eff) {
+      const b = dday(eff.date);
+      const chip = el("button", "duechip " + (eff.source === "pending" ? "pending" : "confirmed"));
+      chip.title = eff.source === "pending"
+        ? "임시 시점 (이 기기에만) — 탭하면 변경. 데스크톱에서 확정하세요."
+        : "확정된 시점 (파일에 기록됨) — 탭하면 변경";
+      chip.innerHTML =
+        `<span class="dday ${b.kind}">${b.text}</span>` +
+        `<span class="dtxt">${esc(eff.date)}</span>` +
+        (eff.source === "pending" ? `<span class="pendtag">⏳ 미확정</span>` : ``);
+      chip.addEventListener("click", () => openPicker(eff.date));
+      wrap.appendChild(chip);
+    } else {
+      if (it.dueHint) {
+        const hint = el("span", "duehint", `추정 ${it.dueHint.label}?`);
+        hint.title = "원문에서 추정한 시점(확정 아님). ＋ 시점으로 날짜를 지정하세요.";
+        wrap.appendChild(hint);
+      }
+      const btn = el("button", "setduebtn", "＋ 시점");
+      btn.title = "다시 들이밀 날짜 지정";
+      btn.addEventListener("click", () => openPicker(null));
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+
+  function stashPending(it, due, resurface) {
+    pending[it.id] = {
+      due, resurface, pickedAt: new Date().toISOString(),
+      key: { date: it.date, time: it.time, source: it.source, raw: it.raw },
+    };
+    savePending();
+  }
+
+  async function setDate(it, value) {
+    if (!ISO.test(value)) return;
+    const resurface = value; // v0: 임박(7일) 창이 조기 노출을 담당하므로 resurface=due로 단순화
+    if (CAN_WRITE) {
+      const ok = await writeToFile(it, value, resurface);
+      if (!ok) { stashPending(it, value, resurface); render(); } // 실패해도 유실 방지
+    } else {
+      stashPending(it, value, resurface);
+      toast("임시 시점 저장 — 데스크톱에서 확정하세요");
+      render();
+    }
+  }
+
+  // 데스크톱 전용: 최신 원문을 다시 읽어 해당 블록에만 due/resurface를 써넣고 원자적 저장.
+  async function writeToFile(it, due, resurface) {
+    try {
+      let handle = await idbGet("inboxHandle");
+      if (!handle) { toast("먼저 파일을 불러오세요"); await pickFile(); handle = await idbGet("inboxHandle"); }
+      if (!handle) return false;
+      let perm = await handle.queryPermission({ mode: "readwrite" });
+      if (perm !== "granted") perm = await handle.requestPermission({ mode: "readwrite" });
+      if (perm !== "granted") { toast("쓰기 권한이 필요합니다"); return false; }
+
+      const file = await handle.getFile();
+      const fresh = await file.text(); // 다른 writer·동기화 반영을 위해 최신본에 적용
+      const key = { date: it.date, time: it.time, source: it.source, raw: it.raw };
+      const { text, changed } = applyDueToText(fresh, key, { due, resurface });
+      if (!changed) { toast("항목을 파일에서 못 찾음 — 다시 불러오기 후 시도"); return false; }
+
+      localStorage.setItem(LS.backup, JSON.stringify({ at: new Date().toISOString(), text: fresh }));
+      const w = await handle.createWritable();
+      await w.write(text); await w.close();
+
+      delete pending[it.id]; savePending();
+      applyText(text, file.name); // 파일이 진실원 → 재파싱·재렌더
+      toast("파일에 확정했습니다");
+      return true;
+    } catch (e) {
+      if (e && e.name === "AbortError") return false;
+      toast("파일 쓰기 실패"); return false;
+    }
+  }
+
+  async function confirmAllPending() {
+    const ids = Object.keys(pending);
+    let ok = 0;
+    for (const id of ids) {
+      const it = state.items.find((x) => x.id === id);
+      const p = pending[id];
+      if (it && p && await writeToFile(it, p.due, p.resurface)) ok++;
+    }
+    toast(ok ? `${ok}개 확정했습니다` : "확정할 항목이 없습니다");
+    render();
   }
 
   // ---------- 렌더 ----------
@@ -160,25 +297,8 @@
     meta.appendChild(src);
     meta.appendChild(el("span", "when", `${it.date} ${it.time}`));
 
-    // 시점 "~까지 ?" (재확인) — 확정 아님. 클릭하면 확인됨 표시(로컬).
-    if (it.dueHint) {
-      const isConfirmed = confirmed.has(it.id);
-      const chip = el("button", "duechip" + (isConfirmed ? " confirmed" : ""));
-      const setLabel = () => {
-        chip.innerHTML = confirmed.has(it.id)
-          ? `${esc(it.dueHint.label)}까지 <span>✓</span>`
-          : `${esc(it.dueHint.label)}까지 <span class="q">?</span>`;
-        chip.classList.toggle("confirmed", confirmed.has(it.id));
-      };
-      setLabel();
-      chip.title = "시점 재확인 (클릭하면 확인 처리)";
-      chip.addEventListener("click", () => {
-        if (confirmed.has(it.id)) confirmed.delete(it.id); else confirmed.add(it.id);
-        saveSet(LS.confirmed, confirmed); setLabel();
-        toast(confirmed.has(it.id) ? "시점 확인됨" : "재확인 필요로 되돌림");
-      });
-      meta.appendChild(chip);
-    }
+    // 시점: D-day 배지 + 날짜 지정. 파일 확정(실선)과 임시(점선·⏳)를 확연히 구분.
+    meta.appendChild(makeDueControl(it));
     if (it.status && it.status !== "open") meta.appendChild(el("span", "statuschip", it.status));
 
     card.appendChild(meta);
@@ -194,18 +314,80 @@
     principles.forEach((it) => list.appendChild(el("div", "principle-item", it.body || it.raw)));
   }
 
+  // 임박 항목의 정렬·버킷 기준 일수(유효 시점 우선, 없으면 resurface)
+  function urgencyDays(it) {
+    const e = effectiveDue(it);
+    if (e) return daysBetween(new Date(), toDate(e.date));
+    const rs = toDate(it.resurface);
+    return rs ? daysBetween(new Date(), rs) : 9999;
+  }
+
   function renderDigest() {
-    const imm = state.items.filter(isImminent);
+    const imm = state.items.filter(isImminent).sort((a, b) => urgencyDays(a) - urgencyDays(b));
     $("#digestCount").textContent = imm.length;
     const root = $("#digestList"); root.innerHTML = "";
     if (!imm.length) {
-      const e = el("div", "hint-empty",
-        "지금 임박한 항목이 없습니다. 분류(자동 분류 단계)에서 due·resurface가 붙으면 마감·재확인할 것이 여기 먼저 올라옵니다.");
-      root.appendChild(e);
+      root.appendChild(el("div", "hint-empty",
+        "지금 챙길 것이 없습니다. 항목에 ＋ 시점으로 날짜를 지정하거나 분류가 due를 채우면, 때가 임박할 때 여기 맨 위로 올라옵니다."));
       return;
     }
-    imm.sort((a, b) => (toDate(a.due) || toDate(a.resurface) || 0) - (toDate(b.due) || toDate(b.resurface) || 0));
-    imm.forEach((it) => root.appendChild(cardEl(it)));
+    // 지남 → 오늘 → 이번 주 버킷
+    const buckets = [
+      { key: "over", label: "지난 것", cls: "b-over", arr: [] },
+      { key: "today", label: "오늘", cls: "b-today", arr: [] },
+      { key: "week", label: "이번 주", cls: "b-week", arr: [] },
+    ];
+    imm.forEach((it) => {
+      const n = urgencyDays(it);
+      (n < 0 ? buckets[0] : n === 0 ? buckets[1] : buckets[2]).arr.push(it);
+    });
+    buckets.forEach((b) => {
+      if (!b.arr.length) return;
+      const head = el("div", "digest-bucket " + b.cls);
+      head.appendChild(el("span", "bk-label", b.label));
+      head.appendChild(el("span", "bk-n", String(b.arr.length)));
+      root.appendChild(head);
+      b.arr.forEach((it) => root.appendChild(cardEl(it)));
+    });
+  }
+
+  // ---------- 확정 대기(임시 시점) 패널 ----------
+  function renderPending() {
+    const sec = $("#pendingSec"); if (!sec) return;
+    const ids = Object.keys(pending);
+    if (!ids.length) { sec.hidden = true; return; }
+    sec.hidden = false;
+    $("#pendingCount").textContent = ids.length;
+    $("#pendingNote").textContent = CAN_WRITE
+      ? "이 기기에서 찍은 임시 시점입니다. ‘확정’을 누르면 inbox.md에 기록됩니다."
+      : "이 기기에서 찍은 임시 시점 — 아직 파일에 없습니다. 데스크톱에서 확정하세요. (이 목록은 저절로 사라지지 않습니다.)";
+    $("#confirmAllBtn").hidden = !CAN_WRITE || ids.length < 2;
+
+    const list = $("#pendingList"); list.innerHTML = "";
+    ids.sort((a, b) => (pending[a].due || "").localeCompare(pending[b].due || ""));
+    ids.forEach((id) => {
+      const p = pending[id];
+      const it = state.items.find((x) => x.id === id);
+      const raw = it ? (it.body || it.raw) : (p.key ? p.key.raw : id);
+      const b = dday(p.due);
+      const row = el("div", "pending-row");
+      const info = el("div", "pending-info");
+      info.innerHTML =
+        `<span class="dday ${b ? b.kind : ""}">${b ? b.text : ""}</span>` +
+        `<span class="pd-date">${esc(p.due)}</span> <span class="pd-raw">${esc(raw)}</span>`;
+      row.appendChild(info);
+      const actions = el("div", "pending-actions");
+      if (CAN_WRITE && it) {
+        const c = el("button", "mini primary", "확정");
+        c.addEventListener("click", () => writeToFile(it, p.due, p.resurface));
+        actions.appendChild(c);
+      }
+      const del = el("button", "mini", "지우기");
+      del.addEventListener("click", () => { delete pending[id]; savePending(); render(); toast("임시 시점 지움"); });
+      actions.appendChild(del);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
   }
 
   function renderChips() {
@@ -290,6 +472,7 @@
     renderMeta();
     renderAmbient();
     renderDigest();
+    renderPending();
     renderChips();
     renderList();
   }
@@ -297,6 +480,14 @@
   // ---------- 데이터 로드 ----------
   function applyText(text, fileName) {
     state.items = parseInbox(text);
+    // 파일에 due가 확정된 임시 항목은 정리(다른 데스크톱/동기화로 확정된 경우 포함) → 파일이 진실원
+    let pendingChanged = false;
+    for (const it of state.items) {
+      if (pending[it.id] && it.due && it.due !== "none" && ISO.test(it.due)) {
+        delete pending[it.id]; pendingChanged = true;
+      }
+    }
+    if (pendingChanged) savePending();
     state.fileName = fileName || state.fileName || "inbox.md";
     state.loadedAt = new Date();
     localStorage.setItem(LS.cachedText, text);
@@ -307,7 +498,7 @@
     render();
   }
 
-  const supportsFSA = "showOpenFilePicker" in window;
+  const supportsFSA = CAN_WRITE;
 
   async function pickFile() {
     if (supportsFSA) {
@@ -391,6 +582,8 @@
     $("#loadBtn").addEventListener("click", pickFile);
     $("#loadBtn2").addEventListener("click", pickFile);
     $("#reloadBtn").addEventListener("click", reload);
+    const confirmAll = $("#confirmAllBtn");
+    if (confirmAll) confirmAll.addEventListener("click", confirmAllPending);
 
     // 1) 데스크톱: 저장된 파일 핸들로 자동 재읽기 시도 (권한 granted일 때만 조용히)
     if (supportsFSA) {
@@ -420,7 +613,11 @@
 
   // 디버그/스크립팅 훅 — 콘솔이나 이후 단계(자동 분류)에서 데이터 주입·재렌더용.
   // 예: SBApp.applyText(markdownText, "inbox.md")
-  window.SBApp = { applyText, render, state, parseInbox };
+  window.SBApp = {
+    applyText, render, state, parseInbox,
+    effectiveDue, isImminent, dday, setDate, writeToFile,
+    pending, CAN_WRITE,
+  };
 
   // 서비스워커 등록 (PWA)
   if ("serviceWorker" in navigator) {

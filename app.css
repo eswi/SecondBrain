@@ -202,17 +202,82 @@ section { margin-bottom: 22px; }
 .card .src .em { font-size: 14px; }
 .card .when { color: var(--text-faint); }
 
-/* 시점 칩 "~까지 ?" (재확인) / 확인됨 */
-.duechip {
-  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
-  padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
-  border: 1px dashed var(--coral); color: var(--coral-strong);
-  background: color-mix(in srgb, var(--coral) 10%, transparent);
+/* ---------- 시점(due) 컨트롤 ---------- */
+.duewrap { display: inline-flex; align-items: center; gap: 6px; }
+/* 네이티브 달력만 띄우는 숨은 입력 (showPicker/클릭 타깃) */
+.dateinput-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  border: 0; opacity: 0; pointer-events: none;
 }
-.duechip.confirmed { border-style: solid; border-color: var(--c-principle); color: var(--c-principle); background: color-mix(in srgb, var(--c-principle) 10%, transparent); }
-.duechip .q { font-weight: 800; }
+/* "＋ 시점" 지정 버튼 */
+.setduebtn {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px dashed var(--border); background: var(--surface-2); color: var(--text-muted);
+}
+.setduebtn:hover { border-color: var(--violet); color: var(--text); }
+/* 원문 추정(확정 아님) — 옅은 힌트 */
+.duehint { font-size: 11.5px; color: var(--text-faint); font-style: italic; }
+
+/* 시점 칩: 확정(파일=실선) / 임시(pending=점선·⏳) */
+.duechip {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--c-principle); color: var(--c-principle);
+  background: color-mix(in srgb, var(--c-principle) 10%, transparent);
+}
+.duechip.pending {
+  border-style: dashed; border-color: var(--c-todo); color: var(--c-todo);
+  background: color-mix(in srgb, var(--c-todo) 12%, transparent);
+}
+.duechip .dtxt { opacity: .85; }
+.duechip .pendtag { font-weight: 700; }
+
+/* D-day 배지 — 지남(빨강)·오늘(강조)·남음 */
+.dday {
+  display: inline-flex; align-items: center; font-weight: 800; font-size: 11px;
+  letter-spacing: .02em; padding: 1px 6px; border-radius: 6px; line-height: 1.5;
+  background: var(--surface-2); color: var(--text-muted);
+}
+.dday.over { background: var(--coral-strong); color: #fff; }
+.dday.today { background: var(--c-action); color: #fff; }
+.dday.soon { background: color-mix(in srgb, var(--c-info) 18%, var(--surface)); color: var(--c-info); }
 
 .statuschip { padding: 2px 8px; border-radius: 999px; background: var(--surface-2); font-size: 11px; font-weight: 600; color: var(--text-muted); }
+
+/* 다이제스트 버킷 구분 (지난 것 / 오늘 / 이번 주) */
+.digest-bucket { display: flex; align-items: center; gap: 7px; margin: 12px 2px 8px; }
+.digest-bucket:first-child { margin-top: 2px; }
+.digest-bucket .bk-label { font-size: 12px; font-weight: 800; letter-spacing: .02em; }
+.digest-bucket .bk-n { font-size: 11px; font-weight: 700; color: #fff; border-radius: 999px; padding: 0 7px; }
+.digest-bucket.b-over .bk-label { color: var(--coral-strong); }
+.digest-bucket.b-over .bk-n { background: var(--coral-strong); }
+.digest-bucket.b-today .bk-label { color: var(--c-action); }
+.digest-bucket.b-today .bk-n { background: var(--c-action); }
+.digest-bucket.b-week .bk-label { color: var(--c-info); }
+.digest-bucket.b-week .bk-n { background: var(--c-info); }
+/* 지난 항목 카드는 강하게 부각 */
+.digest .digest-bucket.b-over ~ .card:has(.dday.over),
+.card:has(.dday.over) { border-left-color: var(--coral-strong); }
+
+/* ---------- 확정 대기(임시 시점) 패널 ---------- */
+.pending-box {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c-todo) 12%, var(--surface)), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--c-todo) 32%, var(--border));
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.pending-box .section-title { color: var(--c-todo); }
+.pending-box .section-title #confirmAllBtn { margin-left: auto; }
+.pending-note { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; line-height: 1.5; }
+.pending-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0; flex-wrap: wrap;
+  border-top: 1px solid color-mix(in srgb, var(--c-todo) 20%, var(--border));
+}
+.pending-info { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; font-size: 13px; }
+.pending-info .pd-date { font-weight: 700; color: var(--text); flex: none; }
+.pending-info .pd-raw { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.pending-actions { display: flex; gap: 6px; flex: none; }
+button.mini { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
+button.mini.primary { background: linear-gradient(160deg, var(--indigo), var(--violet)); color: #fff; border-color: transparent; font-weight: 600; }
 
 /* 묶음 점 ● — 일회성 확인, 클릭하면 사라짐 (§5) */
 .groupdot {
