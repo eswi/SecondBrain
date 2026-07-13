@@ -178,8 +178,19 @@
     input.type = "date";
     input.setAttribute("aria-label", "시점 지정");
     if (eff && ISO.test(eff.date)) input.value = eff.date; // 기존값 프리필
-    input.addEventListener("click", () => { if (!IS_TOUCH) { try { input.showPicker(); } catch (e) {} } });
-    input.addEventListener("change", () => { if (input.value) setDate(it, input.value); });
+    if (IS_TOUCH) {
+      // iOS: 탭하면 네이티브 달력이 자동으로 열린다. 그런데 달력이 열린 동안 change가
+      // 먼저 튀고 그 핸들러가 render()로 카드 DOM을 다시 그리면, 달력이 얹힌 요소가
+      // 사라져 확 닫혀버린다("안 눌렀는데 선택되고 닫힘"). → change에선 값만 기억해 두고,
+      // 달력이 '닫힐 때(blur)'에만 반영해 확인 버튼을 누를 때까지 열린 채 유지되게 한다.
+      let picked = null;
+      input.addEventListener("change", () => { picked = input.value || null; });
+      input.addEventListener("blur", () => { if (picked) { const v = picked; picked = null; setDate(it, v); } });
+    } else {
+      // 데스크톱: 클릭 시 달력을 띄우고, 고르면 즉시 반영(드롭다운이라 재렌더가 방해 안 됨).
+      input.addEventListener("click", () => { try { input.showPicker(); } catch (e) {} });
+      input.addEventListener("change", () => { if (input.value) setDate(it, input.value); });
+    }
     wrap.appendChild(input);
     return wrap;
   }
