@@ -179,13 +179,25 @@
     input.setAttribute("aria-label", "시점 지정");
     if (eff && ISO.test(eff.date)) input.value = eff.date; // 기존값 프리필
     if (IS_TOUCH) {
-      // iOS: 탭하면 네이티브 달력이 자동으로 열린다. 그런데 달력이 열린 동안 change가
-      // 먼저 튀고 그 핸들러가 render()로 카드 DOM을 다시 그리면, 달력이 얹힌 요소가
-      // 사라져 확 닫혀버린다("안 눌렀는데 선택되고 닫힘"). → change에선 값만 기억해 두고,
-      // 달력이 '닫힐 때(blur)'에만 반영해 확인 버튼을 누를 때까지 열린 채 유지되게 한다.
+      // iOS 네이티브 달력은 "확인"이든 "바깥 탭"이든 똑같이 수락으로 처리하고 기본값이
+      // 늘 오늘이라, 닫히자마자 반영하면 실수로 오늘이 들어간다(둘을 코드로 구분 불가).
+      // 또 달력이 열린 동안 render()가 돌면 달력이 닫혀버린다.
+      // → change에선 값만 기억(달력은 열린 채 유지)하고, 달력이 닫히면(blur) 곧바로
+      //   확정하지 않고 "적용/취소"를 띄운다. [적용]을 눌러야만 반영, [취소]/무시는 변화 없음.
       let picked = null;
       input.addEventListener("change", () => { picked = input.value || null; });
-      input.addEventListener("blur", () => { if (picked) { const v = picked; picked = null; setDate(it, v); } });
+      input.addEventListener("blur", () => {
+        if (!picked) return;
+        const v = picked; picked = null;
+        wrap.innerHTML = "";
+        wrap.appendChild(el("span", "duestaged", `📅 ${v}`));
+        const apply = el("button", "mini primary", "적용");
+        const cancel = el("button", "mini", "취소");
+        apply.addEventListener("click", () => setDate(it, v)); // 반영 → 재렌더
+        cancel.addEventListener("click", () => render());      // 폐기 → 원래대로 복원
+        wrap.appendChild(apply);
+        wrap.appendChild(cancel);
+      });
     } else {
       // 데스크톱: 클릭 시 달력을 띄우고, 고르면 즉시 반영(드롭다운이라 재렌더가 방해 안 됨).
       input.addEventListener("click", () => { try { input.showPicker(); } catch (e) {} });

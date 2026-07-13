@@ -214,6 +214,8 @@ section { margin-bottom: 22px; }
   -webkit-appearance: none; appearance: none;
   font-size: 16px; /* iOS 포커스 시 화면 확대 방지 */
 }
+/* 아이폰: 달력에서 고른 날짜를 '적용/취소' 대기로 표시 (적용 눌러야만 확정) */
+.duestaged { font-size: 12px; font-weight: 700; color: var(--text); }
 /* "＋ 시점" 지정 버튼 */
 .setduebtn {
   padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
