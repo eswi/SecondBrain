@@ -105,6 +105,8 @@ header.app {
   background: var(--coral); top: 3px; right: 3px;
 }
 .brand .sub { font-weight: 500; font-size: 12px; color: var(--text-faint); margin-left: 2px; }
+/* 빌드 버전 배지 — 배포/캐시 갱신 확인용. 새 셸 배포마다 이 숫자와 sw.js CACHE를 함께 올린다. */
+.appver { font-size: 11px; font-weight: 600; color: var(--text-faint); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
 .header-actions { margin-left: auto; display: flex; gap: 6px; }
 
 button, .btn {
