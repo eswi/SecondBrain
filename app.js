@@ -44,6 +44,11 @@
   // iOS Safari 등은 false → 시점 지정이 "임시(pending)"로만 저장된다(§0-A: 쓰기=데스크톱).
   const CAN_WRITE = "showOpenFilePicker" in window;
 
+  // 터치 기기(아이폰 등)는 날짜 입력을 탭하면 네이티브 피커가 자동으로 열린다.
+  // 그 위에 showPicker()를 또 부르면 iOS에서 "열렸다 즉시 닫힘"이 발생하므로,
+  // showPicker는 데스크톱(비터치)에서만 보강 호출한다.
+  const IS_TOUCH = matchMedia("(hover: none) and (pointer: coarse)").matches;
+
   const state = {
     items: [],
     query: "",
@@ -173,7 +178,7 @@
     input.type = "date";
     input.setAttribute("aria-label", "시점 지정");
     if (eff && ISO.test(eff.date)) input.value = eff.date; // 기존값 프리필
-    input.addEventListener("click", () => { try { input.showPicker(); } catch (e) {} });
+    input.addEventListener("click", () => { if (!IS_TOUCH) { try { input.showPicker(); } catch (e) {} } });
     input.addEventListener("change", () => { if (input.value) setDate(it, input.value); });
     wrap.appendChild(input);
     return wrap;
