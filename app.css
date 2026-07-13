@@ -203,11 +203,14 @@ section { margin-bottom: 22px; }
 .card .when { color: var(--text-faint); }
 
 /* ---------- 시점(due) 컨트롤 ---------- */
-.duewrap { display: inline-flex; align-items: center; gap: 6px; }
-/* 네이티브 달력만 띄우는 숨은 입력 (showPicker/클릭 타깃) */
-.dateinput-hidden {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  border: 0; opacity: 0; pointer-events: none;
+.duewrap { display: inline-flex; align-items: center; gap: 6px; position: relative; }
+/* 네이티브 달력 입력을 컨트롤 전체에 투명 오버레이 (iOS·데스크톱 공통 탭 타깃).
+   positioned 요소라 static 칩/버튼 위에 얹혀 탭을 가로챈다. opacity:0이라 보이진 않음. */
+.dateinput {
+  position: absolute; inset: 0; margin: 0; padding: 0; border: 0;
+  opacity: 0; cursor: pointer; background: transparent;
+  -webkit-appearance: none; appearance: none;
+  font-size: 16px; /* iOS 포커스 시 화면 확대 방지 */
 }
 /* "＋ 시점" 지정 버튼 */
 .setduebtn {

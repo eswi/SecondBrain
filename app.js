@@ -143,19 +143,12 @@
   // 탭하면 네이티브 달력. 데스크톱은 고르는 즉시 파일에 확정, 폰은 임시(pending)로 저장.
   function makeDueControl(it) {
     const wrap = el("span", "duewrap");
-    const input = el("input", "dateinput-hidden");
-    input.type = "date";
-    input.addEventListener("change", () => { if (input.value) setDate(it, input.value); });
-    const openPicker = (prefill) => {
-      input.value = prefill && ISO.test(prefill) ? prefill : "";
-      try { input.showPicker(); } catch (e) { input.focus(); input.click(); }
-    };
-    wrap.appendChild(input);
-
     const eff = effectiveDue(it);
+
+    // 시각 요소(칩/버튼)는 표시만 담당 — 실제 탭은 아래 투명 오버레이 입력이 받는다.
     if (eff) {
       const b = dday(eff.date);
-      const chip = el("button", "duechip " + (eff.source === "pending" ? "pending" : "confirmed"));
+      const chip = el("span", "duechip " + (eff.source === "pending" ? "pending" : "confirmed"));
       chip.title = eff.source === "pending"
         ? "임시 시점 (이 기기에만) — 탭하면 변경. 데스크톱에서 확정하세요."
         : "확정된 시점 (파일에 기록됨) — 탭하면 변경";
@@ -163,19 +156,26 @@
         `<span class="dday ${b.kind}">${b.text}</span>` +
         `<span class="dtxt">${esc(eff.date)}</span>` +
         (eff.source === "pending" ? `<span class="pendtag">⏳ 미확정</span>` : ``);
-      chip.addEventListener("click", () => openPicker(eff.date));
       wrap.appendChild(chip);
     } else {
       if (it.dueHint) {
         const hint = el("span", "duehint", `추정 ${it.dueHint.label}?`);
-        hint.title = "원문에서 추정한 시점(확정 아님). ＋ 시점으로 날짜를 지정하세요.";
+        hint.title = "원문에서 추정한 시점(확정 아님). 탭해서 날짜를 지정하세요.";
         wrap.appendChild(hint);
       }
-      const btn = el("button", "setduebtn", "＋ 시점");
-      btn.title = "다시 들이밀 날짜 지정";
-      btn.addEventListener("click", () => openPicker(null));
-      wrap.appendChild(btn);
+      wrap.appendChild(el("span", "setduebtn", "＋ 시점"));
     }
+
+    // 네이티브 달력 입력을 컨트롤 전체에 투명 오버레이한다. "진짜 탭"이 입력에
+    // 직접 닿으므로 iOS Safari에서도 네이티브 피커가 열린다(숨긴 입력 + showPicker
+    // 폴백은 iOS에서 동작하지 않던 문제를 우회). 데스크톱은 클릭 시 showPicker로 보강.
+    const input = el("input", "dateinput");
+    input.type = "date";
+    input.setAttribute("aria-label", "시점 지정");
+    if (eff && ISO.test(eff.date)) input.value = eff.date; // 기존값 프리필
+    input.addEventListener("click", () => { try { input.showPicker(); } catch (e) {} });
+    input.addEventListener("change", () => { if (input.value) setDate(it, input.value); });
+    wrap.appendChild(input);
     return wrap;
   }
 
