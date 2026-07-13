@@ -164,14 +164,27 @@ def classify_via_api(api_key, unclassified):
     listing = "\n".join(f"[{idx}] {raw}" for idx, raw in unclassified)
     user = f"오늘 날짜: {today}\n\n미가공 줄:\n{listing}"
 
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=16000,
-        thinking={"type": "adaptive"},
-        output_config={"effort": "high", "format": {"type": "json_schema", "schema": SCHEMA}},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user}],
-    )
+    # 무인(cron) 실행을 고려해, 흔한 API 오류는 traceback 대신 한 줄 메시지 + 종료(exit 1).
+    # (구체적 예외를 먼저, 마지막에 상태오류 포괄. 예상 못 한 오류는 그대로 터뜨려 traceback 남긴다.)
+    try:
+        resp = client.messages.create(
+            model=MODEL,
+            max_tokens=16000,
+            thinking={"type": "adaptive"},
+            output_config={"effort": "high", "format": {"type": "json_schema", "schema": SCHEMA}},
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user}],
+        )
+    except anthropic.AuthenticationError:
+        sys.exit("API 키가 유효하지 않습니다(401). 환경변수 ANTHROPIC_API_KEY 또는 키 파일(~/.config/secondbrain/anthropic_key)을 확인하세요.")
+    except anthropic.PermissionDeniedError:
+        sys.exit("권한 없음/결제 문제일 수 있습니다(403). 콘솔에서 API 접근·크레딧을 확인하세요.")
+    except anthropic.RateLimitError:
+        sys.exit("레이트리밋(429). 잠시 후 다시 실행하세요.")
+    except anthropic.APIConnectionError:
+        sys.exit("네트워크 연결 실패. 인터넷 연결을 확인하고 다시 실행하세요.")
+    except anthropic.APIStatusError as e:
+        sys.exit(f"API 오류({getattr(e, 'status_code', '?')}): {getattr(e, 'message', str(e))}")
     if resp.stop_reason == "refusal":
         sys.exit("분류가 거부되었습니다(refusal). 내용을 확인하세요.")
     if resp.stop_reason == "max_tokens":
