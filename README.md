@@ -115,6 +115,26 @@ python3 classify.py
 
 의존성: `pip install anthropic`.
 
+### 자동 실행 (cron) — macOS `launchd`
+
+수동 실행이 거슬릴 때, **한 기기에서** 정해진 시간에 자동 분류하도록 스케줄을 건다. (설계서 §0-A: 분류는 데스크톱에서만, **두 기기 동시 자동 실행 금지** — iCloud 덮어쓰기 위험. 그래서 스케줄은 한 대에만 설치한다.)
+
+```bash
+# 설치 (매시간 :00 실행). anthropic 설치된 python3 + 키 파일이 있으면 자동 구성
+automation/setup-mac.sh
+
+# 지금 1회 실행 / 상태 / 제거
+launchctl kickstart -k gui/$(id -u)/com.secondbrain.classify
+launchctl print gui/$(id -u)/com.secondbrain.classify | grep -E 'state|program'
+automation/uninstall-mac.sh
+```
+
+- **키는 파일로 둬야 한다.** launchd는 셸 환경변수(`ANTHROPIC_API_KEY`)를 못 받으므로 `~/.config/secondbrain/anthropic_key`(권한 600)가 필요하다. `classify.py`가 이 파일에서 키를 읽는다.
+- **미분류 줄이 없으면 API 호출 없이 즉시 끝난다**(멱등) → 매시간 돌려도 비용·부담 없음.
+- 로그: `~/Library/Logs/secondbrain-classify.log` (실행 때마다 타임스탬프 블록, 자동으로 길이 제한).
+- **다른 기기로 옮기려면** 이 기기에서 `uninstall-mac.sh`로 먼저 끄고 그 기기에 설치. (동시 실행 금지 유지.)
+- Windows(작업 스케줄러) 설정은 아직 없음 — 필요할 때 추가.
+
 ## 파일 구조
 
 ```
@@ -126,6 +146,7 @@ manifest.webmanifest  PWA 매니페스트
 sw.js                 서비스워커 (앱 셸만 오프라인 캐시, 개인 데이터 캐시 안 함)
 icons/                PWA 아이콘 (192/512/apple-touch)
 classify.py           자동 분류기 (§3·§6-2, Mac/Win, 읽기 앱과 분리)
+automation/           자동 실행 스케줄 (macOS launchd): setup-mac.sh / run-classify.sh / uninstall-mac.sh
 second-brain-v0-spec.md  설계서 사본 (코드와 근거 동봉)
 add-2-inbox.ps1       0층 Windows 수집 스크립트 (참고용)
 ```
@@ -133,7 +154,7 @@ add-2-inbox.ps1       0층 Windows 수집 스크립트 (참고용)
 ## 다음 단계 (설계서 §7 순서: A → D → C)
 
 - **A. push (시점 알림) — ✅ 이번 구현.** 시점 채우기(분류 자동 추출 + 검토 화면 직접 지정) + 화면 강조(D-day·버킷). 잠금화면 푸시 알림은 iOS 제약·서버 문제로 보류(며칠 써보고 네이티브 전환 때 검토).
-- **D. 분류 자동화 (cron):** 지금은 수동 `classify.py` → 정해진 시간에 자동 실행(수동이 거슬리는지 며칠 써본 뒤).
+- **D. 분류 자동화 (cron) — ✅ macOS 구현.** `automation/setup-mac.sh`로 launchd 스케줄(매시간 :00)을 **한 기기에만** 설치(§0-A 동시 실행 금지). Windows 작업 스케줄러는 필요 시 추가.
 - **C. 입구 개선:** 이미지 수집 4경로(촬영/복붙/파일지정/앱공유), URL 원클릭.
 - **(선택) 폰→데스크톱 임시 시점 전달:** 재지정이 잦아 거슬리면 텍스트 내보내기/가져오기를 얹는다(지금은 열어만 둠).
 - **네이티브 전환:** 웹 사용성 검증 후 iPhone 네이티브(진짜 백그라운드 알림·위젯).
