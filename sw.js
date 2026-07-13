@@ -1,7 +1,7 @@
 // sw.js — 앱 셸 오프라인 캐시 (PWA)
 // 개인 데이터는 캐시하지 않는다. inbox.md는 네트워크가 아니라 파일 선택기로 로드되므로
 // 여기 캐시엔 정적 셸(코드/아이콘)만 담긴다. 파일 변경 시 CACHE 버전을 올린다.
-const CACHE = "second-brain-v4";
+const CACHE = "second-brain-v5";
 const SHELL = [
   "./",
   "./index.html",
