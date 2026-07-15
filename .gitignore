@@ -12,3 +12,10 @@ anthropic_key
 .env
 __pycache__/
 *.pyc
+
+# Swift / Xcode (native/)
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
