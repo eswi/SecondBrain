@@ -1,0 +1,40 @@
+name: SecondBrain
+options:
+  bundleIdPrefix: kr.teri.secondbrain
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+packages:
+  SecondBrainCore:
+    path: SecondBrainCore
+targets:
+  SecondBrainApp-iOS:
+    type: application
+    platform: iOS
+    sources: [Sources/App]
+    dependencies:
+      - package: SecondBrainCore
+        product: SecondBrainCore
+    settings:
+      base:
+        PRODUCT_NAME: SecondBrain
+        PRODUCT_BUNDLE_IDENTIFIER: kr.teri.secondbrain
+        GENERATE_INFOPLIST_FILE: "YES"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+  SecondBrainApp-macOS:
+    type: application
+    platform: macOS
+    sources: [Sources/App]
+    dependencies:
+      - package: SecondBrainCore
+        product: SecondBrainCore
+    settings:
+      base:
+        PRODUCT_NAME: SecondBrain
+        PRODUCT_BUNDLE_IDENTIFIER: kr.teri.secondbrain
+        GENERATE_INFOPLIST_FILE: "YES"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
