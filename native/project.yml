@@ -4,6 +4,10 @@ options:
   deploymentTarget:
     iOS: "26.0"
     macOS: "26.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: "4W2HHUZTYT"   # 개인 팀(무료 Apple ID). 재생성·타 Mac에서도 자동 서명 유지.
+    CODE_SIGN_STYLE: Automatic
 packages:
   SecondBrainCore:
     path: SecondBrainCore
