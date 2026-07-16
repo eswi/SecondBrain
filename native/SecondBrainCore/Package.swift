@@ -5,6 +5,7 @@ import PackageDescription
 // UI 없음 → iOS/macOS 앱이 공유하고, `swift test`로 CLI에서 검증 가능(Xcode 프로젝트 불필요).
 let package = Package(
     name: "SecondBrainCore",
+    platforms: [.macOS(.v13), .iOS(.v16)],
     products: [
         .library(name: "SecondBrainCore", targets: ["SecondBrainCore"]),
     ],

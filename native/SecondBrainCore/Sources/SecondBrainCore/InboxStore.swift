@@ -11,25 +11,30 @@ public enum InboxStore {
         return MergeEngine.merge(all)
     }
 
-    /// 디렉터리에서 `inbox*.md`를 모두 찾아 병합(앱 런타임). 못 읽으면 빈 결과.
-    /// - Returns: 병합 결과 + 실제로 읽은 파일명들.
-    public static func loadDirectory(_ dir: URL) -> (result: MergeResult, files: [String]) {
+    /// 디렉터리에서 `inbox*.md`를 모두 찾아 이벤트로 파싱(앱 런타임의 시계 전진·병합 재료).
+    public static func eventsInDirectory(_ dir: URL) -> (events: [Event], files: [String]) {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else {
-            return (MergeEngine.merge([]), [])
+            return ([], [])
         }
         let frags = entries
             .filter { $0.lastPathComponent.hasPrefix("inbox") && $0.pathExtension == "md" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-        var texts: [String] = []
+        var events: [Event] = []
         var names: [String] = []
         for u in frags {
             if let t = try? String(contentsOf: u, encoding: .utf8) {
-                texts.append(t)
+                events.append(contentsOf: EventLog.parse(t))
                 names.append(u.lastPathComponent)
             }
         }
-        return (merge(fragmentTexts: texts), names)
+        return (events, names)
+    }
+
+    /// 디렉터리 → 병합 결과 + 파일명(편의).
+    public static func loadDirectory(_ dir: URL) -> (result: MergeResult, files: [String]) {
+        let (events, files) = eventsInDirectory(dir)
+        return (MergeEngine.merge(events), files)
     }
 }

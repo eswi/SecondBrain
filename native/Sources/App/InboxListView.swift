@@ -1,65 +1,62 @@
 import SwiftUI
 import SecondBrainCore
 
-/// 여러 기기별 조각 파일(`inbox*.md`)을 읽어 **합치기 엔진으로 병합**한 받은함을 표시.
-/// 우선순위: 앱 Documents의 조각들(실데이터) → 없으면 번들 데모 조각. (iCloud 연결은 다음 단계.)
+/// 받은함 화면. 조각 파일들을 병합해 표시하고, 스와이프로 항목 행동(삭제·완료·미루기).
+/// 행동은 이 기기 조각(`inbox-<deviceId>.md`)에 이벤트로 append되고 즉시 재병합돼 반영된다.
 struct InboxListView: View {
-    @State private var items: [ResolvedItem] = []
-    @State private var deletedCount = 0
-    @State private var sourceLabel = ""
+    @StateObject private var model = InboxModel()
 
     var body: some View {
         NavigationStack {
             List {
                 Section(header: header) {
-                    ForEach(items, id: \.id) { item in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.raw ?? "(내용 없음)").font(.body).lineLimit(3)
-                            Text(caption(item)).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 2)
+                    ForEach(model.visible, id: \.id) { item in
+                        row(item)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) { model.delete(item) } label: {
+                                    Label("삭제", systemImage: "trash")
+                                }
+                            }
+                            .swipeActions(edge: .leading) {
+                                Button { model.markDone(item) } label: {
+                                    Label("완료", systemImage: "checkmark")
+                                }.tint(.green)
+                                Button { model.defer7(item) } label: {
+                                    Label("미루기", systemImage: "clock")
+                                }.tint(.orange)
+                            }
                     }
                 }
             }
             .navigationTitle("받은함")
         }
-        .onAppear(perform: load)
+        .onAppear { model.load() }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(items.count)개" + (deletedCount > 0 ? " · \(deletedCount) 삭제 숨김" : ""))
-            Text(sourceLabel).font(.caption2).foregroundStyle(.tertiary)
+            Text("\(model.visible.count)개"
+                 + (model.deletedCount > 0 ? " · \(model.deletedCount) 삭제" : "")
+                 + (model.doneCount > 0 ? " · \(model.doneCount) 완료" : ""))
+            Text("기기 \(model.deviceId) · \(model.sourceLabel)")
+                .font(.caption2).foregroundStyle(.tertiary)
         }
+    }
+
+    private func row(_ it: ResolvedItem) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(it.raw ?? "(내용 없음)").font(.body).lineLimit(3)
+            Text(caption(it)).font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
     }
 
     private func caption(_ it: ResolvedItem) -> String {
-        var parts = [it.source ?? "?", "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces), it.type ?? "미분류"]
+        var parts = [it.source ?? "?",
+                     "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces),
+                     it.type ?? "미분류"]
         if let due = it.due, due != "none", !due.isEmpty { parts.append("~\(due)") }
+        if let rs = it.resurface, rs != "weekly", !rs.isEmpty { parts.append("↻\(rs)") }
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
-    }
-
-    private func load() {
-        // 1) 앱 Documents의 실제 조각 파일들
-        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let (result, files) = InboxStore.loadDirectory(docs)
-            if !files.isEmpty {
-                items = result.live; deletedCount = result.deleted.count
-                sourceLabel = "조각 \(files.count): " + files.joined(separator: ", ")
-                return
-            }
-        }
-        // 2) 번들 데모 조각(2기기) — 실데이터 없을 때
-        var texts: [String] = []
-        var names: [String] = []
-        for n in ["inbox-iphone", "inbox-mac"] {
-            if let u = Bundle.main.url(forResource: n, withExtension: "md"),
-               let t = try? String(contentsOf: u, encoding: .utf8) {
-                texts.append(t); names.append("\(n).md")
-            }
-        }
-        let r = InboxStore.merge(fragmentTexts: texts)
-        items = r.live; deletedCount = r.deleted.count
-        sourceLabel = "번들 데모 조각: " + names.joined(separator: ", ")
     }
 }
