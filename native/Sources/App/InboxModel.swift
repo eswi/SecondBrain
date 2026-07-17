@@ -46,6 +46,15 @@ final class InboxModel: ObservableObject {
         deletedCount = r.deleted.count
         let names = frags.map(\.name)
         sourceLabel = names.isEmpty ? "(빈 폴더)" : names.joined(separator: ", ")
+
+        scheduleNotifications()
+    }
+
+    /// 현재 살아있는 항목의 resurface/due 날짜로 로컬 알림 재조정(멱등).
+    /// 파일이 진실원 → 매 로드/행동마다 계획을 다시 계산해 시스템 알림과 일치시킨다.
+    private func scheduleNotifications() {
+        let plans = NotificationPlanner.plan(items: visible, now: Date())
+        Task { await NotificationScheduler.reschedule(plans) }
     }
 
     /// 문서 피커로 고른 폴더를 등록하고 즉시 로드.
