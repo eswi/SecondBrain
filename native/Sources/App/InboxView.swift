@@ -26,14 +26,6 @@ extension View {
     }
 }
 
-/// 섹션 바닥의 리스트-좌표계 maxY를 id별로 모으는 PreferenceKey(요약 바 표시 판정용).
-struct SectionBottomKey: PreferenceKey {
-    static let defaultValue: [String: CGFloat] = [:]
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
 /// 받은함 첫 화면(다크). 전체가 하나의 네이티브 List → 어디서든 스와이프로 매끄럽게 스크롤.
 /// 원칙·곧 닥칠 것은 일반 행으로 자연 스크롤, 필터는 최근 섹션의 고정 헤더로 상단 유지.
 struct InboxView: View {
@@ -80,10 +72,14 @@ struct InboxView: View {
                     ForEach(model.principles, id: \.id) { p in
                         PrincipleRow(item: p, onTap: goToPrinciples)
                             .collapseOnScrollOut()
+                            .onScrollVisibilityChange(threshold: 0.02) { vis in
+                                if p.id == model.principles.last?.id {
+                                    withAnimation(.easeInOut(duration: 0.18)) { principleOut = !vis }
+                                }
+                            }
                             .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                     }
-                    bottomSentinel("principle")
                 } header: {
                     sectionTitle("원칙", count: model.principles.count)
                         .listRowInsets(EdgeInsets())
@@ -95,13 +91,17 @@ struct InboxView: View {
                     ForEach(sections.upcoming, id: \.item.id) { entry in
                         UpcomingCard(entry: entry, model: model)
                             .collapseOnScrollOut()
+                            .onScrollVisibilityChange(threshold: 0.02) { vis in
+                                if entry.item.id == sections.upcoming.last?.item.id {
+                                    withAnimation(.easeInOut(duration: 0.18)) { upcomingOut = !vis }
+                                }
+                            }
                             .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
                             .swipeActions(edge: .leading) { doneDeferActions(entry.item) }
                             .contextMenu { itemActions(entry.item) }
                     }
-                    bottomSentinel("upcoming")
                 } header: {
                     sectionTitle("곧 닥칠 것", count: sections.upcoming.count)
                         .listRowInsets(EdgeInsets())
@@ -134,26 +134,6 @@ struct InboxView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
-        .coordinateSpace(.named("inboxList"))
-        .onPreferenceChange(SectionBottomKey.self) { dict in
-            // 섹션 바닥이 리스트 상단(0) 위로 올라가면 그 영역은 완전히 사라진 것 → 요약 줄 표시.
-            let pOut = (dict["principle"] ?? .greatestFiniteMagnitude) <= 4
-            let uOut = (dict["upcoming"] ?? .greatestFiniteMagnitude) <= 4
-            withAnimation(.easeInOut(duration: 0.18)) {
-                if pOut != principleOut { principleOut = pOut }
-                if uOut != upcomingOut { upcomingOut = uOut }
-            }
-        }
-    }
-
-    // 섹션 바닥 위치(리스트 좌표계 maxY) 보고용 센티넬(0높이).
-    private func bottomSentinel(_ id: String) -> some View {
-        Color.clear.frame(height: 0)
-            .background(GeometryReader { g in
-                Color.clear.preference(key: SectionBottomKey.self,
-                                       value: [id: g.frame(in: .named("inboxList")).maxY])
-            })
-            .listRowInsets(EdgeInsets()).listRowBackground(Palette.bg).listRowSeparator(.hidden)
     }
 
     // MARK: 상시 요약 바 — 평소 감춤, 해당 영역이 상단 위로 완전히 사라질 때만 그 줄을 표시.
