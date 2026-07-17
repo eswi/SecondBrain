@@ -46,6 +46,8 @@ struct InboxView: View {
         }
     }
 
+    /// 전체가 하나의 List. 원칙·곧닥칠·필터는 **고정 섹션 헤더**(sticky)로, 최근은 rows.
+    /// → 어디서 스와이프해도 전체가 스크롤되고, 스크롤 양이 헤더의 단계적 접힘을 구동.
     private var content: some View {
         let sections = model.sections
         let pCount = model.principles.count
@@ -54,41 +56,12 @@ struct InboxView: View {
         let uRed = max(0, uCount - 1)
         let pHide = min(pRed, pHideRaw)
         let uHide = min(uRed, uHideRaw)
-        return VStack(spacing: 0) {
-            accountingBar
-            if pCount > 0 {
-                PrincipleBand(principles: model.principles, shown: pCount - pHide, onTap: goToPrinciples)
-            }
-            if uCount > 0 {
-                UpcomingArea(entries: sections.upcoming, shown: uCount - uHide, model: model)
-            }
-            FilterChipsBar(model: model)
-            recentList(sections.recent, pRed: pRed, uRed: uRed)
-        }
-    }
-
-    // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
-
-    private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("받은함").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
-            Spacer()
-            Button { showPicker = true } label: {
-                Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
-            }
-        }
-        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
-    }
-
-    // MARK: 최근 들어온 것 (유일한 스크롤 영역 — 스크롤 양이 상단 단계적 접힘을 구동)
-
-    @ViewBuilder private func recentList(_ recent: [ResolvedItem], pRed: Int, uRed: Int) -> some View {
-        if recent.isEmpty {
-            emptyRecent
-        } else {
-            List {
-                Section {
-                    ForEach(recent, id: \.id) { item in
+        return List {
+            Section {
+                if sections.recent.isEmpty {
+                    emptyRecentRow
+                } else {
+                    ForEach(sections.recent, id: \.id) { item in
                         RecentRow(item: item, model: model)
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                             .listRowBackground(Palette.bg)
@@ -102,20 +75,64 @@ struct InboxView: View {
                             }
                             .contextMenu { itemActions(item) }
                     }
-                } header: { sectionHeader("최근 들어온 것", count: recent.count) }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Palette.bg)
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-                let yy = max(0, y)
-                let ph = min(pRed, Int(yy / pStep))
-                let uh = ph >= pRed ? min(uRed, Int(max(0, yy - CGFloat(pRed) * pStep) / uStep)) : 0
-                if ph != pHideRaw || uh != uHideRaw {
-                    withAnimation(.easeInOut(duration: 0.2)) { pHideRaw = ph; uHideRaw = uh }
                 }
+            } header: {
+                stickyHeader(pShown: pCount - pHide, uShown: uCount - uHide,
+                             upcoming: sections.upcoming, recentCount: sections.recent.count)
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Palette.bg)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
+            let yy = max(0, y)
+            let ph = min(pRed, Int(yy / pStep))
+            let uh = ph >= pRed ? min(uRed, Int(max(0, yy - CGFloat(pRed) * pStep) / uStep)) : 0
+            if ph != pHideRaw || uh != uHideRaw {
+                withAnimation(.easeInOut(duration: 0.2)) { pHideRaw = ph; uHideRaw = uh }
+            }
+        }
+    }
+
+    // 고정 섹션 헤더: 회계 · 원칙 · 곧닥칠 · 필터 · "최근" 제목 (불투명 배경으로 rows 가림)
+    @ViewBuilder private func stickyHeader(pShown: Int, uShown: Int,
+                                           upcoming: [UpcomingEntry], recentCount: Int) -> some View {
+        VStack(spacing: 0) {
+            accountingBar
+            if !model.principles.isEmpty {
+                PrincipleBand(principles: model.principles, shown: pShown, onTap: goToPrinciples)
+            }
+            if !upcoming.isEmpty {
+                UpcomingArea(entries: upcoming, shown: uShown, model: model)
+            }
+            FilterChipsBar(model: model)
+            sectionHeader("최근 들어온 것", count: recentCount)
+                .padding(.horizontal, 10).padding(.bottom, 4)
+        }
+        .background(Palette.bg)
+        .listRowInsets(EdgeInsets())
+    }
+
+    private var emptyRecentRow: some View {
+        Text(model.filter == .all ? "최근 들어온 것이 없어요" : "이 종류가 없어요")
+            .font(.callout).foregroundStyle(Palette.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 24)
+            .listRowBackground(Palette.bg)
+            .listRowSeparator(.hidden)
+    }
+
+    // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
+
+    private var headerRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("받은함").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
+            Spacer()
+            Button { showPicker = true } label: {
+                Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
+            }
+        }
+        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
     }
 
     // 항목 행동(고정 영역용 컨텍스트 메뉴 = 스와이프 대체)
@@ -147,17 +164,6 @@ struct InboxView: View {
         }
         .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
         .padding(.horizontal, 16).padding(.bottom, 6)
-    }
-
-    private var emptyRecent: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "tray").font(.system(size: 36)).foregroundStyle(Palette.textTertiary)
-            Text(model.filter == .all ? "최근 들어온 것이 없어요" : "이 종류가 없어요")
-                .font(.callout).foregroundStyle(Palette.textSecondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var folderPrompt: some View {
