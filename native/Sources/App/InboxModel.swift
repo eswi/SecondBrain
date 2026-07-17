@@ -38,13 +38,23 @@ final class InboxModel: ObservableObject {
     /// 빈 문자열 type은 미분류(nil)로 취급.
     private func norm(_ t: String?) -> String? { (t?.isEmpty ?? true) ? nil : t }
 
-    /// 받은함 목록에 쓸 항목(필터 적용).
-    /// - 전체: 원칙 제외(띠가 담당) — 처리할 것에 집중
-    /// - 특정 종류: 그 종류만(원칙 필터면 원칙도 보임)
+    /// 원칙 섹션을 지금 보여줄지(필터가 전체이거나 원칙일 때만).
+    var showsPrincipleSection: Bool {
+        filter == .all || filter == .type("principle")
+    }
+
+    /// 받은함 곧닥칠/최근에 쓸 항목(필터 적용). 원칙은 별도 섹션이 담당하므로 여기선 항상 제외.
+    /// - 전체: 원칙 제외
+    /// - 원칙 필터: 빈 목록(원칙 섹션이 전담 → 중복 방지)
+    /// - 특정 종류: 그 종류만
     var filteredInbox: [ResolvedItem] {
         switch filter {
-        case .all:            return liveNonDone.filter { $0.type != "principle" }
-        case .type(let key):  return liveNonDone.filter { norm($0.type) == key }
+        case .all:
+            return liveNonDone.filter { $0.type != "principle" }
+        case .type("principle"):
+            return []
+        case .type(let key):
+            return liveNonDone.filter { norm($0.type) == key }
         }
     }
 

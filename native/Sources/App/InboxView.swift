@@ -49,7 +49,7 @@ struct InboxView: View {
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
             }
 
-            if !model.principles.isEmpty {
+            if !model.principles.isEmpty && model.showsPrincipleSection {
                 Section {
                     ForEach(model.principles, id: \.id) { p in
                         PrincipleRow(item: p, onTap: goToPrinciples)
