@@ -61,10 +61,10 @@ struct InboxView: View {
                 accountingRow
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
-                if !model.principles.isEmpty {
-                    PrincipleBand(principles: model.principles, onTap: goToPrinciples)
+                ForEach(model.principles, id: \.id) { p in
+                    PrincipleRow(item: p, onTap: goToPrinciples)
                         .collapseOnScrollOut()
-                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 4, trailing: 10))
+                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
                         .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                 }
             }
@@ -185,26 +185,22 @@ struct InboxView: View {
     }
 }
 
-// MARK: - 원칙 띠 (ambient) — 전부 표시(자연 스크롤)
+// MARK: - 원칙 한 줄 (ambient) — 각자 cyan 박스, 개별로 스크롤 접힘 효과
 
-struct PrincipleBand: View {
-    let principles: [ResolvedItem]
+struct PrincipleRow: View {
+    let item: ResolvedItem
     var onTap: () -> Void = {}
     private var tint: Color { TypeCatalog.meta("principle").color }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(principles, id: \.id) { p in
-                HStack(alignment: .top, spacing: 9) {
-                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint).padding(.top, 3)
-                    Text(p.raw ?? "")
-                        .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint).padding(.top, 3)
+            Text(item.raw ?? "")
+                .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
+        .padding(.horizontal, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .areaStyle(tint: tint)
         .contentShape(Rectangle())
