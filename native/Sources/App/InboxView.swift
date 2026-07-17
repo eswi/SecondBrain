@@ -2,49 +2,70 @@ import SwiftUI
 import UniformTypeIdentifiers
 import SecondBrainCore
 
-/// 받은함 첫 화면(다크): 원칙 띠(ambient) + 필터 칩 + "곧 닥칠 것"(카드) + "최근 들어온 것"(줄).
-/// 스와이프로 삭제·완료·미루기, 종류 아이콘 탭으로 분류 변경(엔진 재사용).
+extension View {
+    /// 내비게이션 바 숨김(iOS 전용 placement — macOS에선 무시).
+    @ViewBuilder func hiddenNavBar() -> some View {
+        #if os(iOS)
+        self.toolbar(.hidden, for: .navigationBar)
+        #else
+        self
+        #endif
+    }
+}
+
+/// 받은함 첫 화면(다크): 제목+폴더(한 줄) · 원칙 띠(고정, 스크롤 시 축소) · 필터 칩 · 회계 ·
+/// "곧 닥칠 것"(카드) · "최근 들어온 것"(줄). 스와이프 삭제·완료·미루기, 종류 아이콘으로 분류 변경.
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     var goToPrinciples: () -> Void = {}
     @State private var showPicker = false
+    @State private var scrolled = false          // 목록을 위로 올렸는지 → 원칙 띠 축소
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Palette.bg.ignoresSafeArea()
+            VStack(spacing: 0) {
+                headerRow
                 if model.needsFolder {
                     folderPrompt
+                    Spacer(minLength: 0)
                 } else {
-                    content
+                    if !model.principles.isEmpty {
+                        PrincipleBand(principles: model.principles, collapsed: scrolled, onTap: goToPrinciples)
+                    }
+                    FilterChipsBar(model: model)
+                    accountingBar
+                    listArea
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("받은함")
-            .toolbar {
-                Button { showPicker = true } label: { Image(systemName: "folder") }
-                    .tint(Palette.accent)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Palette.bg.ignoresSafeArea())
+            .hiddenNavBar()
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
         }
     }
 
-    // MARK: 내용
+    // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
 
-    private var content: some View {
-        let sections = model.sections
-        return VStack(spacing: 0) {
-            if !model.principles.isEmpty {
-                PrincipleBand(principles: model.principles, onTap: goToPrinciples)
+    private var headerRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("받은함").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
+            Spacer()
+            Button { showPicker = true } label: {
+                Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
             }
-            FilterChipsBar(model: model)
-            accountingBar
+        }
+        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 6)
+    }
 
+    // MARK: 목록
+
+    private var listArea: some View {
+        let sections = model.sections
+        return Group {
             if sections.upcoming.isEmpty && sections.recent.isEmpty {
                 emptyState
-                Spacer(minLength: 0)
             } else {
                 List {
                     if !sections.upcoming.isEmpty {
@@ -75,23 +96,11 @@ struct InboxView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .background(Palette.bg)
+                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 16 } action: { _, s in
+                    if s != scrolled { withAnimation(.easeInOut(duration: 0.22)) { scrolled = s } }
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    // 회계 요약: 표시·원칙·완료·삭제·합계. 합계가 원본(inbox.md)과 같으면 파싱 누락 없음.
-    private var accountingBar: some View {
-        HStack(spacing: 4) {
-            Text("합계 \(model.totalCount)").foregroundStyle(Palette.textSecondary)
-            Text("· 표시 \(model.liveNonDone.count - model.principles.count)")
-            Text("· 원칙 \(model.principles.count)")
-            Text("· 완료 \(model.doneItems.count)")
-            Text("· 삭제 \(model.deletedCount)")
-            Spacer()
-        }
-        .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-        .padding(.horizontal, 14).padding(.bottom, 6)
     }
 
     // MARK: 스와이프 액션
@@ -114,6 +123,20 @@ struct InboxView: View {
         .padding(.top, 4)
     }
 
+    // 회계 요약: 표시·원칙·완료·삭제·합계. 합계가 원본(inbox.md)과 같으면 파싱 누락 없음.
+    private var accountingBar: some View {
+        HStack(spacing: 4) {
+            Text("합계 \(model.totalCount)").foregroundStyle(Palette.textSecondary)
+            Text("· 표시 \(model.liveNonDone.count - model.principles.count)")
+            Text("· 원칙 \(model.principles.count)")
+            Text("· 완료 \(model.doneItems.count)")
+            Text("· 삭제 \(model.deletedCount)")
+            Spacer()
+        }
+        .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
+        .padding(.horizontal, 14).padding(.bottom, 6)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 10) {
             Spacer()
@@ -122,52 +145,80 @@ struct InboxView: View {
                 .font(.callout).foregroundStyle(Palette.textSecondary)
             Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var folderPrompt: some View {
         VStack(spacing: 16) {
+            Spacer()
             Image(systemName: "folder.badge.questionmark").font(.system(size: 44)).foregroundStyle(Palette.textTertiary)
             Text("받은함 폴더를 선택하세요").font(.headline).foregroundStyle(Palette.textPrimary)
             Text("iCloud Drive의 SecondBrain 폴더를 고르면\ninbox.md와 조각 파일들을 함께 읽습니다.")
                 .font(.callout).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
             Button("폴더 선택") { showPicker = true }.buttonStyle(.borderedProminent).tint(Palette.accent)
+            Spacer()
         }
         .padding()
     }
 }
 
-// MARK: - 원칙 띠 (ambient)
+// MARK: - 원칙 띠 (ambient) — 펼침(전부) / 접힘(1개 회전)
 
 struct PrincipleBand: View {
     let principles: [ResolvedItem]
+    var collapsed: Bool
     var onTap: () -> Void = {}
     @State private var idx = 0
-    private let timer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+
+    private var star: Color { TypeCatalog.meta("principle").color }
 
     var body: some View {
-        let current = principles[min(idx, principles.count - 1)]
-        Button(action: onTap) {
+        Group {
+            if collapsed { compact } else { expanded }
+        }
+        .background(Palette.band)
+        .onReceive(timer) { _ in
+            guard collapsed, principles.count > 1 else { return }
+            withAnimation(.easeInOut(duration: 0.4)) { idx = (idx + 1) % principles.count }
+        }
+    }
+
+    // 펼침: 원칙 전부
+    private var expanded: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(principles, id: \.id) { p in
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(star).padding(.top, 3)
+                    Text(p.raw ?? "")
+                        .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+    }
+
+    // 접힘: 1개씩 회전(공간 절약, 스크롤해도 사라지지 않음)
+    private var compact: some View {
+        let cur = principles[min(idx, principles.count - 1)]
+        return Button(action: onTap) {
             HStack(spacing: 10) {
-                Image(systemName: "star.fill").font(.caption).foregroundStyle(TypeCatalog.meta("principle").color)
-                Text(current.raw ?? "")
+                Image(systemName: "star.fill").font(.caption).foregroundStyle(star)
+                Text(cur.raw ?? "")
                     .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
-                    .lineLimit(2).multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .id(current.id)                       // 전환 시 애니메이션
-                    .transition(.opacity)
+                    .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    .id(cur.id).transition(.opacity)
                 if principles.count > 1 {
                     Text("\(min(idx, principles.count - 1) + 1)/\(principles.count)")
                         .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(Palette.band)
+            .padding(.horizontal, 14).padding(.vertical, 9)
         }
         .buttonStyle(.plain)
-        .onReceive(timer) { _ in
-            guard principles.count > 1 else { return }
-            withAnimation(.easeInOut(duration: 0.4)) { idx = (idx + 1) % principles.count }
-        }
     }
 }
 
