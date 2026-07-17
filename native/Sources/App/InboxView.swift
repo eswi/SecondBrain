@@ -11,6 +11,19 @@ extension View {
         self
         #endif
     }
+
+    /// 위로 스크롤돼 나갈 때 부드럽게 축소·페이드(접히는 느낌). GPU 스크롤 효과라 재렌더/깜빡임 없음.
+    /// 내리면 그대로 되살아난다(스크롤 위치 기반, 가역).
+    func collapseOnScrollOut() -> some View {
+        scrollTransition(.interactive(timingCurve: .easeInOut), axis: .vertical) { content, phase in
+            // phase.value: 상단으로 나갈수록 음수(≈ -1), 화면 안이면 0(identity)
+            let leaving = min(0, phase.value)          // 위로 나가는 정도(0…-1)
+            return content
+                .opacity(1 + leaving)                   // 1 → 0
+                .scaleEffect(1 + leaving * 0.12, anchor: .top)  // 1 → 0.88
+                .blur(radius: -leaving * 2.5)           // 0 → 2.5
+        }
+    }
 }
 
 /// 받은함 첫 화면(다크). 전체가 하나의 네이티브 List → 어디서든 스와이프로 매끄럽게 스크롤.
@@ -50,6 +63,7 @@ struct InboxView: View {
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                 if !model.principles.isEmpty {
                     PrincipleBand(principles: model.principles, onTap: goToPrinciples)
+                        .collapseOnScrollOut()
                         .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 4, trailing: 10))
                         .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                 }
@@ -59,6 +73,7 @@ struct InboxView: View {
                 Section {
                     ForEach(sections.upcoming, id: \.item.id) { entry in
                         UpcomingCard(entry: entry, model: model)
+                            .collapseOnScrollOut()
                             .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
