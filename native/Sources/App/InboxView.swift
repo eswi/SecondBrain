@@ -13,13 +13,13 @@ extension View {
     }
 }
 
-/// 받은함 첫 화면(다크): 제목+폴더(한 줄) · 원칙 띠(고정, 스크롤 시 축소) · 필터 칩 · 회계 ·
-/// "곧 닥칠 것"(카드) · "최근 들어온 것"(줄). 스와이프 삭제·완료·미루기, 종류 아이콘으로 분류 변경.
+/// 받은함 첫 화면(다크). 상단 고정: 제목+폴더 · 원칙 · 곧 닥칠 것 · 필터 칩.
+/// 스크롤 시 원칙·곧 닥칠 것은 1개로 접혀 고정 유지(사라지지 않음). 최근 들어온 것만 스크롤.
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     var goToPrinciples: () -> Void = {}
     @State private var showPicker = false
-    @State private var scrolled = false          // 목록을 위로 올렸는지 → 원칙 띠 축소
+    @State private var scrolled = false          // 최근 목록을 위로 올렸는지 → 상단 영역 접힘
 
     var body: some View {
         NavigationStack {
@@ -29,12 +29,16 @@ struct InboxView: View {
                     folderPrompt
                     Spacer(minLength: 0)
                 } else {
+                    accountingBar
+                    let sections = model.sections
                     if !model.principles.isEmpty {
                         PrincipleBand(principles: model.principles, collapsed: scrolled, onTap: goToPrinciples)
                     }
+                    if !sections.upcoming.isEmpty {
+                        UpcomingArea(entries: sections.upcoming, collapsed: scrolled, model: model)
+                    }
                     FilterChipsBar(model: model)
-                    accountingBar
-                    listArea
+                    recentList(sections.recent)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -56,61 +60,47 @@ struct InboxView: View {
                 Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
             }
         }
-        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 6)
+        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
     }
 
-    // MARK: 목록
+    // MARK: 최근 들어온 것 (유일한 스크롤 영역)
 
-    private var listArea: some View {
-        let sections = model.sections
-        return Group {
-            if sections.upcoming.isEmpty && sections.recent.isEmpty {
-                emptyState
-            } else {
-                List {
-                    if !sections.upcoming.isEmpty {
-                        Section {
-                            ForEach(sections.upcoming, id: \.item.id) { entry in
-                                UpcomingCard(entry: entry, model: model)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
-                                    .listRowBackground(Palette.bg)
-                                    .listRowSeparator(.hidden)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
-                                    .swipeActions(edge: .leading) { doneDeferActions(entry.item) }
+    @ViewBuilder private func recentList(_ recent: [ResolvedItem]) -> some View {
+        if recent.isEmpty {
+            emptyRecent
+        } else {
+            List {
+                Section {
+                    ForEach(recent, id: \.id) { item in
+                        RecentRow(item: item, model: model)
+                            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                            .listRowBackground(Palette.bg)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
                             }
-                        } header: { sectionHeader("곧 닥칠 것", count: sections.upcoming.count) }
-                    }
-                    if !sections.recent.isEmpty {
-                        Section {
-                            ForEach(sections.recent, id: \.id) { item in
-                                RecentRow(item: item, model: model)
-                                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                                    .listRowBackground(Palette.bg)
-                                    .listRowSeparator(.hidden)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(item) }
-                                    .swipeActions(edge: .leading) { doneDeferActions(item) }
+                            .swipeActions(edge: .leading) {
+                                Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
+                                Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
                             }
-                        } header: { sectionHeader("최근 들어온 것", count: sections.recent.count) }
+                            .contextMenu { itemActions(item) }
                     }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Palette.bg)
-                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 16 } action: { _, s in
-                    if s != scrolled { withAnimation(.easeInOut(duration: 0.22)) { scrolled = s } }
-                }
+                } header: { sectionHeader("최근 들어온 것", count: recent.count) }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Palette.bg)
+            .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 16 } action: { _, s in
+                if s != scrolled { withAnimation(.easeInOut(duration: 0.22)) { scrolled = s } }
             }
         }
     }
 
-    // MARK: 스와이프 액션
-
-    @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
+    // 항목 행동(고정 영역용 컨텍스트 메뉴 = 스와이프 대체)
+    @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
+        Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
+        Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
-    }
-    @ViewBuilder private func doneDeferActions(_ item: ResolvedItem) -> some View {
-        Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
-        Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
     }
 
     private func sectionHeader(_ title: String, count: Int) -> some View {
@@ -120,10 +110,10 @@ struct InboxView: View {
             Spacer()
         }
         .textCase(nil)
-        .padding(.top, 4)
+        .padding(.top, 2)
     }
 
-    // 회계 요약: 표시·원칙·완료·삭제·합계. 합계가 원본(inbox.md)과 같으면 파싱 누락 없음.
+    // 회계 요약
     private var accountingBar: some View {
         HStack(spacing: 4) {
             Text("합계 \(model.totalCount)").foregroundStyle(Palette.textSecondary)
@@ -134,14 +124,14 @@ struct InboxView: View {
             Spacer()
         }
         .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-        .padding(.horizontal, 14).padding(.bottom, 6)
+        .padding(.horizontal, 16).padding(.bottom, 6)
     }
 
-    private var emptyState: some View {
+    private var emptyRecent: some View {
         VStack(spacing: 10) {
             Spacer()
-            Image(systemName: "tray").font(.system(size: 40)).foregroundStyle(Palette.textTertiary)
-            Text(model.filter == .all ? "받은함이 비었어요" : "이 종류가 없어요")
+            Image(systemName: "tray").font(.system(size: 36)).foregroundStyle(Palette.textTertiary)
+            Text(model.filter == .all ? "최근 들어온 것이 없어요" : "이 종류가 없어요")
                 .font(.callout).foregroundStyle(Palette.textSecondary)
             Spacer()
         }
@@ -196,7 +186,6 @@ struct PrincipleBand: View {
         }
     }
 
-    // 펼침: 원칙 전부 온전히
     private var expanded: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(principles, id: \.id) { row($0) }
@@ -226,6 +215,50 @@ struct PrincipleBand: View {
     }
 }
 
+// MARK: - 곧 닥칠 것 영역 — 펼침(전부) / 접힘(1개 + 제목에 +N)
+
+struct UpcomingArea: View {
+    let entries: [UpcomingEntry]
+    var collapsed: Bool
+    @ObservedObject var model: InboxModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            header
+            if collapsed {
+                if let first = entries.first { card(first) }
+            } else {
+                ForEach(entries, id: \.item.id) { card($0) }
+            }
+        }
+        .padding(.horizontal, 10).padding(.bottom, 4)
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Text("곧 닥칠 것").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
+            Text("\(entries.count)").font(.caption2).foregroundStyle(Palette.textTertiary)
+            if collapsed && entries.count > 1 {
+                Text("+\(entries.count - 1)")
+                    .font(.caption2.weight(.bold)).foregroundStyle(Palette.today)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Palette.today.opacity(0.16), in: Capsule())
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func card(_ entry: UpcomingEntry) -> some View {
+        UpcomingCard(entry: entry, model: model)
+            .contextMenu {
+                Button { model.markDone(entry.item) } label: { Label("완료", systemImage: "checkmark") }
+                Button { model.defer7(entry.item) } label: { Label("미루기", systemImage: "clock") }
+                Button(role: .destructive) { model.delete(entry.item) } label: { Label("삭제", systemImage: "trash") }
+            }
+    }
+}
+
 // MARK: - 필터 칩 한 줄
 
 struct FilterChipsBar: View {
@@ -249,10 +282,10 @@ struct FilterChipsBar: View {
                     Image(systemName: "ellipsis")
                         .font(.footnote.weight(.bold)).foregroundStyle(Palette.textSecondary)
                         .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Palette.card, in: Capsule())
+                        .background(Palette.surface, in: Capsule())
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 8)
+            .padding(.horizontal, 12).padding(.vertical, 8)
         }
         .background(Palette.bg)
     }
