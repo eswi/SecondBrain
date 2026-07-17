@@ -1,13 +1,16 @@
 import Foundation
 import SecondBrainCore
 
-/// 받은함 상태 + 항목 행동(쓰기 경로). 행동은 이 기기 조각 파일에 이벤트로 append 후 재읽기.
+/// 받은함 상태 + 항목 행동(쓰기 경로).
+/// 읽기: 사용자가 고른 iCloud 폴더의 `inbox*.md`(레거시 inbox.md 포함)를 병합.
+/// 쓰기: 행동을 **이 기기 조각** `inbox-<deviceId>.md`에 이벤트로 append 후 재읽기. inbox.md는 안 건드림.
 @MainActor
 final class InboxModel: ObservableObject {
     @Published var visible: [ResolvedItem] = []   // 화면에 보일 것(삭제·완료 제외)
     @Published var deletedCount = 0
     @Published var doneCount = 0
     @Published var sourceLabel = ""
+    @Published var needsFolder = false            // 폴더 미선택 → 피커 안내
 
     let deviceId: String
     private var clock: HLCClock
@@ -19,18 +22,17 @@ final class InboxModel: ObservableObject {
     }
 
     func load() {
-        let docs = DeviceStore.documents()
-        var (events, names) = InboxStore.eventsInDirectory(docs)
-
-        if events.isEmpty {   // 실 조각 없으면 번들 데모(2기기)
-            for n in ["inbox-iphone", "inbox-mac"] {
-                if let u = Bundle.main.url(forResource: n, withExtension: "md"),
-                   let t = try? String(contentsOf: u, encoding: .utf8) {
-                    events.append(contentsOf: EventLog.parse(t))
-                    names.append("\(n).md(번들)")
-                }
-            }
+        guard FragmentFolder.hasFolder else {
+            needsFolder = true
+            visible = []; deletedCount = 0; doneCount = 0
+            sourceLabel = "폴더 미선택"
+            return
         }
+        needsFolder = false
+
+        let frags = FragmentFolder.readFragments()
+        var events: [Event] = []
+        for f in frags { events.append(contentsOf: EventLog.parse(f.text)) }
 
         // 본 이벤트 최대 HLC 이상으로 시계 전진(인과성) + 영속
         if let maxH = events.map(\.hlc).max() {
@@ -42,7 +44,14 @@ final class InboxModel: ObservableObject {
         visible = r.live.filter { $0.status != "done" }
         doneCount = r.live.count - visible.count
         deletedCount = r.deleted.count
-        sourceLabel = names.isEmpty ? "(빈 받은함)" : names.joined(separator: ", ")
+        let names = frags.map(\.name)
+        sourceLabel = names.isEmpty ? "(빈 폴더)" : names.joined(separator: ", ")
+    }
+
+    /// 문서 피커로 고른 폴더를 등록하고 즉시 로드.
+    func setFolder(_ url: URL) {
+        try? FragmentFolder.saveBookmark(for: url)
+        load()
     }
 
     // ---- 항목 행동 → 이벤트 append ----
@@ -58,7 +67,7 @@ final class InboxModel: ObservableObject {
     }
 
     private func append(_ e: Event) {
-        try? EventWriter.append(e, to: DeviceStore.fragmentURL(deviceId))
+        try? FragmentFolder.appendLine(EventWriter.serialize(e) + "\n", deviceId: deviceId)
         load()   // 파일이 진실원 → 재읽기·재병합
     }
 

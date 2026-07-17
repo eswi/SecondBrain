@@ -52,8 +52,8 @@ public enum EventLog {
                 if let id = id, let hlc = hlc {
                     events.append(Event(id: id, hlc: hlc, fields: fields))
                 } else {
-                    // id/hlc 없음 → 레거시 create(최하 우선순위)
-                    let legacyId = "legacy:\(date) \(time)|\(source)|\(raw)"
+                    // id/hlc 없음 → 레거시 create(최하 우선순위). 토큰 안전 해시 id(변이 이벤트 왕복 위해).
+                    let legacyId = Event.legacyID(date: date, time: time, source: source, raw: raw)
                     events.append(Event(id: legacyId,
                                         hlc: HLC(wallMillis: 0, counter: legacyIndex, deviceId: "legacy"),
                                         fields: fields))

@@ -45,8 +45,21 @@ public struct Event: Sendable, Equatable {
         if let d = item.due { f["due"] = d }
         if let r = item.resurface { f["resurface"] = r }
         if let s = item.status { f["status"] = s }
-        return Event(id: "legacy:" + item.id,
+        return Event(id: legacyID(date: item.date, time: item.time, source: item.source, raw: item.raw),
                      hlc: HLC(wallMillis: 0, counter: index, deviceId: "legacy"),
                      fields: f)
+    }
+
+    /// 레거시 v0 줄(id 없음)에 부여하는 **토큰 안전 안정 id**: `legacy:<16hex>`.
+    /// - 내용(date/time/source/raw) 기반 결정적 해시(FNV-1a 64bit) → 같은 원문이면 항상 같은 id.
+    ///   classify.py가 원문 헤더 줄을 보존하므로 재분류해도 불변(원문을 손으로 고칠 때만 바뀜).
+    /// - `@ hlc | id | verb` 변이 줄에서 쪼개지지 않도록 '|'·공백 없는 16진 토큰만 만든다.
+    ///   (v0의 "date time|source|raw" 원문 id를 그대로 쓰면 변이 이벤트가 파싱 시 깨짐 — 그래서 해시.)
+    public static func legacyID(date: String, time: String, source: String, raw: String) -> String {
+        let s = "\(date) \(time)|\(source)|\(raw)"
+        var h: UInt64 = 0xcbf29ce484222325                  // FNV-1a offset basis
+        for b in s.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        let hex = String(h, radix: 16)
+        return "legacy:" + String(repeating: "0", count: max(0, 16 - hex.count)) + hex
     }
 }

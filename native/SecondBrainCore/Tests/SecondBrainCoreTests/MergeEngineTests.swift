@@ -262,4 +262,30 @@ final class MergeEngineTests: XCTestCase {
         XCTAssertTrue(r.live.contains { $0.type == "promise" && $0.raw == "김형석 대표 만나야 됩니다" })
         XCTAssertTrue(r.live.contains { $0.type == "principle" })
     }
+
+    // 급소: 레거시 항목(원문 id)에 행동을 붙여도 변이 이벤트 줄이 파싱 왕복돼야 한다.
+    // 레거시 id가 "date time|source|raw"라면 `@ hlc | id | verb`가 '|'로 쪼개져 유실됨 → 해시 id로 방지.
+    func test21_legacyItemMutationRoundtrips() {
+        // 1) 웹 inbox.md 한 줄(id 없음) + 2) 그 항목을 이 기기가 미루기·삭제 → 각각 파일에.
+        let legacyLine = "- 2026-06-29 10:40 | voice | 김형석 대표 만나야 됩니다\n  type: promise"
+        let legacyId = Event.legacyID(date: "2026-06-29", time: "10:40",
+                                      source: "voice", raw: "김형석 대표 만나야 됩니다")
+        XCTAssertFalse(legacyId.contains("|"), "레거시 id에 '|'가 있으면 변이 줄이 깨진다")
+        XCTAssertFalse(legacyId.contains(" "), "레거시 id에 공백이 있으면 변이 줄이 깨진다")
+
+        // 이 기기 조각: 미루기(resurface) 후 삭제 — 각각 EventWriter로 직렬화한 실제 줄
+        let deferEv = Event.edit(id: legacyId, hlc: HLC(wallMillis: 100, counter: 0, deviceId: "mac"),
+                                 ["resurface": "2026-07-24"])
+        let delEv = Event.delete(id: legacyId, hlc: HLC(wallMillis: 200, counter: 0, deviceId: "mac"))
+        let fragment = EventWriter.serialize(deferEv) + "\n" + EventWriter.serialize(delEv)
+
+        // inbox.md(레거시) + 기기 조각을 함께 병합
+        let r = InboxStore.merge(fragmentTexts: [legacyLine, fragment])
+
+        // 삭제가 최신 HLC → 숨김(tombstone), 그리고 그 tombstone에 미루기 값이 반영돼 있어야(왕복 성공 증거)
+        XCTAssertTrue(r.live.isEmpty, "삭제가 최신이라 live엔 없어야")
+        XCTAssertEqual(r.item(legacyId)?.deleted, true)
+        XCTAssertEqual(r.item(legacyId)?.resurface, "2026-07-24", "미루기 이벤트가 파싱 왕복돼 반영돼야")
+        XCTAssertEqual(r.item(legacyId)?.type, "promise", "레거시 콘텐츠도 유지")
+    }
 }
