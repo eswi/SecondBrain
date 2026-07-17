@@ -6,10 +6,10 @@ import SecondBrainCore
 /// 쓰기: 행동을 **이 기기 조각** `inbox-<deviceId>.md`에 이벤트로 append 후 재읽기. inbox.md는 안 건드림.
 @MainActor
 final class InboxModel: ObservableObject {
-    // 병합 결과(삭제 아님)를 성격별로 노출
-    @Published private(set) var liveNonDone: [ResolvedItem] = []   // 처리 대상(완료 제외, 원칙 포함)
-    @Published private(set) var doneItems: [ResolvedItem] = []     // 보관함(완료)
-    @Published private(set) var deletedCount = 0
+    // 병합 결과를 성격별로 노출. 버림(type=discard)은 삭제와 동일 취급 → trashed로.
+    @Published private(set) var liveNonDone: [ResolvedItem] = []   // 처리 대상(완료·버림 제외, 원칙 포함)
+    @Published private(set) var doneItems: [ResolvedItem] = []     // 보관함 완료 섹션
+    @Published private(set) var trashed: [ResolvedItem] = []       // 보관함 삭제·버림 섹션(tombstone + discard)
     @Published var sourceLabel = ""
     @Published var needsFolder = false            // 폴더 미선택 → 피커 안내
 
@@ -29,9 +29,14 @@ final class InboxModel: ObservableObject {
     /// 원칙(ambient) — 상단 띠 + 원칙 탭. 처리 목록에서는 뺀다.
     var principles: [ResolvedItem] { liveNonDone.filter { $0.type == "principle" } }
 
+    var deletedCount: Int { trashed.count }
+
     /// 전체 항목 회계(고유 id 합). 합계가 원본(예: inbox.md 68)과 같아야 파싱 누락이 없다.
-    /// live(완료 제외) + 완료(보관함) + 삭제(tombstone) = 전체.
-    var totalCount: Int { liveNonDone.count + doneItems.count + deletedCount }
+    /// live(완료·버림 제외) + 완료 + 삭제·버림 = 전체.
+    var totalCount: Int { liveNonDone.count + doneItems.count + trashed.count }
+
+    /// 빈 문자열 type은 미분류(nil)로 취급.
+    private func norm(_ t: String?) -> String? { (t?.isEmpty ?? true) ? nil : t }
 
     /// 받은함 목록에 쓸 항목(필터 적용).
     /// - 전체: 원칙 제외(띠가 담당) — 처리할 것에 집중
@@ -39,7 +44,7 @@ final class InboxModel: ObservableObject {
     var filteredInbox: [ResolvedItem] {
         switch filter {
         case .all:            return liveNonDone.filter { $0.type != "principle" }
-        case .type(let key):  return liveNonDone.filter { $0.type == key }
+        case .type(let key):  return liveNonDone.filter { norm($0.type) == key }
         }
     }
 
@@ -50,7 +55,7 @@ final class InboxModel: ObservableObject {
     func count(for filter: TypeFilter) -> Int {
         switch filter {
         case .all:            return liveNonDone.filter { $0.type != "principle" }.count
-        case .type(let key):  return liveNonDone.filter { $0.type == key }.count
+        case .type(let key):  return liveNonDone.filter { norm($0.type) == key }.count
         }
     }
 
@@ -66,7 +71,7 @@ final class InboxModel: ObservableObject {
             }
             #endif
             needsFolder = true
-            liveNonDone = []; doneItems = []; deletedCount = 0
+            liveNonDone = []; doneItems = []; trashed = []
             sourceLabel = "폴더 미선택"
             return
         }
@@ -88,9 +93,11 @@ final class InboxModel: ObservableObject {
         }
 
         let r = MergeEngine.merge(events)
-        liveNonDone = r.live.filter { $0.status != "done" }
-        doneItems = r.live.filter { $0.status == "done" }
-        deletedCount = r.deleted.count
+        // 버림(type=discard)은 삭제와 동일 취급: 받은함·완료에서 빼고 trashed로.
+        let active = r.live.filter { $0.type != "discard" }
+        liveNonDone = active.filter { $0.status != "done" }
+        doneItems = active.filter { $0.status == "done" }
+        trashed = r.deleted + r.live.filter { $0.type == "discard" }
         sourceLabel = label
 
         scheduleNotifications()
@@ -123,8 +130,16 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), ["type": type]))
     }
 
-    /// 보관함에서 되돌리기(완료 해제).
+    /// 보관함 완료 섹션에서 되돌리기(완료 해제).
     func restore(_ item: ResolvedItem) { append(.edit(id: item.id, hlc: tick(), ["status": "open"])) }
+
+    /// 보관함 삭제·버림 섹션에서 되돌리기.
+    /// - 진짜 삭제(tombstone) → undelete로 부활.
+    /// - 버림(type=discard) → type을 비워 미분류로(받은함에 다시 나타남).
+    func restoreFromTrash(_ item: ResolvedItem) {
+        if item.deleted { append(.undelete(id: item.id, hlc: tick())) }
+        else { append(.edit(id: item.id, hlc: tick(), ["type": ""])) }
+    }
 
     private func tick() -> HLC {
         let h = clock.send(now: nowMillis())

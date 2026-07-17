@@ -39,6 +39,8 @@ enum SampleData {
     - 2026-07-09 12:00 | doc | 완료한 예시 항목
       type: info-action
       status: done
+    - 2026-07-08 15:00 | web | 스팸성 뉴스레터 링크
+      type: discard
     """
 }
 #endif

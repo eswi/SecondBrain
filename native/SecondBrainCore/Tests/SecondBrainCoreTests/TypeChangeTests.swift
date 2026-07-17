@@ -40,6 +40,24 @@ final class TypeChangeTests: XCTestCase {
         XCTAssertFalse(item?.deleted ?? true)
     }
 
+    func testUnclassify_emptyTypeValueRoundTrips() {
+        // 버림(discard) 되돌리기 = type을 빈 값으로 set → 미분류. `set type=`가 왕복돼야 함.
+        let edit = Event.edit(id: "legacy:abcd", hlc: HLC(wallMillis: 5, counter: 0, deviceId: "d"),
+                              ["type": ""])
+        let line = EventWriter.serialize(edit)
+        XCTAssertEqual(line, "@ \(edit.hlc.serialized) | legacy:abcd | set type=")
+        let reparsed = EventLog.parse(line)
+        XCTAssertEqual(reparsed.count, 1, "빈 값 set도 이벤트로 살아남아야 함")
+        XCTAssertEqual(reparsed[0].fields["type"], "")
+
+        // discard였다가 빈 type로 덮으면 최신 값은 "" (미분류)
+        let create = Event.create(id: "legacy:abcd", hlc: HLC(wallMillis: 0, counter: 0, deviceId: "legacy"),
+                                  date: "2026-07-15", time: "10:00", source: "voice", raw: "x",
+                                  extra: ["type": "discard"])
+        let m = MergeEngine.merge([create] + reparsed)
+        XCTAssertEqual(m.item("legacy:abcd")?.type, "")
+    }
+
     func testTypeChange_doesNotTouchOtherFields() {
         // create에 due가 있어도 type만 바꾸면 due는 유지(필드별 LWW)
         let create = Event.create(id: "legacy:abcd", hlc: HLC(wallMillis: 0, counter: 0, deviceId: "legacy"),
