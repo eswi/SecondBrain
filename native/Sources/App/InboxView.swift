@@ -13,18 +13,12 @@ extension View {
     }
 }
 
-/// 받은함 첫 화면(다크). 상단 고정: 제목+폴더 · 원칙 · 곧 닥칠 것 · 필터 칩.
-/// 최근 목록을 스크롤하면 그 양에 비례해 원칙 → 곧 닥칠 것 순서로 표시 개수가 **한 개씩 단계적으로** 줄고,
-/// 각각 최소 1개는 남아 사라지지 않는다.
+/// 받은함 첫 화면(다크). 전체가 하나의 네이티브 List → 어디서든 스와이프로 매끄럽게 스크롤.
+/// 원칙·곧 닥칠 것은 일반 행으로 자연 스크롤, 필터는 최근 섹션의 고정 헤더로 상단 유지.
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     var goToPrinciples: () -> Void = {}
     @State private var showPicker = false
-    @State private var pHideRaw = 0     // 스크롤로 숨긴 원칙 수
-    @State private var uHideRaw = 0     // 스크롤로 숨긴 곧닥칠 수
-
-    private let pStep: CGFloat = 44     // 원칙 한 개 줄이는 데 필요한 스크롤(px)
-    private let uStep: CGFloat = 88     // 곧닥칠 한 개 줄이는 데 필요한 스크롤(px)
 
     var body: some View {
         NavigationStack {
@@ -46,17 +40,37 @@ struct InboxView: View {
         }
     }
 
-    /// 전체가 하나의 List. 원칙·곧닥칠·필터는 **고정 섹션 헤더**(sticky)로, 최근은 rows.
-    /// → 어디서 스와이프해도 전체가 스크롤되고, 스크롤 양이 헤더의 단계적 접힘을 구동.
     private var content: some View {
         let sections = model.sections
-        let pCount = model.principles.count
-        let uCount = sections.upcoming.count
-        let pRed = max(0, pCount - 1)
-        let uRed = max(0, uCount - 1)
-        let pHide = min(pRed, pHideRaw)
-        let uHide = min(uRed, uHideRaw)
         return List {
+            // 회계 · 원칙 · 곧 닥칠 것 — 일반 행(자연 스크롤)
+            Section {
+                accountingRow
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
+                    .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                if !model.principles.isEmpty {
+                    PrincipleBand(principles: model.principles, onTap: goToPrinciples)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 4, trailing: 10))
+                        .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                }
+            }
+
+            if !sections.upcoming.isEmpty {
+                Section {
+                    ForEach(sections.upcoming, id: \.item.id) { entry in
+                        UpcomingCard(entry: entry, model: model)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
+                            .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
+                            .swipeActions(edge: .leading) { doneDeferActions(entry.item) }
+                            .contextMenu { itemActions(entry.item) }
+                    }
+                } header: {
+                    sectionTitle("곧 닥칠 것", count: sections.upcoming.count)
+                }
+            }
+
+            // 필터(고정 헤더) + 최근 들어온 것
             Section {
                 if sections.recent.isEmpty {
                     emptyRecentRow
@@ -64,62 +78,25 @@ struct InboxView: View {
                     ForEach(sections.recent, id: \.id) { item in
                         RecentRow(item: item, model: model)
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                            .listRowBackground(Palette.bg)
-                            .listRowSeparator(.hidden)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
-                                Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
-                            }
+                            .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(item) }
+                            .swipeActions(edge: .leading) { doneDeferActions(item) }
                             .contextMenu { itemActions(item) }
                     }
                 }
             } header: {
-                stickyHeader(pShown: pCount - pHide, uShown: uCount - uHide,
-                             upcoming: sections.upcoming, recentCount: sections.recent.count)
+                VStack(spacing: 0) {
+                    FilterChipsBar(model: model)
+                    sectionTitle("최근 들어온 것", count: sections.recent.count)
+                        .padding(.horizontal, 10).padding(.bottom, 4)
+                }
+                .background(Palette.bg)
+                .listRowInsets(EdgeInsets())
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-            let yy = max(0, y)
-            let ph = min(pRed, Int(yy / pStep))
-            let uh = ph >= pRed ? min(uRed, Int(max(0, yy - CGFloat(pRed) * pStep) / uStep)) : 0
-            // withAnimation 없이, 값이 바뀔 때만 갱신 → 각 영역이 value:shown 애니메이션으로 자기 항목만 부드럽게 전환.
-            if ph != pHideRaw { pHideRaw = ph }
-            if uh != uHideRaw { uHideRaw = uh }
-        }
-    }
-
-    // 고정 섹션 헤더: 회계 · 원칙 · 곧닥칠 · 필터 · "최근" 제목 (불투명 배경으로 rows 가림)
-    @ViewBuilder private func stickyHeader(pShown: Int, uShown: Int,
-                                           upcoming: [UpcomingEntry], recentCount: Int) -> some View {
-        VStack(spacing: 0) {
-            accountingBar
-            if !model.principles.isEmpty {
-                PrincipleBand(principles: model.principles, shown: pShown, onTap: goToPrinciples)
-            }
-            if !upcoming.isEmpty {
-                UpcomingArea(entries: upcoming, shown: uShown, model: model)
-            }
-            FilterChipsBar(model: model)
-            sectionHeader("최근 들어온 것", count: recentCount)
-                .padding(.horizontal, 10).padding(.bottom, 4)
-        }
-        .background(Palette.bg)
-        .listRowInsets(EdgeInsets())
-    }
-
-    private var emptyRecentRow: some View {
-        Text(model.filter == .all ? "최근 들어온 것이 없어요" : "이 종류가 없어요")
-            .font(.callout).foregroundStyle(Palette.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 24)
-            .listRowBackground(Palette.bg)
-            .listRowSeparator(.hidden)
     }
 
     // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
@@ -135,25 +112,31 @@ struct InboxView: View {
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
     }
 
-    // 항목 행동(고정 영역용 컨텍스트 메뉴 = 스와이프 대체)
+    // MARK: 스와이프 / 컨텍스트 액션
+
+    @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
+        Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+    }
+    @ViewBuilder private func doneDeferActions(_ item: ResolvedItem) -> some View {
+        Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
+        Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
+    }
     @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
         Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
     }
 
-    private func sectionHeader(_ title: String, count: Int) -> some View {
+    private func sectionTitle(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             Text("\(count)").font(.caption2).foregroundStyle(Palette.textTertiary)
             Spacer()
         }
         .textCase(nil)
-        .padding(.top, 2)
     }
 
-    // 회계 요약
-    private var accountingBar: some View {
+    private var accountingRow: some View {
         HStack(spacing: 4) {
             Text("합계 \(model.totalCount)").foregroundStyle(Palette.textSecondary)
             Text("· 표시 \(model.liveNonDone.count - model.principles.count)")
@@ -163,7 +146,14 @@ struct InboxView: View {
             Spacer()
         }
         .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-        .padding(.horizontal, 16).padding(.bottom, 6)
+    }
+
+    private var emptyRecentRow: some View {
+        Text(model.filter == .all ? "최근 들어온 것이 없어요" : "이 종류가 없어요")
+            .font(.callout).foregroundStyle(Palette.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 24)
+            .listRowBackground(Palette.bg).listRowSeparator(.hidden)
     }
 
     private var folderPrompt: some View {
@@ -180,92 +170,30 @@ struct InboxView: View {
     }
 }
 
-// MARK: - 원칙 띠 (ambient) — shown 개수만큼 표시, 1개면 회전
+// MARK: - 원칙 띠 (ambient) — 전부 표시(자연 스크롤)
 
 struct PrincipleBand: View {
     let principles: [ResolvedItem]
-    let shown: Int
     var onTap: () -> Void = {}
-
     private var tint: Color { TypeCatalog.meta("principle").color }
-    private var count: Int { principles.count }
-    private var visibleItems: [ResolvedItem] { Array(principles.prefix(max(1, shown))) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(visibleItems, id: \.id) { p in
-                row(p).transition(.opacity.combined(with: .move(edge: .top)))
+            ForEach(principles, id: \.id) { p in
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint).padding(.top, 3)
+                    Text(p.raw ?? "")
+                        .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topTrailing) {
-            if shown < count {
-                Text("+\(count - shown)").font(.caption2).monospacedDigit()
-                    .foregroundStyle(Palette.textTertiary)
-                    .padding(.top, 12).padding(.trailing, 12)
-            }
-        }
         .areaStyle(tint: tint)
-        .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
-        .animation(.easeInOut(duration: 0.25), value: shown)
-    }
-
-    private func row(_ p: ResolvedItem) -> some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint).padding(.top, 3)
-            Text(p.raw ?? "")
-                .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-// MARK: - 곧 닥칠 것 영역 — shown 개수만큼 표시, 제목에 +N
-
-struct UpcomingArea: View {
-    let entries: [UpcomingEntry]
-    let shown: Int
-    @ObservedObject var model: InboxModel
-
-    private var visibleEntries: [UpcomingEntry] { Array(entries.prefix(max(1, shown))) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            header
-            ForEach(visibleEntries, id: \.item.id) { entry in
-                card(entry).transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(.horizontal, 10).padding(.bottom, 4)
-        .animation(.easeInOut(duration: 0.25), value: shown)
-    }
-
-    private var header: some View {
-        HStack(spacing: 6) {
-            Text("곧 닥칠 것").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
-            Text("\(entries.count)").font(.caption2).foregroundStyle(Palette.textTertiary)
-            if shown < entries.count {
-                Text("+\(entries.count - shown)")
-                    .font(.caption2.weight(.bold)).foregroundStyle(Palette.today)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Palette.today.opacity(0.16), in: Capsule())
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 4)
-    }
-
-    private func card(_ entry: UpcomingEntry) -> some View {
-        UpcomingCard(entry: entry, model: model)
-            .contextMenu {
-                Button { model.markDone(entry.item) } label: { Label("완료", systemImage: "checkmark") }
-                Button { model.defer7(entry.item) } label: { Label("미루기", systemImage: "clock") }
-                Button(role: .destructive) { model.delete(entry.item) } label: { Label("삭제", systemImage: "trash") }
-            }
     }
 }
 
