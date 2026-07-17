@@ -88,9 +88,9 @@ struct InboxView: View {
             let yy = max(0, y)
             let ph = min(pRed, Int(yy / pStep))
             let uh = ph >= pRed ? min(uRed, Int(max(0, yy - CGFloat(pRed) * pStep) / uStep)) : 0
-            if ph != pHideRaw || uh != uHideRaw {
-                withAnimation(.easeInOut(duration: 0.2)) { pHideRaw = ph; uHideRaw = uh }
-            }
+            // withAnimation 없이, 값이 바뀔 때만 갱신 → 각 영역이 value:shown 애니메이션으로 자기 항목만 부드럽게 전환.
+            if ph != pHideRaw { pHideRaw = ph }
+            if uh != uHideRaw { uHideRaw = uh }
         }
     }
 
@@ -186,52 +186,31 @@ struct PrincipleBand: View {
     let principles: [ResolvedItem]
     let shown: Int
     var onTap: () -> Void = {}
-    @State private var idx = 0
-    private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     private var tint: Color { TypeCatalog.meta("principle").color }
     private var count: Int { principles.count }
-    private var rotating: Bool { shown <= 1 && count > 1 }
+    private var visibleItems: [ResolvedItem] { Array(principles.prefix(max(1, shown))) }
 
     var body: some View {
-        content
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .areaStyle(tint: tint)
-            .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
-            .onReceive(timer) { _ in
-                guard rotating else { return }
-                withAnimation(.easeInOut(duration: 0.4)) { idx = (idx + 1) % count }
-            }
-    }
-
-    @ViewBuilder private var content: some View {
-        if shown >= count {
-            list(principles)
-        } else if shown <= 1 {
-            rotatingView
-        } else {
-            list(Array(principles.prefix(shown)))
-                .overlay(alignment: .topTrailing) { corner("+\(count - shown)") }
-        }
-    }
-
-    private func list(_ items: [ResolvedItem]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(items, id: \.id) { row($0) }
+            ForEach(visibleItems, id: \.id) { p in
+                row(p).transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle()).onTapGesture(perform: onTap)
-    }
-
-    private var rotatingView: some View {
-        let cur = principles[min(idx, count - 1)]
-        return ZStack(alignment: .topLeading) {
-            ForEach(principles, id: \.id) { row($0).opacity(0).accessibilityHidden(true) }
-            row(cur).id(cur.id).transition(.opacity)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .topTrailing) {
+            if shown < count {
+                Text("+\(count - shown)").font(.caption2).monospacedDigit()
+                    .foregroundStyle(Palette.textTertiary)
+                    .padding(.top, 12).padding(.trailing, 12)
+            }
         }
-        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topTrailing) { corner("\(min(idx, count - 1) + 1)/\(count)") }
-        .contentShape(Rectangle()).onTapGesture(perform: onTap)
+        .areaStyle(tint: tint)
+        .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .animation(.easeInOut(duration: 0.25), value: shown)
     }
 
     private func row(_ p: ResolvedItem) -> some View {
@@ -243,11 +222,6 @@ struct PrincipleBand: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-
-    private func corner(_ s: String) -> some View {
-        Text(s).font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-            .padding(.top, 12).padding(.trailing, 12)
-    }
 }
 
 // MARK: - 곧 닥칠 것 영역 — shown 개수만큼 표시, 제목에 +N
@@ -257,12 +231,17 @@ struct UpcomingArea: View {
     let shown: Int
     @ObservedObject var model: InboxModel
 
+    private var visibleEntries: [UpcomingEntry] { Array(entries.prefix(max(1, shown))) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
-            ForEach(Array(entries.prefix(shown)), id: \.item.id) { card($0) }
+            ForEach(visibleEntries, id: \.item.id) { entry in
+                card(entry).transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.horizontal, 10).padding(.bottom, 4)
+        .animation(.easeInOut(duration: 0.25), value: shown)
     }
 
     private var header: some View {
