@@ -6,10 +6,10 @@ import SecondBrainCore
 /// 쓰기: 행동을 **이 기기 조각** `inbox-<deviceId>.md`에 이벤트로 append 후 재읽기. inbox.md는 안 건드림.
 @MainActor
 final class InboxModel: ObservableObject {
-    // 병합 결과를 성격별로 노출. 버림(type=discard)은 삭제와 동일 취급 → trashed로.
-    @Published private(set) var liveNonDone: [ResolvedItem] = []   // 처리 대상(완료·버림 제외, 원칙 포함)
+    // 병합 결과를 성격별로 노출. 웹 분류값 discard는 '삭제'로 취급('버림' 개념 없음).
+    @Published private(set) var liveNonDone: [ResolvedItem] = []   // 처리 대상(완료·삭제 제외, 원칙 포함)
     @Published private(set) var doneItems: [ResolvedItem] = []     // 보관함 완료 섹션
-    @Published private(set) var trashed: [ResolvedItem] = []       // 보관함 삭제·버림 섹션(tombstone + discard)
+    @Published private(set) var trashed: [ResolvedItem] = []       // 보관함 삭제 섹션(tombstone + discard)
     @Published var sourceLabel = ""
     @Published var needsFolder = false            // 폴더 미선택 → 피커 안내
 
@@ -93,7 +93,7 @@ final class InboxModel: ObservableObject {
         }
 
         let r = MergeEngine.merge(events)
-        // 버림(type=discard)은 삭제와 동일 취급: 받은함·완료에서 빼고 trashed로.
+        // 웹 분류값 discard는 삭제로 취급: 받은함·완료에서 빼고 trashed로('버림' 개념 없음).
         let active = r.live.filter { $0.type != "discard" }
         liveNonDone = active.filter { $0.status != "done" }
         doneItems = active.filter { $0.status == "done" }
@@ -133,9 +133,9 @@ final class InboxModel: ObservableObject {
     /// 보관함 완료 섹션에서 되돌리기(완료 해제).
     func restore(_ item: ResolvedItem) { append(.edit(id: item.id, hlc: tick(), ["status": "open"])) }
 
-    /// 보관함 삭제·버림 섹션에서 되돌리기.
+    /// 보관함 삭제 섹션에서 되돌리기.
     /// - 진짜 삭제(tombstone) → undelete로 부활.
-    /// - 버림(type=discard) → type을 비워 미분류로(받은함에 다시 나타남).
+    /// - discard(삭제 취급) → type을 비워 미분류로(받은함에 다시 나타남).
     func restoreFromTrash(_ item: ResolvedItem) {
         if item.deleted { append(.undelete(id: item.id, hlc: tick())) }
         else { append(.edit(id: item.id, hlc: tick(), ["type": ""])) }

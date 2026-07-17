@@ -53,7 +53,7 @@ enum TypeCatalog {
         return t
     }()
 
-    /// 알려진 전 종류(폴백용). discard 포함.
+    /// 알려진 전 종류(폴백용). ('버림' 개념은 없음 — 웹 분류값 discard는 삭제로 취급하며 종류로 노출 안 함)
     static let allKnown: [TypeMeta] = [
         TypeMeta(key: "promise",     label: "약속",     color: Color(hex: 0xE86AA6), symbol: "person.2.fill"),
         TypeMeta(key: "event",       label: "일정",     color: Color(hex: 0x5B8DEF), symbol: "calendar"),
@@ -61,14 +61,11 @@ enum TypeCatalog {
         TypeMeta(key: "info",        label: "정보",     color: Color(hex: 0x8E8E93), symbol: "doc.text.fill"),
         TypeMeta(key: "idea",        label: "아이디어", color: Color(hex: 0xF2C14E), symbol: "lightbulb.fill"),
         TypeMeta(key: "principle",   label: "원칙",     color: Color(hex: 0xB07BE0), symbol: "star.fill"),
-        TypeMeta(key: "discard",     label: "버림",     color: Color.white.opacity(0.30), symbol: "trash"),
         TypeMeta(key: nil,           label: "미분류",   color: Color.white.opacity(0.45), symbol: "questionmark.circle"),
     ]
 
-    /// 분류 변경 메뉴에 뜨는 종류(실제 종류로만 바꾸게 — discard·미분류 제외).
-    static let assignable: [TypeMeta] = allKnown.filter {
-        $0.key != nil && $0.key != "discard"
-    }
+    /// 분류 변경 메뉴에 뜨는 종류(실제 종류로만 — 미분류 제외).
+    static let assignable: [TypeMeta] = allKnown.filter { $0.key != nil }
 
     /// 필터 칩 — 항상 노출되는 주요 종류.
     static let primaryFilters: [String] = ["promise", "event", "info-action", "info"]

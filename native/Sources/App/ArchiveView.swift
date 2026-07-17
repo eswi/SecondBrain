@@ -1,7 +1,7 @@
 import SwiftUI
 import SecondBrainCore
 
-/// 보관함 — 받은함에서 치운 것을 한 곳에서. 두 섹션: 완료 / 삭제·버림. 각각 되돌리기.
+/// 보관함 — 받은함에서 치운 것을 한 곳에서. 두 섹션: 완료 / 삭제. 각각 되돌리기.
 struct ArchiveView: View {
     @ObservedObject var model: InboxModel
 
@@ -38,7 +38,7 @@ struct ArchiveView: View {
                                                 .tint(Palette.accent)
                                         }
                                 }
-                            } header: { header("삭제·버림", model.trashed.count) }
+                            } header: { header("삭제", model.trashed.count) }
                         }
                     }
                     .listStyle(.plain)
