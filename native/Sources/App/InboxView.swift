@@ -56,16 +56,25 @@ struct InboxView: View {
     private var content: some View {
         let sections = model.sections
         return List {
-            // 회계 · 원칙 · 곧 닥칠 것 — 일반 행(자연 스크롤)
+            // 회계 (헤더 없는 첫 줄)
             Section {
                 accountingRow
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
-                ForEach(model.principles, id: \.id) { p in
-                    PrincipleRow(item: p, onTap: goToPrinciples)
-                        .collapseOnScrollOut()
-                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
-                        .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+            }
+
+            // 원칙 — 고정 헤더 아래로 각 줄이 스크롤(곧닥칠과 동일)
+            if !model.principles.isEmpty {
+                Section {
+                    ForEach(model.principles, id: \.id) { p in
+                        PrincipleRow(item: p, onTap: goToPrinciples)
+                            .collapseOnScrollOut()
+                            .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+                            .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                    }
+                } header: {
+                    sectionTitle("원칙", count: model.principles.count)
+                        .listRowInsets(EdgeInsets())
                 }
             }
 
@@ -82,6 +91,7 @@ struct InboxView: View {
                     }
                 } header: {
                     sectionTitle("곧 닥칠 것", count: sections.upcoming.count)
+                        .listRowInsets(EdgeInsets())
                 }
             }
 
@@ -103,7 +113,6 @@ struct InboxView: View {
                 VStack(spacing: 0) {
                     FilterChipsBar(model: model)
                     sectionTitle("최근 들어온 것", count: sections.recent.count)
-                        .padding(.horizontal, 10).padding(.bottom, 4)
                 }
                 .background(Palette.bg)
                 .listRowInsets(EdgeInsets())
@@ -149,6 +158,9 @@ struct InboxView: View {
             Spacer()
         }
         .textCase(nil)
+        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.bg)      // 고정 시 아래 내용 비침 방지
     }
 
     private var accountingRow: some View {
