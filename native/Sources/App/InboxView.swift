@@ -72,7 +72,7 @@ struct InboxView: View {
                         Section {
                             ForEach(sections.upcoming, id: \.item.id) { entry in
                                 UpcomingCard(entry: entry, model: model)
-                                    .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                                     .listRowBackground(Palette.bg)
                                     .listRowSeparator(.hidden)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
@@ -84,7 +84,7 @@ struct InboxView: View {
                         Section {
                             ForEach(sections.recent, id: \.id) { item in
                                 RecentRow(item: item, model: model)
-                                    .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                                     .listRowBackground(Palette.bg)
                                     .listRowSeparator(.hidden)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(item) }
@@ -171,54 +171,58 @@ struct PrincipleBand: View {
     @State private var idx = 0
     private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
-    private var star: Color { TypeCatalog.meta("principle").color }
+    private var tint: Color { TypeCatalog.meta("principle").color }
 
     var body: some View {
         Group {
             if collapsed { compact } else { expanded }
         }
-        .background(Palette.band)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .areaStyle(tint: tint)
+        .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
         .onReceive(timer) { _ in
             guard collapsed, principles.count > 1 else { return }
             withAnimation(.easeInOut(duration: 0.4)) { idx = (idx + 1) % principles.count }
         }
     }
 
-    // 펼침: 원칙 전부
-    private var expanded: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            ForEach(principles, id: \.id) { p in
-                HStack(alignment: .top, spacing: 9) {
-                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(star).padding(.top, 3)
-                    Text(p.raw ?? "")
-                        .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+    private func row(_ p: ResolvedItem) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint).padding(.top, 3)
+            Text(p.raw ?? "")
+                .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+
+    // 펼침: 원칙 전부 온전히
+    private var expanded: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(principles, id: \.id) { row($0) }
+        }
+        .padding(14)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
     }
 
-    // 접힘: 1개씩 회전(공간 절약, 스크롤해도 사라지지 않음)
+    // 접힘: 1개씩 회전. 높이는 '가장 큰 원칙' 기준으로 예약 → 잘리지 않고 레이아웃도 안 흔들림.
     private var compact: some View {
         let cur = principles[min(idx, principles.count - 1)]
-        return Button(action: onTap) {
-            HStack(spacing: 10) {
-                Image(systemName: "star.fill").font(.caption).foregroundStyle(star)
-                Text(cur.raw ?? "")
-                    .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
-                    .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    .id(cur.id).transition(.opacity)
-                if principles.count > 1 {
-                    Text("\(min(idx, principles.count - 1) + 1)/\(principles.count)")
-                        .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 9)
+        return ZStack(alignment: .topLeading) {
+            ForEach(principles, id: \.id) { row($0).opacity(0).accessibilityHidden(true) }
+            row(cur).id(cur.id).transition(.opacity)
         }
-        .buttonStyle(.plain)
+        .padding(14)
+        .overlay(alignment: .topTrailing) {
+            if principles.count > 1 {
+                Text("\(min(idx, principles.count - 1) + 1)/\(principles.count)")
+                    .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
+                    .padding(.top, 12).padding(.trailing, 12)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
     }
 }
 
@@ -287,8 +291,16 @@ struct UpcomingCard: View {
             DDayBadge(dday: entry.dday)
         }
         .padding(12)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.cardStroke))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .areaStyle(tint: ddayTint, strong: entry.dday.bucket != .future)
+    }
+
+    private var ddayTint: Color {
+        switch entry.dday.bucket {
+        case .overdue: return Palette.overdue
+        case .today:   return Palette.today
+        case .future:  return Palette.neutral
+        }
     }
 }
 
@@ -306,6 +318,10 @@ struct RecentRow: View {
             Spacer(minLength: 4)
             SourceBadge(source: item.source)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
     }
 }
