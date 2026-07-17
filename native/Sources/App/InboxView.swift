@@ -19,9 +19,9 @@ extension View {
             // phase.value: 상단으로 나갈수록 음수(≈ -1), 화면 안이면 0(identity)
             let leaving = min(0, phase.value)          // 위로 나가는 정도(0…-1)
             return content
-                .opacity(1 + leaving)                   // 1 → 0
-                .scaleEffect(1 + leaving * 0.12, anchor: .top)  // 1 → 0.88
-                .blur(radius: -leaving * 2.5)           // 0 → 2.5
+                .opacity(max(0, 1 + leaving * 2.4))     // 더 빨리 사라짐(leaving≈-0.42에 이미 0)
+                .scaleEffect(max(0.8, 1 + leaving * 0.22), anchor: .top)  // 더 많이 축소
+                .blur(radius: -leaving * 7)             // 더 진한 블러
         }
     }
 }
@@ -41,6 +41,7 @@ struct InboxView: View {
                     folderPrompt
                     Spacer(minLength: 0)
                 } else {
+                    summaryBar
                     content
                 }
             }
@@ -121,6 +122,40 @@ struct InboxView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
+    }
+
+    // MARK: 상시 요약 바 (고정) — 원칙 1줄 + 곧 닥칠 것 가장 임박 1개. 스크롤과 무관하게 항상.
+    @ViewBuilder private var summaryBar: some View {
+        let topPrinciple = model.principles.first
+        let topUpcoming = model.sections.upcoming.first
+        if topPrinciple != nil || topUpcoming != nil {
+            VStack(spacing: 7) {
+                if let p = topPrinciple {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.fill").font(.caption2)
+                            .foregroundStyle(TypeCatalog.meta("principle").color)
+                        Text(p.raw ?? "").font(.footnote.weight(.medium))
+                            .foregroundStyle(Palette.textPrimary).lineLimit(1)
+                        Spacer(minLength: 4)
+                    }
+                }
+                if let e = topUpcoming {
+                    HStack(spacing: 8) {
+                        Image(systemName: TypeCatalog.meta(e.item.type).symbol).font(.caption2)
+                            .foregroundStyle(TypeCatalog.meta(e.item.type).color)
+                        Text(e.item.raw ?? "").font(.footnote)
+                            .foregroundStyle(Palette.textPrimary).lineLimit(1)
+                        Spacer(minLength: 4)
+                        DDayBadge(dday: e.dday)
+                    }
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(Palette.surface)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Palette.border).frame(height: 0.5)
+            }
+        }
     }
 
     // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
