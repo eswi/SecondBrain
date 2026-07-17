@@ -169,6 +169,8 @@ struct InboxView: View {
     private var headerRow: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("받은함").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
+            Text("P\(principleOut ? "1" : "0") U\(upcomingOut ? "1" : "0")")
+                .font(.caption).foregroundStyle(Palette.accent)   // 임시 디버그
             Spacer()
             Button { showPicker = true } label: {
                 Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
