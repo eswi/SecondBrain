@@ -40,6 +40,7 @@ struct InboxView: View {
                 PrincipleBand(principles: model.principles, onTap: goToPrinciples)
             }
             FilterChipsBar(model: model)
+            accountingBar
 
             if sections.upcoming.isEmpty && sections.recent.isEmpty {
                 emptyState
@@ -77,6 +78,20 @@ struct InboxView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // 회계 요약: 표시·원칙·완료·삭제·합계. 합계가 원본(inbox.md)과 같으면 파싱 누락 없음.
+    private var accountingBar: some View {
+        HStack(spacing: 4) {
+            Text("합계 \(model.totalCount)").foregroundStyle(Palette.textSecondary)
+            Text("· 표시 \(model.liveNonDone.count - model.principles.count)")
+            Text("· 원칙 \(model.principles.count)")
+            Text("· 완료 \(model.doneItems.count)")
+            Text("· 삭제 \(model.deletedCount)")
+            Spacer()
+        }
+        .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
+        .padding(.horizontal, 14).padding(.bottom, 6)
     }
 
     // MARK: 스와이프 액션

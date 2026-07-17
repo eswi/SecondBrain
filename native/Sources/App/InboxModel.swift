@@ -29,6 +29,10 @@ final class InboxModel: ObservableObject {
     /// 원칙(ambient) — 상단 띠 + 원칙 탭. 처리 목록에서는 뺀다.
     var principles: [ResolvedItem] { liveNonDone.filter { $0.type == "principle" } }
 
+    /// 전체 항목 회계(고유 id 합). 합계가 원본(예: inbox.md 68)과 같아야 파싱 누락이 없다.
+    /// live(완료 제외) + 완료(보관함) + 삭제(tombstone) = 전체.
+    var totalCount: Int { liveNonDone.count + doneItems.count + deletedCount }
+
     /// 받은함 목록에 쓸 항목(필터 적용).
     /// - 전체: 원칙 제외(띠가 담당) — 처리할 것에 집중
     /// - 특정 종류: 그 종류만(원칙 필터면 원칙도 보임)
