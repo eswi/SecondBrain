@@ -11,29 +11,14 @@ extension View {
         self
         #endif
     }
-
-    /// 위로 스크롤돼 나갈 때 부드럽게 축소·페이드(접히는 느낌). GPU 스크롤 효과라 재렌더/깜빡임 없음.
-    /// 내리면 그대로 되살아난다(스크롤 위치 기반, 가역).
-    func collapseOnScrollOut() -> some View {
-        scrollTransition(.interactive(timingCurve: .easeInOut), axis: .vertical) { content, phase in
-            // phase.value: 상단으로 나갈수록 음수(≈ -1), 화면 안이면 0(identity)
-            let leaving = min(0, phase.value)          // 위로 나가는 정도(0…-1)
-            return content
-                .opacity(max(0, 1 + leaving * 2.4))     // 더 빨리 사라짐(leaving≈-0.42에 이미 0)
-                .scaleEffect(max(0.8, 1 + leaving * 0.22), anchor: .top)  // 더 많이 축소
-                .blur(radius: -leaving * 7)             // 더 진한 블러
-        }
-    }
 }
 
 /// 받은함 첫 화면(다크). 전체가 하나의 네이티브 List → 어디서든 스와이프로 매끄럽게 스크롤.
-/// 원칙·곧 닥칠 것은 일반 행으로 자연 스크롤, 필터는 최근 섹션의 고정 헤더로 상단 유지.
+/// 섹션: 원칙 · 곧 닥칠 것 · 최근(필터는 최근 섹션 고정 헤더).
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     var goToPrinciples: () -> Void = {}
     @State private var showPicker = false
-    @State private var principleOut = false   // 원칙 영역이 상단 위로 완전히 넘어갔는지
-    @State private var upcomingOut = false     // 곧닥칠 영역이 상단 위로 완전히 넘어갔는지
 
     var body: some View {
         NavigationStack {
@@ -43,7 +28,6 @@ struct InboxView: View {
                     folderPrompt
                     Spacer(minLength: 0)
                 } else {
-                    summaryBar
                     content
                 }
             }
@@ -59,25 +43,21 @@ struct InboxView: View {
     private var content: some View {
         let sections = model.sections
         return List {
-            // 회계 (헤더 없는 첫 줄)
             Section {
                 accountingRow
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
             }
 
-            // 원칙 — 고정 헤더 아래로 각 줄이 스크롤(곧닥칠과 동일)
             if !model.principles.isEmpty {
                 Section {
                     ForEach(model.principles, id: \.id) { p in
                         PrincipleRow(item: p, onTap: goToPrinciples)
-                            .collapseOnScrollOut()
                             .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                     }
                 } header: {
-                    sectionTitle("원칙", count: model.principles.count)
-                        .listRowInsets(EdgeInsets())
+                    sectionTitle("원칙", count: model.principles.count).listRowInsets(EdgeInsets())
                 }
             }
 
@@ -85,7 +65,6 @@ struct InboxView: View {
                 Section {
                     ForEach(sections.upcoming, id: \.item.id) { entry in
                         UpcomingCard(entry: entry, model: model)
-                            .collapseOnScrollOut()
                             .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
@@ -93,12 +72,10 @@ struct InboxView: View {
                             .contextMenu { itemActions(entry.item) }
                     }
                 } header: {
-                    sectionTitle("곧 닥칠 것", count: sections.upcoming.count)
-                        .listRowInsets(EdgeInsets())
+                    sectionTitle("곧 닥칠 것", count: sections.upcoming.count).listRowInsets(EdgeInsets())
                 }
             }
 
-            // 필터(고정 헤더) + 최근 들어온 것
             Section {
                 if sections.recent.isEmpty {
                     emptyRecentRow
@@ -124,53 +101,6 @@ struct InboxView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-            updateSummary(scrollY: y, upcomingCount: sections.upcoming.count)
-        }
-    }
-
-    // 스크롤 깊이로 각 영역이 지나갔는지 추정(List가 정확한 위치를 안 줘서 근사).
-    // 추정 행 높이는 실기기 느낌에 맞춰 조정 가능.
-    private func updateSummary(scrollY y: CGFloat, upcomingCount: Int) {
-        let accounting: CGFloat = 30, header: CGFloat = 34
-        let principleRow: CGFloat = 56, upcomingCard: CGFloat = 104
-        let pCount = model.principles.count
-        let principleEnd = accounting + (pCount > 0 ? header + CGFloat(pCount) * principleRow : 0)
-        let upcomingEnd = principleEnd + (upcomingCount > 0 ? header + CGFloat(upcomingCount) * upcomingCard : 0)
-        let pOut = pCount > 0 && y > principleEnd - 30
-        let uOut = upcomingCount > 0 && y > upcomingEnd - 30
-        withAnimation(.easeInOut(duration: 0.18)) {
-            if pOut != principleOut { principleOut = pOut }
-            if uOut != upcomingOut { upcomingOut = uOut }
-        }
-    }
-
-    // MARK: 상시 요약 바 — 평소 감춤, 해당 영역이 상단 위로 완전히 사라질 때만 그 줄을 표시.
-    @ViewBuilder private var summaryBar: some View {
-        let showP = principleOut, showU = upcomingOut
-        if let p = model.principles.first, showP {
-            summaryLine(icon: "star.fill", color: TypeCatalog.meta("principle").color,
-                        text: p.raw ?? "", weight: .medium, dday: nil, top: true)
-        }
-        if let e = model.sections.upcoming.first, showU {
-            summaryLine(icon: TypeCatalog.meta(e.item.type).symbol, color: TypeCatalog.meta(e.item.type).color,
-                        text: e.item.raw ?? "", weight: .regular, dday: e.dday, top: !showP)
-        }
-    }
-
-    private func summaryLine(icon: String, color: Color, text: String,
-                             weight: Font.Weight, dday: DDay?, top: Bool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).font(.caption2).foregroundStyle(color)
-            Text(text).font(.footnote.weight(weight)).foregroundStyle(Palette.textPrimary).lineLimit(1)
-            Spacer(minLength: 4)
-            if let dday { DDayBadge(dday: dday) }
-        }
-        .padding(.horizontal, 14).padding(.vertical, 7)
-        .frame(maxWidth: .infinity)
-        .background(Palette.surface)
-        .overlay(alignment: .bottom) { Rectangle().fill(Palette.border).frame(height: 0.5) }
-        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
@@ -210,7 +140,7 @@ struct InboxView: View {
         .textCase(nil)
         .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.bg)      // 고정 시 아래 내용 비침 방지
+        .background(Palette.bg)
     }
 
     private var accountingRow: some View {
@@ -247,7 +177,7 @@ struct InboxView: View {
     }
 }
 
-// MARK: - 원칙 한 줄 (ambient) — 각자 cyan 박스, 개별로 스크롤 접힘 효과
+// MARK: - 원칙 한 줄 (ambient) — 각자 cyan 박스
 
 struct PrincipleRow: View {
     let item: ResolvedItem
