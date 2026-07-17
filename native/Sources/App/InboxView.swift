@@ -14,12 +14,17 @@ extension View {
 }
 
 /// 받은함 첫 화면(다크). 상단 고정: 제목+폴더 · 원칙 · 곧 닥칠 것 · 필터 칩.
-/// 스크롤 시 원칙·곧 닥칠 것은 1개로 접혀 고정 유지(사라지지 않음). 최근 들어온 것만 스크롤.
+/// 최근 목록을 스크롤하면 그 양에 비례해 원칙 → 곧 닥칠 것 순서로 표시 개수가 **한 개씩 단계적으로** 줄고,
+/// 각각 최소 1개는 남아 사라지지 않는다.
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     var goToPrinciples: () -> Void = {}
     @State private var showPicker = false
-    @State private var scrolled = false          // 최근 목록을 위로 올렸는지 → 상단 영역 접힘
+    @State private var pHideRaw = 0     // 스크롤로 숨긴 원칙 수
+    @State private var uHideRaw = 0     // 스크롤로 숨긴 곧닥칠 수
+
+    private let pStep: CGFloat = 44     // 원칙 한 개 줄이는 데 필요한 스크롤(px)
+    private let uStep: CGFloat = 88     // 곧닥칠 한 개 줄이는 데 필요한 스크롤(px)
 
     var body: some View {
         NavigationStack {
@@ -29,16 +34,7 @@ struct InboxView: View {
                     folderPrompt
                     Spacer(minLength: 0)
                 } else {
-                    accountingBar
-                    let sections = model.sections
-                    if !model.principles.isEmpty {
-                        PrincipleBand(principles: model.principles, collapsed: scrolled, onTap: goToPrinciples)
-                    }
-                    if !sections.upcoming.isEmpty {
-                        UpcomingArea(entries: sections.upcoming, collapsed: scrolled, model: model)
-                    }
-                    FilterChipsBar(model: model)
-                    recentList(sections.recent)
+                    content
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -47,6 +43,27 @@ struct InboxView: View {
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
+        }
+    }
+
+    private var content: some View {
+        let sections = model.sections
+        let pCount = model.principles.count
+        let uCount = sections.upcoming.count
+        let pRed = max(0, pCount - 1)
+        let uRed = max(0, uCount - 1)
+        let pHide = min(pRed, pHideRaw)
+        let uHide = min(uRed, uHideRaw)
+        return VStack(spacing: 0) {
+            accountingBar
+            if pCount > 0 {
+                PrincipleBand(principles: model.principles, shown: pCount - pHide, onTap: goToPrinciples)
+            }
+            if uCount > 0 {
+                UpcomingArea(entries: sections.upcoming, shown: uCount - uHide, model: model)
+            }
+            FilterChipsBar(model: model)
+            recentList(sections.recent, pRed: pRed, uRed: uRed)
         }
     }
 
@@ -63,9 +80,9 @@ struct InboxView: View {
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
     }
 
-    // MARK: 최근 들어온 것 (유일한 스크롤 영역)
+    // MARK: 최근 들어온 것 (유일한 스크롤 영역 — 스크롤 양이 상단 단계적 접힘을 구동)
 
-    @ViewBuilder private func recentList(_ recent: [ResolvedItem]) -> some View {
+    @ViewBuilder private func recentList(_ recent: [ResolvedItem], pRed: Int, uRed: Int) -> some View {
         if recent.isEmpty {
             emptyRecent
         } else {
@@ -90,8 +107,13 @@ struct InboxView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Palette.bg)
-            .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 16 } action: { _, s in
-                if s != scrolled { withAnimation(.easeInOut(duration: 0.22)) { scrolled = s } }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
+                let yy = max(0, y)
+                let ph = min(pRed, Int(yy / pStep))
+                let uh = ph >= pRed ? min(uRed, Int(max(0, yy - CGFloat(pRed) * pStep) / uStep)) : 0
+                if ph != pHideRaw || uh != uHideRaw {
+                    withAnimation(.easeInOut(duration: 0.2)) { pHideRaw = ph; uHideRaw = uh }
+                }
             }
         }
     }
@@ -152,28 +174,58 @@ struct InboxView: View {
     }
 }
 
-// MARK: - 원칙 띠 (ambient) — 펼침(전부) / 접힘(1개 회전)
+// MARK: - 원칙 띠 (ambient) — shown 개수만큼 표시, 1개면 회전
 
 struct PrincipleBand: View {
     let principles: [ResolvedItem]
-    var collapsed: Bool
+    let shown: Int
     var onTap: () -> Void = {}
     @State private var idx = 0
     private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     private var tint: Color { TypeCatalog.meta("principle").color }
+    private var count: Int { principles.count }
+    private var rotating: Bool { shown <= 1 && count > 1 }
 
     var body: some View {
-        Group {
-            if collapsed { compact } else { expanded }
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .areaStyle(tint: tint)
+            .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
+            .onReceive(timer) { _ in
+                guard rotating else { return }
+                withAnimation(.easeInOut(duration: 0.4)) { idx = (idx + 1) % count }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
+        if shown >= count {
+            list(principles)
+        } else if shown <= 1 {
+            rotatingView
+        } else {
+            list(Array(principles.prefix(shown)))
+                .overlay(alignment: .topTrailing) { corner("+\(count - shown)") }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .areaStyle(tint: tint)
-        .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
-        .onReceive(timer) { _ in
-            guard collapsed, principles.count > 1 else { return }
-            withAnimation(.easeInOut(duration: 0.4)) { idx = (idx + 1) % principles.count }
+    }
+
+    private func list(_ items: [ResolvedItem]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(items, id: \.id) { row($0) }
         }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle()).onTapGesture(perform: onTap)
+    }
+
+    private var rotatingView: some View {
+        let cur = principles[min(idx, count - 1)]
+        return ZStack(alignment: .topLeading) {
+            ForEach(principles, id: \.id) { row($0).opacity(0).accessibilityHidden(true) }
+            row(cur).id(cur.id).transition(.opacity)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .topTrailing) { corner("\(min(idx, count - 1) + 1)/\(count)") }
+        .contentShape(Rectangle()).onTapGesture(perform: onTap)
     }
 
     private func row(_ p: ResolvedItem) -> some View {
@@ -186,50 +238,23 @@ struct PrincipleBand: View {
         }
     }
 
-    private var expanded: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(principles, id: \.id) { row($0) }
-        }
-        .padding(14)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-    }
-
-    // 접힘: 1개씩 회전. 높이는 '가장 큰 원칙' 기준으로 예약 → 잘리지 않고 레이아웃도 안 흔들림.
-    private var compact: some View {
-        let cur = principles[min(idx, principles.count - 1)]
-        return ZStack(alignment: .topLeading) {
-            ForEach(principles, id: \.id) { row($0).opacity(0).accessibilityHidden(true) }
-            row(cur).id(cur.id).transition(.opacity)
-        }
-        .padding(14)
-        .overlay(alignment: .topTrailing) {
-            if principles.count > 1 {
-                Text("\(min(idx, principles.count - 1) + 1)/\(principles.count)")
-                    .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-                    .padding(.top, 12).padding(.trailing, 12)
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+    private func corner(_ s: String) -> some View {
+        Text(s).font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
+            .padding(.top, 12).padding(.trailing, 12)
     }
 }
 
-// MARK: - 곧 닥칠 것 영역 — 펼침(전부) / 접힘(1개 + 제목에 +N)
+// MARK: - 곧 닥칠 것 영역 — shown 개수만큼 표시, 제목에 +N
 
 struct UpcomingArea: View {
     let entries: [UpcomingEntry]
-    var collapsed: Bool
+    let shown: Int
     @ObservedObject var model: InboxModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
-            if collapsed {
-                if let first = entries.first { card(first) }
-            } else {
-                ForEach(entries, id: \.item.id) { card($0) }
-            }
+            ForEach(Array(entries.prefix(shown)), id: \.item.id) { card($0) }
         }
         .padding(.horizontal, 10).padding(.bottom, 4)
     }
@@ -238,8 +263,8 @@ struct UpcomingArea: View {
         HStack(spacing: 6) {
             Text("곧 닥칠 것").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             Text("\(entries.count)").font(.caption2).foregroundStyle(Palette.textTertiary)
-            if collapsed && entries.count > 1 {
-                Text("+\(entries.count - 1)")
+            if shown < entries.count {
+                Text("+\(entries.count - shown)")
                     .font(.caption2.weight(.bold)).foregroundStyle(Palette.today)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Palette.today.opacity(0.16), in: Capsule())
