@@ -72,11 +72,6 @@ struct InboxView: View {
                     ForEach(model.principles, id: \.id) { p in
                         PrincipleRow(item: p, onTap: goToPrinciples)
                             .collapseOnScrollOut()
-                            .onScrollVisibilityChange(threshold: 0.02) { vis in
-                                if p.id == model.principles.last?.id {
-                                    withAnimation(.easeInOut(duration: 0.18)) { principleOut = !vis }
-                                }
-                            }
                             .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                     }
@@ -91,11 +86,6 @@ struct InboxView: View {
                     ForEach(sections.upcoming, id: \.item.id) { entry in
                         UpcomingCard(entry: entry, model: model)
                             .collapseOnScrollOut()
-                            .onScrollVisibilityChange(threshold: 0.02) { vis in
-                                if entry.item.id == sections.upcoming.last?.item.id {
-                                    withAnimation(.easeInOut(duration: 0.18)) { upcomingOut = !vis }
-                                }
-                            }
                             .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(entry.item) }
@@ -134,6 +124,25 @@ struct InboxView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
+            updateSummary(scrollY: y, upcomingCount: sections.upcoming.count)
+        }
+    }
+
+    // 스크롤 깊이로 각 영역이 지나갔는지 추정(List가 정확한 위치를 안 줘서 근사).
+    // 추정 행 높이는 실기기 느낌에 맞춰 조정 가능.
+    private func updateSummary(scrollY y: CGFloat, upcomingCount: Int) {
+        let accounting: CGFloat = 30, header: CGFloat = 34
+        let principleRow: CGFloat = 56, upcomingCard: CGFloat = 104
+        let pCount = model.principles.count
+        let principleEnd = accounting + (pCount > 0 ? header + CGFloat(pCount) * principleRow : 0)
+        let upcomingEnd = principleEnd + (upcomingCount > 0 ? header + CGFloat(upcomingCount) * upcomingCard : 0)
+        let pOut = pCount > 0 && y > principleEnd - 30
+        let uOut = upcomingCount > 0 && y > upcomingEnd - 30
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if pOut != principleOut { principleOut = pOut }
+            if uOut != upcomingOut { upcomingOut = uOut }
+        }
     }
 
     // MARK: 상시 요약 바 — 평소 감춤, 해당 영역이 상단 위로 완전히 사라질 때만 그 줄을 표시.
@@ -169,8 +178,6 @@ struct InboxView: View {
     private var headerRow: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("받은함").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
-            Text("P\(principleOut ? "1" : "0") U\(upcomingOut ? "1" : "0")")
-                .font(.caption).foregroundStyle(Palette.accent)   // 임시 디버그
             Spacer()
             Button { showPicker = true } label: {
                 Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
