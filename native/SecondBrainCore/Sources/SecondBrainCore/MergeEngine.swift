@@ -3,8 +3,11 @@ import Foundation
 /// 여러 이벤트를 하나의 받은함 상태로 해소한 결과.
 public struct ResolvedItem: Sendable, Equatable {
     public let id: String
-    public let fields: [String: String]   // per-field LWW로 해소된 콘텐츠 필드(제어필드 deleted 제외)
+    public let fields: [String: String]   // per-field LWW로 해소된 콘텐츠 필드(제어필드 deleted/confirmed 제외)
     public let deleted: Bool
+    /// 확정 여부. **단방향(grow-only)** — LWW가 아니라 OR-머지로 계산한다(edit-policy.md §3).
+    /// 이벤트 중 하나라도 confirmed=true면 영원히 true. 확정 후의 편집·HLC 순서와 무관.
+    public let confirmed: Bool
     public let createdHLC: HLC            // 최소 HLC(정렬·"캡처 시점"용)
 
     public var raw: String? { fields["raw"] }
@@ -40,10 +43,12 @@ public enum MergeEngine {
             var bestHLC: [String: HLC] = [:]        // 필드 → 그 값을 세팅한 최대 HLC
             var maxEvent = evs[0]                   // 항목 전체 최고 HLC 이벤트(삭제 판정용)
             var createdHLC = evs[0].hlc             // 최소 HLC
+            var confirmed = false                   // OR-머지(grow-only): 하나라도 true면 영원히 true
 
             for e in evs {
                 if e.hlc > maxEvent.hlc { maxEvent = e }
                 if e.hlc < createdHLC { createdHLC = e.hlc }
+                if e.fields["confirmed"] == "true" { confirmed = true }   // HLC 무관·단방향
                 for (k, v) in e.fields {
                     // per-field LWW: 엄격한 > 이므로 순서무관·멱등(동일 HLC는 덮지 않음)
                     if let h = bestHLC[k] {
@@ -58,9 +63,11 @@ public enum MergeEngine {
             let isDeleted = (maxEvent.fields["deleted"] == "true")
 
             var userFields = resolved
-            userFields["deleted"] = nil   // 제어필드는 사용자 필드에서 제거
+            userFields["deleted"] = nil     // 제어필드는 사용자 필드에서 제거
+            userFields["confirmed"] = nil   // confirmed는 별도 OR-머지 값으로 노출(LWW 대상 아님)
 
-            let item = ResolvedItem(id: id, fields: userFields, deleted: isDeleted, createdHLC: createdHLC)
+            let item = ResolvedItem(id: id, fields: userFields, deleted: isDeleted,
+                                    confirmed: confirmed, createdHLC: createdHLC)
             if isDeleted { deleted.append(item) } else { live.append(item) }
         }
 

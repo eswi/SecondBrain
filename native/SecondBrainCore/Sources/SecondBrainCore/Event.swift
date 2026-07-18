@@ -33,6 +33,13 @@ public struct Event: Sendable, Equatable {
         Event(id: id, hlc: hlc, fields: ["deleted": "true"])
     }
 
+    /// 확정: 사람이 항목을 "최종"으로 승격(edit-policy.md §1~3).
+    /// **단방향** — 되돌리는 unconfirm 팩토리는 의도적으로 없다. 병합도 OR-머지라
+    /// 한 번 확정된 항목은 이후 어떤 편집·HLC로도 미확정으로 돌아가지 않는다.
+    public static func confirm(id: String, hlc: HLC) -> Event {
+        Event(id: id, hlc: hlc, fields: ["confirmed": "true"])
+    }
+
     public static func undelete(id: String, hlc: HLC) -> Event {
         Event(id: id, hlc: hlc, fields: ["deleted": "false"])
     }

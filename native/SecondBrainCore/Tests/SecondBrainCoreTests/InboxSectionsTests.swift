@@ -11,7 +11,7 @@ final class InboxSectionsTests: XCTestCase {
         var f: [String: String] = ["raw": "\(id) 내용"]
         if let due { f["due"] = due }
         if let resurface { f["resurface"] = resurface }
-        return ResolvedItem(id: id, fields: f, deleted: false,
+        return ResolvedItem(id: id, fields: f, deleted: false, confirmed: false,
                             createdHLC: HLC(wallMillis: created, counter: 0, deviceId: "t"))
     }
 

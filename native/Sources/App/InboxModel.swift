@@ -127,9 +127,17 @@ final class InboxModel: ObservableObject {
     func defer7(_ item: ResolvedItem)   { append(.edit(id: item.id, hlc: tick(), ["resurface": isoDate(daysFromNow: 7)])) }
 
     /// 분류(종류) 변경. 레거시(legacy: id) 항목에서도 같은 경로(=set type= 이벤트)로 동작.
+    /// **override는 확정이 아니다**(edit-policy §2 귀결) — 여긴 confirm을 안 건다.
     func changeType(_ item: ResolvedItem, to type: String) {
         guard type != item.type else { return }
         append(.edit(id: item.id, hlc: tick(), ["type": type]))
+    }
+
+    /// 확정: 사람이 항목을 최종으로 승격(edit-policy §1~3). **단방향** — 되돌리는 API는 없다.
+    /// 이미 확정된 항목엔 중복 이벤트를 안 쌓는다(멱등).
+    func confirm(_ item: ResolvedItem) {
+        guard !item.confirmed else { return }
+        append(.confirm(id: item.id, hlc: tick()))
     }
 
     /// 보관함 완료 섹션에서 되돌리기(완료 해제).
