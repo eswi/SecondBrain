@@ -78,7 +78,8 @@ public enum EventLog {
                     } else if verb.hasPrefix("set ") {
                         var f: [String: String] = [:]
                         for a in verb.dropFirst(4).split(separator: " ") {
-                            let kv = a.split(separator: "=", maxSplits: 1)
+                            // 빈 값도 유지(`type=` → 미분류로 되돌리기). omittingEmpty=false로 뒤쪽 빈 조각 보존.
+                            let kv = a.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
                             if kv.count == 2 { f[String(kv[0])] = String(kv[1]) }
                         }
                         if !f.isEmpty { events.append(Event(id: id, hlc: hlc, fields: f)) }

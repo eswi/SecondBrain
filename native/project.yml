@@ -24,6 +24,7 @@ targets:
         PRODUCT_NAME: SecondBrain
         PRODUCT_BUNDLE_IDENTIFIER: kr.teri.secondbrain
         GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # 런치스크린 자동생성 → 전체 화면(letterbox 방지)
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
