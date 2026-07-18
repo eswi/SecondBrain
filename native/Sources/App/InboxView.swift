@@ -13,11 +13,11 @@ extension View {
     }
 }
 
-/// 받은함 첫 화면(다크). 전체가 하나의 네이티브 List → 어디서든 스와이프로 매끄럽게 스크롤.
-/// 섹션: 원칙 · 곧 닥칠 것 · 최근(필터는 최근 섹션 고정 헤더).
+/// "새로운 기억" 화면(다크) — 일상 화면(memory-philosophy.md §5).
+/// 위→아래: 원칙 띠 · 지금 챙길 것 · 대시보드 · 새 기억들(미확정, 오래된 순).
+/// 필터는 여기 없다 — 살아있는 기억 탭의 몫.
 struct InboxView: View {
     @ObservedObject var model: InboxModel
-    var goToPrinciples: () -> Void = {}
     @State private var showPicker = false
 
     var body: some View {
@@ -41,18 +41,12 @@ struct InboxView: View {
     }
 
     private var content: some View {
-        let sections = model.sections
+        let tab = model.newTab
         return List {
-            Section {
-                accountingRow
-                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
-                    .listRowBackground(Palette.bg).listRowSeparator(.hidden)
-            }
-
             if !model.principles.isEmpty {
                 Section {
                     ForEach(model.principles, id: \.id) { p in
-                        PrincipleRow(item: p, onTap: goToPrinciples)
+                        PrincipleRow(item: p)
                             .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                     }
@@ -61,9 +55,9 @@ struct InboxView: View {
                 }
             }
 
-            if !sections.upcoming.isEmpty {
+            if !tab.upcoming.isEmpty {
                 Section {
-                    ForEach(sections.upcoming, id: \.item.id) { entry in
+                    ForEach(tab.upcoming, id: \.item.id) { entry in
                         UpcomingCard(entry: entry, model: model)
                             .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
@@ -72,30 +66,32 @@ struct InboxView: View {
                             .contextMenu { itemActions(entry.item) }
                     }
                 } header: {
-                    sectionTitle("곧 닥칠 것", count: sections.upcoming.count).listRowInsets(EdgeInsets())
+                    sectionTitle("지금 챙길 것", count: tab.upcoming.count).listRowInsets(EdgeInsets())
                 }
             }
 
             Section {
-                if sections.recent.isEmpty {
-                    emptyRecentRow
+                DashboardRow(model: model)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+            }
+
+            Section {
+                if tab.newMemories.isEmpty {
+                    emptyNewRow
                 } else {
-                    ForEach(sections.recent, id: \.id) { item in
-                        RecentRow(item: item, model: model)
+                    ForEach(tab.newMemories, id: \.id) { item in
+                        MemoryRow(item: item, model: model, provisional: true)
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) { confirmAction(item) }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) { deleteAction(item) }
-                            .swipeActions(edge: .leading) { doneDeferActions(item) }
-                            .contextMenu { itemActions(item) }
+                            .contextMenu { newItemActions(item) }
                     }
                 }
             } header: {
-                VStack(spacing: 0) {
-                    FilterChipsBar(model: model)
-                    sectionTitle("기억 목록", count: sections.recent.count)
-                }
-                .background(Palette.bg)
-                .listRowInsets(EdgeInsets())
+                sectionTitle("새 기억들", count: tab.newMemories.count)
+                    .listRowInsets(EdgeInsets())
             }
         }
         .listStyle(.plain)
@@ -107,7 +103,7 @@ struct InboxView: View {
 
     private var headerRow: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("받은함").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
+            Text("새로운 기억").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
             Spacer()
             Button { showPicker = true } label: {
                 Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
@@ -118,6 +114,9 @@ struct InboxView: View {
 
     // MARK: 스와이프 / 컨텍스트 액션
 
+    @ViewBuilder private func confirmAction(_ item: ResolvedItem) -> some View {
+        Button { model.confirm(item) } label: { Label("확정", systemImage: "checkmark.seal.fill") }.tint(Palette.accent)
+    }
     @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
     }
@@ -125,13 +124,21 @@ struct InboxView: View {
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
         Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
     }
+    /// 시점 있는 항목(지금 챙길 것) 컨텍스트: 완료·미루기·삭제.
     @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
         Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
     }
+    /// 새 기억(미확정) 컨텍스트: 확정을 맨 앞에.
+    @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
+        Button { model.confirm(item) } label: { Label("확정 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
+        Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
+        Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
+        Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+    }
 
-    private func sectionTitle(_ title: String, count: Int) -> some View {
+    func sectionTitle(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             Text("\(count)").font(.caption2).foregroundStyle(Palette.textTertiary)
@@ -143,20 +150,8 @@ struct InboxView: View {
         .background(Palette.bg)
     }
 
-    private var accountingRow: some View {
-        HStack(spacing: 4) {
-            Text("합계 \(model.totalCount)").foregroundStyle(Palette.textSecondary)
-            Text("· 표시 \(model.liveNonDone.count - model.principles.count)")
-            Text("· 원칙 \(model.principles.count)")
-            Text("· 완료 \(model.doneItems.count)")
-            Text("· 삭제 \(model.deletedCount)")
-            Spacer()
-        }
-        .font(.caption2).foregroundStyle(Palette.textTertiary).monospacedDigit()
-    }
-
-    private var emptyRecentRow: some View {
-        Text(model.filter == .all ? "기억 목록이 비었어요" : "이 종류가 없어요")
+    private var emptyNewRow: some View {
+        Text("새 기억이 없어요")
             .font(.callout).foregroundStyle(Palette.textSecondary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 24)
@@ -177,11 +172,37 @@ struct InboxView: View {
     }
 }
 
+// MARK: - 대시보드 (5숫자 가로: 원칙 · 챙길 것 · 미확정 · 확정 · 총 기억)
+
+struct DashboardRow: View {
+    @ObservedObject var model: InboxModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            tile("원칙", model.principleCount, TypeCatalog.meta("principle").color)
+            tile("챙길 것", model.upcomingCount, Palette.overdue)
+            tile("미확정", model.unconfirmedCount, Palette.today)
+            tile("확정", model.confirmedCount, Palette.accent)
+            tile("총 기억", model.totalMemoryCount, Palette.textSecondary)
+        }
+    }
+
+    private func tile(_ label: String, _ n: Int, _ color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text("\(n)").font(.title3.weight(.bold)).monospacedDigit().foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9).padding(.horizontal, 2)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+    }
+}
+
 // MARK: - 원칙 한 줄 (ambient) — 각자 cyan 박스
 
 struct PrincipleRow: View {
     let item: ResolvedItem
-    var onTap: () -> Void = {}
     private var tint: Color { TypeCatalog.meta("principle").color }
 
     var body: some View {
@@ -195,12 +216,10 @@ struct PrincipleRow: View {
         .padding(.horizontal, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .areaStyle(tint: tint)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
     }
 }
 
-// MARK: - 필터 칩 한 줄
+// MARK: - 필터 칩 한 줄 (살아있는 기억 탭에서 사용)
 
 struct FilterChipsBar: View {
     @ObservedObject var model: InboxModel
@@ -244,7 +263,7 @@ struct FilterChipsBar: View {
     }
 }
 
-// MARK: - "곧 닥칠 것" 카드
+// MARK: - "지금 챙길 것" 카드
 
 struct UpcomingCard: View {
     let entry: UpcomingEntry
@@ -278,11 +297,12 @@ struct UpcomingCard: View {
     }
 }
 
-// MARK: - "최근 들어온 것" 얇은 줄
+// MARK: - 기억 한 줄 (새 기억 = 임시 배지 / 살아있는 기억 = 배지 없음)
 
-struct RecentRow: View {
+struct MemoryRow: View {
     let item: ResolvedItem
     @ObservedObject var model: InboxModel
+    var provisional: Bool = false   // 미확정이면 "임시" 배지
 
     var body: some View {
         HStack(spacing: 10) {
@@ -290,6 +310,7 @@ struct RecentRow: View {
             Text(item.raw ?? "(내용 없음)")
                 .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(1)
             Spacer(minLength: 4)
+            if provisional { ProvisionalBadge() }
             SourceBadge(source: item.source)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -297,5 +318,15 @@ struct RecentRow: View {
         .background(Palette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+    }
+}
+
+/// 아직 확정 안 됨(자동분류=임시) 표시.
+struct ProvisionalBadge: View {
+    var body: some View {
+        Text("임시")
+            .font(.caption2.weight(.semibold)).foregroundStyle(Palette.today)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Palette.today.opacity(0.14), in: Capsule())
     }
 }

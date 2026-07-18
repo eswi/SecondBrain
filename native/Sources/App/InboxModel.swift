@@ -26,7 +26,7 @@ final class InboxModel: ObservableObject {
 
     // MARK: 파생 뷰
 
-    /// 원칙(ambient) — 상단 띠 + 원칙 탭. 처리 목록에서는 뺀다.
+    /// 원칙(ambient) — 새로운 기억 화면 상단 띠. 세 영역 분할에서는 뺀다(별도 상시 노출).
     var principles: [ResolvedItem] { liveNonDone.filter { $0.type == "principle" } }
 
     var deletedCount: Int { trashed.count }
@@ -38,28 +38,49 @@ final class InboxModel: ObservableObject {
     /// 빈 문자열 type은 미분류(nil)로 취급.
     private func norm(_ t: String?) -> String? { (t?.isEmpty ?? true) ? nil : t }
 
-    /// 섹션 분할. **필터는 '기억 목록'에만 적용** — 원칙·곧 닥칠 것은 각자 "항상 걸린 분류"라 필터 무관하게 항상 전체 표시.
-    /// - 원칙: 별도 `principles`(항상 표시)
-    /// - 곧 닥칠 것: 시점 있는 것 전부(필터 무관)
-    /// - 기억 목록: 시점 없는 것 중 필터에 맞는 것(재분류로 원칙/시점 붙으면 여기서 빠짐)
-    var sections: InboxSections {
-        let nonPrinciple = liveNonDone.filter { $0.type != "principle" }
-        let base = InboxSectionizer.split(nonPrinciple, now: Date())
-        let memory: [ResolvedItem]
-        switch filter {
-        case .all:            memory = base.recent
-        case .type(let key):  memory = base.recent.filter { norm($0.type) == key }
-        }
-        return InboxSections(upcoming: base.upcoming, recent: memory)
+    // MARK: 세 영역 분할 (memory-philosophy.md §5)
+
+    /// **시점(Due/Resurface) 유무가 최상위 축.** 배타적·중복 없음:
+    /// - 시점 있음 → **지금 챙길 것** (확정 무관 — 현실의 사건은 완료되면 보관으로 흐름)
+    /// - 시점 없음 + 미확정 → **새 기억들** (오래된 순 = 선입선출, 묻히지 않게)
+    /// - 시점 없음 + 확정 → **살아있는 기억** (시점 없는 것만이 살아있는 기억의 몫)
+    /// 원칙(principle)은 어디에도 안 들어가고 별도 ambient 띠(`principles`).
+    struct Partition {
+        var upcoming: [UpcomingEntry]
+        var newMemories: [ResolvedItem]   // 시점 없음 + 미확정, 오래된 순
+        var living: [ResolvedItem]         // 시점 없음 + 확정 (필터 전)
     }
 
-    /// 필터 칩에 배지로 쓸 종류별 개수(원칙 포함 전체 기준).
-    func count(for filter: TypeFilter) -> Int {
+    private var partition: Partition {
+        let nonPrinciple = liveNonDone.filter { $0.type != "principle" }
+        let base = InboxSectionizer.split(nonPrinciple, now: Date())
+        let newMems = base.recent
+            .filter { !$0.confirmed }
+            .sorted { a, b in a.createdHLC != b.createdHLC ? a.createdHLC < b.createdHLC : a.id < b.id }
+        let living = base.recent.filter { $0.confirmed }   // recent는 MergeEngine 최신순 유지
+        return Partition(upcoming: base.upcoming, newMemories: newMems, living: living)
+    }
+
+    /// 새로운 기억 탭: 지금 챙길 것 + 새 기억들. (필터 미적용 — 필터는 살아있는 기억 탭 몫)
+    var newTab: (upcoming: [UpcomingEntry], newMemories: [ResolvedItem]) {
+        let p = partition; return (p.upcoming, p.newMemories)
+    }
+
+    /// 살아있는 기억 탭: 시점 없는 확정 항목(+ 필터 적용).
+    var livingMemories: [ResolvedItem] {
+        let all = partition.living
         switch filter {
-        case .all:            return liveNonDone.filter { $0.type != "principle" }.count
-        case .type(let key):  return liveNonDone.filter { norm($0.type) == key }.count
+        case .all:            return all
+        case .type(let key):  return all.filter { norm($0.type) == key }
         }
     }
+
+    // 대시보드 5숫자
+    var principleCount: Int { principles.count }               // 원칙(ambient 띠) 개수
+    var upcomingCount: Int { partition.upcoming.count }        // 챙길 것 = 지금 챙길 것 섹션과 동일
+    var unconfirmedCount: Int { partition.newMemories.count }   // 미확정(시점 없는)
+    var confirmedCount: Int { partition.living.count }          // 확정(시점 없는)
+    var totalMemoryCount: Int { liveNonDone.count }             // 총 기억 = 현재 살아있는 전체(원칙·챙길것·미확정·확정)
 
     // MARK: 로드
 

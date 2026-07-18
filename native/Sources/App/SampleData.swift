@@ -29,6 +29,10 @@ enum SampleData {
       resurface: 2026-07-24
     - 2026-07-16 14:30 | web | 오프라인 우선 노트 앱 아이디어
       type: idea
+      confirmed: true
+    - 2026-07-14 20:00 | voice | 아이와 주말에 별 보러 가기
+      type: idea
+      confirmed: true
     - 2026-07-16 11:00 | mail | 세금 관련 서류 훑어보기
       type: info
     - 2026-07-17 07:30 | voice | 자전거 바람 넣기
