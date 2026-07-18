@@ -13,7 +13,7 @@ final class InboxModel: ObservableObject {
     @Published var sourceLabel = ""
     @Published var needsFolder = false            // 폴더 미선택 → 피커 안내
 
-    @Published var filter: TypeFilter = .all      // 받은함 필터 칩 선택
+    @Published var filter: TypeFilter = .all      // 받은함 필터 칩 선택(기억 목록에만 적용)
 
     let deviceId: String
     private var clock: HLCClock
@@ -38,28 +38,20 @@ final class InboxModel: ObservableObject {
     /// 빈 문자열 type은 미분류(nil)로 취급.
     private func norm(_ t: String?) -> String? { (t?.isEmpty ?? true) ? nil : t }
 
-    /// 원칙 섹션을 지금 보여줄지(필터가 전체이거나 원칙일 때만).
-    var showsPrincipleSection: Bool {
-        filter == .all || filter == .type("principle")
-    }
-
-    /// 받은함 곧닥칠/최근에 쓸 항목(필터 적용). 원칙은 별도 섹션이 담당하므로 여기선 항상 제외.
-    /// - 전체: 원칙 제외
-    /// - 원칙 필터: 빈 목록(원칙 섹션이 전담 → 중복 방지)
-    /// - 특정 종류: 그 종류만
-    var filteredInbox: [ResolvedItem] {
+    /// 섹션 분할. **필터는 '기억 목록'에만 적용** — 원칙·곧 닥칠 것은 각자 "항상 걸린 분류"라 필터 무관하게 항상 전체 표시.
+    /// - 원칙: 별도 `principles`(항상 표시)
+    /// - 곧 닥칠 것: 시점 있는 것 전부(필터 무관)
+    /// - 기억 목록: 시점 없는 것 중 필터에 맞는 것(재분류로 원칙/시점 붙으면 여기서 빠짐)
+    var sections: InboxSections {
+        let nonPrinciple = liveNonDone.filter { $0.type != "principle" }
+        let base = InboxSectionizer.split(nonPrinciple, now: Date())
+        let memory: [ResolvedItem]
         switch filter {
-        case .all:
-            return liveNonDone.filter { $0.type != "principle" }
-        case .type("principle"):
-            return []
-        case .type(let key):
-            return liveNonDone.filter { norm($0.type) == key }
+        case .all:            memory = base.recent
+        case .type(let key):  memory = base.recent.filter { norm($0.type) == key }
         }
+        return InboxSections(upcoming: base.upcoming, recent: memory)
     }
-
-    /// "곧 닥칠 것" / "최근 들어온 것" 섹션 분할(순수 로직은 Core).
-    var sections: InboxSections { InboxSectionizer.split(filteredInbox, now: Date()) }
 
     /// 필터 칩에 배지로 쓸 종류별 개수(원칙 포함 전체 기준).
     func count(for filter: TypeFilter) -> Int {

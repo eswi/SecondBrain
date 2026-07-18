@@ -49,7 +49,7 @@ struct InboxView: View {
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
             }
 
-            if !model.principles.isEmpty && model.showsPrincipleSection {
+            if !model.principles.isEmpty {
                 Section {
                     ForEach(model.principles, id: \.id) { p in
                         PrincipleRow(item: p, onTap: goToPrinciples)
@@ -92,7 +92,7 @@ struct InboxView: View {
             } header: {
                 VStack(spacing: 0) {
                     FilterChipsBar(model: model)
-                    sectionTitle("최근 들어온 것", count: sections.recent.count)
+                    sectionTitle("기억 목록", count: sections.recent.count)
                 }
                 .background(Palette.bg)
                 .listRowInsets(EdgeInsets())
@@ -156,7 +156,7 @@ struct InboxView: View {
     }
 
     private var emptyRecentRow: some View {
-        Text(model.filter == .all ? "최근 들어온 것이 없어요" : "이 종류가 없어요")
+        Text(model.filter == .all ? "기억 목록이 비었어요" : "이 종류가 없어요")
             .font(.callout).foregroundStyle(Palette.textSecondary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 24)

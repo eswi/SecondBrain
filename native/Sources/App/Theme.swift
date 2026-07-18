@@ -84,7 +84,7 @@ enum TypeCatalog {
 
     static let assignable: [TypeMeta] = allKnown.filter { $0.key != nil }
     static let primaryFilters: [String] = ["promise", "event", "info-action", "info"]
-    static let overflowFilters: [TypeFilter] = [.type("idea"), .type("principle"), .type(nil)]
+    static let overflowFilters: [TypeFilter] = [.type("idea"), .type(nil)]
 }
 
 // MARK: - 필터
