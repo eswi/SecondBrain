@@ -23,6 +23,7 @@ targets:
       base:
         PRODUCT_NAME: SecondBrain
         PRODUCT_BUNDLE_IDENTIFIER: kr.teri.secondbrain
+        TARGETED_DEVICE_FAMILY: "1"   # iPhone 전용(사양서 §0-A: v1=Mac+iPhone, iPad는 나중). iPad 방향 경고 제거.
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # 런치스크린 자동생성 → 전체 화면(letterbox 방지)
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "새 기억을 음성으로 받아쓰기 위해 마이크를 사용합니다."

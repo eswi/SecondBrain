@@ -5,6 +5,7 @@ import SwiftUI
 /// 모든 탭이 하나의 InboxModel을 공유(같은 병합 데이터).
 struct RootView: View {
     @StateObject private var model = InboxModel()
+    @ObservedObject private var launcher = CaptureLauncher.shared   // 액션 버튼/단축어 수집 신호
     @State private var tab: AppTab = .new
 
     var body: some View {
@@ -32,6 +33,9 @@ struct RootView: View {
         .tint(Palette.accent)
         .preferredColorScheme(.dark)
         .onAppear { model.load() }
+        // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
+        .onChange(of: launcher.showCapture) { _, show in if show { tab = .new } }
+        .sheet(isPresented: $launcher.showCapture) { CaptureSheet(model: model) }
     }
 }
 
