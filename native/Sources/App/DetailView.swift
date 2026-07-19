@@ -137,7 +137,7 @@ struct DetailView: View {
         // 재확인 대화상자는 화면 전체 오버레이(rememberDialog)로 띄운다 — 제목을 크게 하려고 커스텀.
     }
 
-    // MARK: 분류 (임시/확정 배지 + override)
+    // MARK: 분류 (미기억이면 "임시" 배지 + override)
 
     private var normalizedType: String? { (type?.isEmpty ?? true) ? nil : type }
 

@@ -33,7 +33,7 @@ struct LivingView: View {
         let items = model.livingMemories
         return List {
             if items.isEmpty {
-                Text(model.filter == .all ? "아직 살아있는 기억이 없어요\n새 기억을 확정하면 여기로 와요" : "이 종류가 없어요")
+                Text(model.filter == .all ? "아직 살아있는 기억이 없어요\n새 기억을 기억하기로 하면 여기로 와요" : "이 종류가 없어요")
                     .font(.callout).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 28)

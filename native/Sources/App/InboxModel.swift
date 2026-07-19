@@ -158,8 +158,8 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), ["type": type]))
     }
 
-    /// 상세 화면 draft 커밋(edit-policy §2 [확인]). 바뀐 필드를 **이벤트 1개**(단일 HLC)로 붙인다
-    /// → "[확인] 한 번 = 이력 한 묶음". `changes`엔 confirmed가 없다(수정 ≠ 확정) — EditDiff가 보장.
+    /// 상세 화면 draft 커밋(edit-policy §2 [저장]). 바뀐 필드를 **이벤트 1개**(단일 HLC)로 붙인다
+    /// → "[저장] 한 번 = 이력 한 묶음". `changes`엔 confirmed가 없다(수정 ≠ 기억하기) — EditDiff가 보장.
     func commitEdits(_ item: ResolvedItem, changes: [String: String]) {
         guard !changes.isEmpty else { return }
         append(.edit(id: item.id, hlc: tick(), changes))

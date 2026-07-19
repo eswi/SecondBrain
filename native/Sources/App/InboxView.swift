@@ -116,7 +116,7 @@ struct InboxView: View {
     // MARK: 스와이프 / 컨텍스트 액션
 
     @ViewBuilder private func confirmAction(_ item: ResolvedItem) -> some View {
-        Button { model.confirm(item) } label: { Label("확정", systemImage: "checkmark.seal.fill") }.tint(Palette.accent)
+        Button { model.confirm(item) } label: { Label("기억하기", systemImage: "checkmark.seal.fill") }.tint(Palette.accent)
     }
     @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
@@ -133,7 +133,7 @@ struct InboxView: View {
     }
     /// 새 기억(미확정) 컨텍스트: 확정을 맨 앞에.
     @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
-        Button { model.confirm(item) } label: { Label("확정 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
+        Button { model.confirm(item) } label: { Label("기억하기 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
         Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
@@ -173,7 +173,7 @@ struct InboxView: View {
     }
 }
 
-// MARK: - 대시보드 (5숫자 가로: 원칙 · 챙길 것 · 미확정 · 확정 · 총 기억)
+// MARK: - 대시보드 (5숫자 가로: 원칙 · 챙길 것 · 미기억 · 기억함 · 총 기억)
 
 struct DashboardRow: View {
     @ObservedObject var model: InboxModel
@@ -182,8 +182,8 @@ struct DashboardRow: View {
         HStack(spacing: 6) {
             tile("원칙", model.principleCount, TypeCatalog.meta("principle").color)
             tile("챙길 것", model.upcomingCount, Palette.overdue)
-            tile("미확정", model.unconfirmedCount, Palette.today)
-            tile("확정", model.confirmedCount, Palette.accent)
+            tile("미기억", model.unconfirmedCount, Palette.today)
+            tile("기억함", model.confirmedCount, Palette.accent)
             tile("총 기억", model.totalMemoryCount, Palette.textSecondary)
         }
     }
