@@ -96,7 +96,8 @@ struct DetailView: View {
 
     private var metaSection: some View {
         let when = "\(item.date ?? "") \(item.time ?? "")".trimmingCharacters(in: .whitespaces)
-        let device = CaptureDevice.label(source: item.source, createdDeviceId: item.createdHLC.deviceId)
+        let device = CaptureDevice.label(source: item.source, createdDeviceId: item.createdHLC.deviceId,
+                                         stored: item.fields["device"])
         return VStack(alignment: .leading, spacing: 7) {
             sectionLabel("최초 수집 · 성역")
             metaRow("clock", when.isEmpty ? "(시각 없음)" : when)                    // 언제

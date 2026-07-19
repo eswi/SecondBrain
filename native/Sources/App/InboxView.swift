@@ -19,6 +19,7 @@ extension View {
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
+    @State private var showCapture = false
     @State private var path = NavigationPath()
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
@@ -42,6 +43,7 @@ struct InboxView: View {
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
         }
+        .sheet(isPresented: $showCapture) { CaptureSheet(model: model) }
     }
 
     private var content: some View {
@@ -120,8 +122,11 @@ struct InboxView: View {
         HStack(alignment: .firstTextBaseline) {
             Text("새로운 기억").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
             Spacer()
-            Button { showPicker = true } label: {
-                Image(systemName: "folder").font(.title3).foregroundStyle(Palette.accent)
+            // 폴더 관리는 설정으로 이관 — 여기는 수집(마이크). 폴더 없으면 온보딩 프롬프트가 처리.
+            if !model.needsFolder {
+                Button { showCapture = true } label: {
+                    Image(systemName: "mic.fill").font(.title3).foregroundStyle(Palette.accent)
+                }
             }
         }
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)

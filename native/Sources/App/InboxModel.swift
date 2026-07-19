@@ -193,6 +193,24 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), changes))
     }
 
+    /// 앱 안 수집 — **네이티브 항목(UUID) 생성**. 최초 수집 정보(시각·기기·source)를
+    /// create 이벤트에 **성역으로 찍는다**(이후 어떤 편집도 안 건드림). 자동 분류는 다음 단계 → 미분류로 시작.
+    /// v1은 원문 한 줄 유지를 위해 줄바꿈을 공백으로 접는다(여러 줄 보존은 나중).
+    func capture(text: String, source: String) {
+        let raw = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        let now = Date()
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"; let date = f.string(from: now)
+        f.dateFormat = "HH:mm";     let time = f.string(from: now)
+        let e = Event.create(id: UUID().uuidString, hlc: tick(),
+                             date: date, time: time, source: source, raw: raw,
+                             extra: ["device": CaptureDevice.currentLabel()])
+        append(e)
+    }
+
     /// 확정: 사람이 항목을 최종으로 승격(edit-policy §1~3). **단방향** — 되돌리는 API는 없다.
     /// 이미 확정된 항목엔 중복 이벤트를 안 쌓는다(멱등).
     func confirm(_ item: ResolvedItem) {

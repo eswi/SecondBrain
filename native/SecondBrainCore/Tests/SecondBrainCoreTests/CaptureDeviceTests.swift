@@ -27,11 +27,24 @@ final class CaptureDeviceTests: XCTestCase {
             "MacBook Pro")
     }
 
-    // 4) 네이티브(실제 deviceId) → currentDeviceLabel 그대로 (역산 안 함)
-    func testNative_usesCurrentLabel() {
+    // 4) 네이티브: create 때 찍은 device(성역) 그대로 — 역산 안 함
+    func testNative_usesStoredDevice() {
         XCTAssertEqual(
-            CaptureDevice.label(source: "voice", createdDeviceId: "iphone-abc",
-                                currentDeviceLabel: "내 iPhone"),
-            "내 iPhone")
+            CaptureDevice.label(source: "voice", createdDeviceId: "iphone-abc", stored: "iPhone 16 Pro"),
+            "iPhone 16 Pro")
+    }
+
+    // 5) 저장된 device는 레거시 역산보다 우선
+    func testStoredOverridesLegacy() {
+        XCTAssertEqual(
+            CaptureDevice.label(source: "web", createdDeviceId: "legacy", stored: "iPhone 16 Pro"),
+            "iPhone 16 Pro")
+    }
+
+    // 6) 저장값 없는 네이티브 → 안전망
+    func testNativeNoStored_fallback() {
+        XCTAssertEqual(
+            CaptureDevice.label(source: "voice", createdDeviceId: "iphone-abc"),
+            "이 기기")
     }
 }

@@ -12,11 +12,26 @@ import Foundation
 public enum CaptureDevice {
     public static let legacyMarker = "legacy"
 
-    public static func label(source: String?, createdDeviceId: String,
-                             currentDeviceLabel: String = "이 기기") -> String {
+    /// 표시할 최초 수집 기기명.
+    /// - `stored`(create 때 찍은 `device` 필드) 있으면 그대로 — 네이티브 항목의 성역 값.
+    /// - 없으면(레거시 68개) source로 §7 역산.
+    public static func label(source: String?, createdDeviceId: String, stored: String? = nil) -> String {
+        if let stored, !stored.isEmpty { return stored }
         if createdDeviceId == legacyMarker {
             return source == "voice" ? "iPhone 16 Pro" : "MacBook Pro"
         }
-        return currentDeviceLabel
+        return "이 기기"   // 저장값 없는 네이티브(구버전) 안전망
+    }
+
+    /// 이 기기의 표시 라벨 — 수집 시 create의 `device` 필드로 찍는다.
+    /// v1은 플랫폼 기준(§7 규칙과 일치). 실제 모델 식별은 나중 정교화.
+    public static func currentLabel() -> String {
+        #if os(iOS)
+        return "iPhone 16 Pro"
+        #elseif os(macOS)
+        return "MacBook Pro"
+        #else
+        return "알 수 없음"
+        #endif
     }
 }
