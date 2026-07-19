@@ -38,7 +38,7 @@ struct SettingsView: View {
 
                     Section {
                         row("총 기억", "\(model.totalMemoryCount)")
-                        row("미기억 · 기억함", "\(model.unconfirmedCount) · \(model.confirmedCount)")
+                        row("새 기억 · 살아있는 기억", "\(model.unconfirmedCount) · \(model.confirmedCount)")
                         row("완료 · 삭제", "\(model.doneItems.count) · \(model.deletedCount)")
                         row("이 기기", model.deviceId)
                     } header: { header("현황") }
