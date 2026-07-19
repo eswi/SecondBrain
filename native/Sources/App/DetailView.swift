@@ -32,6 +32,8 @@ struct DetailView: View {
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
     @State private var isRemembered: Bool
     @State private var showRememberConfirm = false
+    /// 미기억 항목을 원칙으로 지정하고 저장할 때 "기억하기 자동 결정" 안내(원칙=살아있는 기억).
+    @State private var showPrincipleAutoRemember = false
 
     init(item: ResolvedItem, model: InboxModel) {
         self.item = item
@@ -67,7 +69,9 @@ struct DetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .overlay { if showRememberConfirm { rememberDialog } }
+        .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
+        .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
     }
 
     // MARK: 원문 (§8 잠금)
@@ -262,39 +266,59 @@ struct DetailView: View {
         .background(.ultraThinMaterial)
     }
 
-    /// 기억하기 재확인 — iOS alert 모양의 커스텀 대화상자(제목을 크게 하려고 커스텀).
-    /// 가운데 카드 + 배경 딤. 버튼: [취소하기] / [기억하기].
+    /// 기억하기 재확인 — 표준 대화상자. [취소하기] / [기억하기].
     private var rememberDialog: some View {
+        standardDialog("정말로 기억하시겠습니까?") {
+            HStack(spacing: 0) {
+                dialogButton("취소하기") { showRememberConfirm = false }
+                Divider().overlay(Palette.border)
+                dialogButton("기억하기", prominent: true) { showRememberConfirm = false; remember() }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// 원칙 지정 시 기억하기 자동 결정 안내 — 표준 대화상자, 안내형 단일 버튼.
+    private var principleAutoRememberDialog: some View {
+        standardDialog("'기억하기'로 자동 결정됩니다") {
+            dialogButton("확인", prominent: true) { commitAsPrinciple() }
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: 표준 확인·안내 대화상자 (메모리 confirm-dialog-style — 앱 공용 형식)
+    // 배경 딤 + 가운데 카드 + 큰 제목(표준 alert보다 2단계) + 하단 버튼 행.
+
+    private func standardDialog<Buttons: View>(_ title: String,
+                                               @ViewBuilder buttons: () -> Buttons) -> some View {
         ZStack {
             Color.black.opacity(0.4).ignoresSafeArea()
             VStack(spacing: 0) {
-                Text("정말로 기억하시겠습니까?")
-                    .font(.title2.weight(.semibold))          // 표준 alert 제목보다 2단계 크게
+                Text(title)
+                    .font(.title2.weight(.semibold))
                     .foregroundStyle(Palette.textPrimary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 20).padding(.vertical, 24)
                 Divider().overlay(Palette.border)
-                HStack(spacing: 0) {
-                    Button { showRememberConfirm = false } label: {
-                        Text("취소하기").font(.title3)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                    }
-                    .foregroundStyle(Palette.textSecondary)
-                    Divider().overlay(Palette.border)
-                    Button { showRememberConfirm = false; remember() } label: {
-                        Text("기억하기").font(.title3.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                    }
-                    .foregroundStyle(Palette.accent)
-                }
-                .fixedSize(horizontal: false, vertical: true)
+                buttons()
             }
             .frame(width: 300)
             .background(Palette.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.border))
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
         }
+    }
+
+    private func dialogButton(_ title: String, prominent: Bool = false,
+                              _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(prominent ? .title3.weight(.semibold) : .title3)
+                .frame(maxWidth: .infinity, minHeight: 52)
+        }
+        .foregroundStyle(prominent ? Palette.accent : Palette.textSecondary)
     }
 
     /// 하단 바 버튼 라벨 — 줄바꿈 금지 + 좌우 여백으로 폭 확보(확정 글자 깨짐 방지).
@@ -308,7 +332,21 @@ struct DetailView: View {
     // MARK: 행동 구현
 
     private func commit() {
+        // 미기억 항목을 원칙으로 지정한 채 저장하면 → 기억하기로 자동 결정(원칙은 살아있는 기억).
+        // 먼저 안내 팝업을 띄우고, 확인 시 저장 + 자동 기억하기.
+        if !isRemembered && normalizedType == "principle" {
+            showPrincipleAutoRemember = true
+            return
+        }
         model.commitEdits(item, changes: changes)   // 빈 변경이면 내부에서 무시
+        dismiss()
+    }
+
+    /// 원칙 자동 기억하기 안내 확인 → 저장 + 기억하기(단방향) 함께 반영.
+    private func commitAsPrinciple() {
+        showPrincipleAutoRemember = false
+        model.commitEdits(item, changes: changes)
+        model.confirm(item)
         dismiss()
     }
 
