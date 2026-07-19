@@ -2,6 +2,18 @@ import SwiftUI
 import UniformTypeIdentifiers
 import SecondBrainCore
 
+extension View {
+    /// 그룹 리스트 스타일 — iOS는 insetGrouped, macOS는 지원되는 inset.
+    /// (insetGrouped는 macOS 미지원 → 플랫폼별로 맞는 스타일을 쓴다.)
+    @ViewBuilder func groupedListStyle() -> some View {
+        #if os(iOS)
+        self.listStyle(.insetGrouped)
+        #else
+        self.listStyle(.inset)
+        #endif
+    }
+}
+
 /// 설정 — 폴더 연결·데이터 현황·앱 정보. (기존 "원칙" 탭 자리를 대체)
 /// 수집([+])은 하단 버튼으로 풀지 않는다(별도 설계, 보류) — 이 탭은 운영·정보용.
 struct SettingsView: View {
@@ -35,7 +47,7 @@ struct SettingsView: View {
                         row("SecondBrain", "네이티브 v1")
                     } header: { header("앱") }
                 }
-                .listStyle(.insetGrouped)
+                .groupedListStyle()
                 .scrollContentBackground(.hidden)
                 .background(Palette.bg)
             }
