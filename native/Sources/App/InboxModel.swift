@@ -15,6 +15,19 @@ final class InboxModel: ObservableObject {
 
     @Published var filter: TypeFilter = .all      // 받은함 필터 칩 선택(기억 목록에만 적용)
 
+    /// 자동 분류 진행 상태(설정의 수동 버튼에서 그 자리 인라인 표시).
+    enum ClassifyPhase: Equatable { case idle, running, done(Int), failed(String) }
+    @Published var classifyPhase: ClassifyPhase = .idle
+
+    /// **앱 열 때 자동 스윕** 전용 토스트 — 머물던 화면 위 상단에 띄운다(설정으로 안 끌고 감).
+    /// 수동 버튼(설정)은 이걸 안 쓰고 classifyPhase만 쓴다.
+    struct ClassifyToast: Equatable {
+        enum Kind { case running, success, failure }
+        let kind: Kind
+        let text: String
+    }
+    @Published var autoToast: ClassifyToast?
+
     let deviceId: String
     private var clock: HLCClock
 
@@ -61,6 +74,9 @@ final class InboxModel: ObservableObject {
     }
 
     var deletedCount: Int { trashed.count }
+
+    /// 미분류(type 없음) 살아있는 항목 = 자동 분류 대상(수집됐지만 아직 분류 안 됨).
+    var unclassifiedItems: [ResolvedItem] { liveNonDone.filter { norm($0.type) == nil } }
 
     /// 전체 항목 회계(고유 id 합). 합계가 원본(예: inbox.md 68)과 같아야 파싱 누락이 없다.
     /// live(완료·버림 제외) + 완료 + 삭제·버림 = 전체.
@@ -209,6 +225,67 @@ final class InboxModel: ObservableObject {
                              date: date, time: time, source: source, raw: raw,
                              extra: ["device": CaptureDevice.currentLabel()])
         append(e)
+    }
+
+    // MARK: 자동 분류 (Claude API · 사양서 §0-A·§3)
+
+    /// 미분류 항목을 Claude API로 분류(iPhone 직접 호출). 결과(type/due/resurface)를
+    /// **기존 edit 이벤트 경로**로 기기 조각에 붙인다(엔진·직렬화 무변경). 앱 열 때·수동 버튼에서 호출.
+    /// 키는 Keychain에서만 읽는다(§7). 성역(원문·수집시각·기기)은 절대 안 건드린다.
+    /// - Parameter auto: true면 **앱 열 때 자동 스윕** — 진행을 상단 토스트(autoToast)로 알린다.
+    ///   false(수동 버튼)면 토스트 없이 classifyPhase만 갱신(설정 그 자리에서 표시).
+    func classifyUnclassified(auto: Bool = false) async {
+        if case .running = classifyPhase { return }
+        guard let key = KeychainStore.loadAPIKey() else {
+            classifyPhase = .failed("API 키가 없습니다. 설정에서 넣어 주세요."); return
+        }
+        let targets = unclassifiedItems.filter { !($0.raw ?? "").isEmpty }
+        guard !targets.isEmpty else { classifyPhase = .done(0); return }
+
+        classifyPhase = .running
+        if auto { autoToast = ClassifyToast(kind: .running, text: "새 기억을 분류하는 중…") }
+        let items = targets.enumerated().map { (index: $0.offset, raw: $0.element.raw ?? "") }
+        do {
+            let results = try await ClaudeClassifier.classify(items: items, apiKey: key)
+            var events: [Event] = []
+            for (i, item) in targets.enumerated() {
+                // 반영 전 검증: type이 §2 분류 체계에 있어야만 씀. 어긋난 응답(빈 값·미지정 type)은
+                // 그냥 건너뛰어 미분류로 남긴다(쓰레기 값이 항목에 안 써지도록).
+                guard let c = results[i], let fields = classifyFields(c) else { continue }
+                events.append(.edit(id: item.id, hlc: tick(), fields))
+            }
+            appendBatch(events)   // 재읽기·재병합 포함
+            classifyPhase = .done(events.count)
+            if auto {
+                autoToast = events.isEmpty ? nil
+                    : ClassifyToast(kind: .success, text: "새 기억 \(events.count)개를 분류했어요")
+            }
+        } catch {
+            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            classifyPhase = .failed(msg)
+            if auto { autoToast = ClassifyToast(kind: .failure, text: "자동 분류 실패 — 설정에서 확인") }
+        }
+    }
+
+    /// §2 분류 체계(type)의 유효값. 이 밖의 값은 반영하지 않는다(방어).
+    private static let validTypes: Set<String> =
+        ["event", "promise", "info-action", "info", "idea", "principle", "discard"]
+
+    /// 분류 결과 → **검증 통과한** 안전한(공백 없는) 필드만. 반영 불가면 nil(→ 미분류로 남김).
+    /// - type이 §2 밖이면 nil.
+    /// - **discard는 반영하지 않는다**: AI가 사람이 수집한 기억을 조용히 삭제(=삭제 취급)하면 안 됨.
+    ///   미분류로 보존 → 사람이 직접 검토/삭제. (삭제는 단방향·사람 몫.)
+    /// - due/resurface는 실제 YYYY-MM-DD로 파싱되는 것만 씀(weekly/none/깨진 값=시점 없음).
+    /// - question은 값에 공백이 있어 현재 set 직렬화 경로가 미지원 → 제외(후속 과제).
+    private func classifyFields(_ c: Classification) -> [String: String]? {
+        let type = c.type.trimmingCharacters(in: .whitespaces)
+        guard Self.validTypes.contains(type), type != "discard" else { return nil }
+        var f: [String: String] = ["type": type]
+        if ItemSchedule.parseDay(c.due) != nil {       // 실제 날짜만 시점으로
+            f["due"] = c.due
+            if ItemSchedule.parseDay(c.resurface) != nil { f["resurface"] = c.resurface }
+        }
+        return f
     }
 
     /// 확정: 사람이 항목을 최종으로 승격(edit-policy §1~3). **단방향** — 되돌리는 API는 없다.

@@ -20,6 +20,8 @@ struct SettingsView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
     @AppStorage(PrincipleSettings.activeCountKey) private var principleN = PrincipleSettings.defaultActiveCount
+    @State private var apiKeyInput = ""
+    @State private var keySaved = KeychainStore.hasKey
 
     var body: some View {
         NavigationStack {
@@ -52,6 +54,52 @@ struct SettingsView: View {
                     }
 
                     Section {
+                        row("Claude API 키", keySaved ? "저장됨" : "미설정")
+                        HStack {
+                            SecureField("API 키 붙여넣기", text: $apiKeyInput)
+                                #if os(iOS)
+                                .textInputAutocapitalization(.never)
+                                #endif
+                                .disableAutocorrection(true)
+                                .foregroundStyle(Palette.textPrimary)
+                            Button("저장") {
+                                KeychainStore.saveAPIKey(apiKeyInput)
+                                keySaved = KeychainStore.hasKey
+                                apiKeyInput = ""
+                            }
+                            .foregroundStyle(Palette.accent)
+                            .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        .listRowBackground(Palette.surface)
+                        if keySaved {
+                            Button(role: .destructive) {
+                                KeychainStore.deleteAPIKey(); keySaved = false
+                            } label: { Text("키 지우기") }
+                            .listRowBackground(Palette.surface)
+                        }
+                        Button {
+                            Task { await model.classifyUnclassified() }
+                        } label: {
+                            HStack {
+                                if case .running = model.classifyPhase {
+                                    ProgressView().controlSize(.small)
+                                    Text("분류 중…").foregroundStyle(Palette.textSecondary)
+                                } else {
+                                    Label("지금 분류하기 (\(model.unclassifiedItems.count))",
+                                          systemImage: "sparkles")
+                                        .foregroundStyle(Palette.accent)
+                                }
+                            }
+                        }
+                        .disabled(!keySaved || model.unclassifiedItems.isEmpty || {
+                            if case .running = model.classifyPhase { return true } else { return false }
+                        }())
+                        .listRowBackground(Palette.surface)
+                    } header: { header("지능 (자동 분류)") } footer: {
+                        Text(classifyFooter).font(.caption2).foregroundStyle(Palette.textTertiary)
+                    }
+
+                    Section {
                         row("총 기억", "\(model.totalMemoryCount)")
                         row("새 기억 · 살아있는 기억", "\(model.unconfirmedCount) · \(model.confirmedCount)")
                         row("완료 · 삭제", "\(model.doneItems.count) · \(model.deletedCount)")
@@ -70,6 +118,16 @@ struct SettingsView: View {
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
+        }
+    }
+
+    /// 자동 분류 안내 + 마지막 실행 결과. 키는 이 기기 Keychain에만 저장(§7).
+    private var classifyFooter: String {
+        let base = "미분류를 Claude가 종류·시점으로 분류합니다. 키는 이 기기 Keychain에만 저장되고 파일·iCloud엔 안 담깁니다. 앱을 열 때도 자동으로 한 번 분류합니다."
+        switch model.classifyPhase {
+        case .done(let n):     return n > 0 ? "\(base)\n방금 \(n)개를 분류했습니다." : base
+        case .failed(let msg): return "\(base)\n실패: \(msg)"
+        default:               return base
         }
     }
 
