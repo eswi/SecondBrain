@@ -1,7 +1,8 @@
 import Foundation
 
 /// 여러 이벤트를 하나의 받은함 상태로 해소한 결과.
-public struct ResolvedItem: Sendable, Equatable {
+/// (Hashable — 상세 화면 navigationDestination 값으로 사용.)
+public struct ResolvedItem: Sendable, Equatable, Hashable {
     public let id: String
     public let fields: [String: String]   // per-field LWW로 해소된 콘텐츠 필드(제어필드 deleted/confirmed 제외)
     public let deleted: Bool
