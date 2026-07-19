@@ -173,7 +173,8 @@ struct InboxView: View {
     }
 }
 
-// MARK: - 대시보드 (5숫자 가로: 원칙 · 챙길 것 · 미기억 · 기억함 · 총 기억)
+// MARK: - 대시보드 (5숫자 가로: 원칙 · 챙길 것 · 새 기억 · 살아있는 기억 · 총 기억)
+//          라벨 = 세 영역 이름과 일치(각 영역 개수를 세므로).
 
 struct DashboardRow: View {
     @ObservedObject var model: InboxModel
@@ -182,8 +183,8 @@ struct DashboardRow: View {
         HStack(spacing: 6) {
             tile("원칙", model.principleCount, TypeCatalog.meta("principle").color)
             tile("챙길 것", model.upcomingCount, Palette.overdue)
-            tile("미기억", model.unconfirmedCount, Palette.today)
-            tile("기억함", model.confirmedCount, Palette.accent)
+            tile("새 기억", model.unconfirmedCount, Palette.today)
+            tile("살아있는 기억", model.confirmedCount, Palette.accent)
             tile("총 기억", model.totalMemoryCount, Palette.textSecondary)
         }
     }
