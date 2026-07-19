@@ -34,6 +34,7 @@ struct InboxView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
             .hiddenNavBar()
+            .navigationDestination(for: ResolvedItem.self) { DetailView(item: $0, model: model) }
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
@@ -271,17 +272,23 @@ struct UpcomingCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            TypeMenuButton(item: entry.item) { model.changeType(entry.item, to: $0) }
-            VStack(alignment: .leading, spacing: 5) {
-                Text(entry.item.raw ?? "(내용 없음)")
-                    .font(.body).foregroundStyle(Palette.textPrimary).lineLimit(3)
-                HStack(spacing: 6) {
-                    SourceBadge(source: entry.item.source)
-                    Text(itemCaption(entry.item)).font(.caption).foregroundStyle(Palette.textTertiary).lineLimit(1)
+            TypeMenuButton(item: entry.item) { model.changeType(entry.item, to: $0) }   // 글리프 = 인라인 분류변경
+            NavigationLink(value: entry.item) {                                          // 나머지 = 상세 화면
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(entry.item.raw ?? "(내용 없음)")
+                            .font(.body).foregroundStyle(Palette.textPrimary).lineLimit(3)
+                        HStack(spacing: 6) {
+                            SourceBadge(source: entry.item.source)
+                            Text(itemCaption(entry.item)).font(.caption).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    DDayBadge(dday: entry.dday)
                 }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 4)
-            DDayBadge(dday: entry.dday)
+            .buttonStyle(.plain)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -306,12 +313,18 @@ struct MemoryRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            TypeMenuButton(item: item) { model.changeType(item, to: $0) }
-            Text(item.raw ?? "(내용 없음)")
-                .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(1)
-            Spacer(minLength: 4)
-            if provisional { ProvisionalBadge() }
-            SourceBadge(source: item.source)
+            TypeMenuButton(item: item) { model.changeType(item, to: $0) }   // 글리프 탭 = 인라인 분류변경
+            NavigationLink(value: item) {                                    // 나머지 탭 = 상세 화면
+                HStack(spacing: 10) {
+                    Text(item.raw ?? "(내용 없음)")
+                        .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if provisional { ProvisionalBadge() }
+                    SourceBadge(source: item.source)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)

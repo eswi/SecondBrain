@@ -18,6 +18,9 @@ final class InboxModel: ObservableObject {
     let deviceId: String
     private var clock: HLCClock
 
+    /// 로드 때 파싱한 전체 이벤트(수정 이력 요약용). 엔진은 안 건드리고 여기서 경량 집계.
+    private(set) var allEvents: [Event] = []
+
     init() {
         let id = DeviceStore.deviceId
         self.deviceId = id
@@ -109,6 +112,7 @@ final class InboxModel: ObservableObject {
 
     /// 이벤트 배열을 병합해 상태에 반영(시계 전진·알림 재조정 포함).
     private func resolve(_ events: [Event], label: String) {
+        allEvents = events   // 이력 요약용 원본 보관
         // 본 이벤트 최대 HLC 이상으로 시계 전진(인과성) + 영속
         if let maxH = events.map(\.hlc).max() {
             clock.receive(maxH, now: nowMillis())
@@ -154,11 +158,29 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), ["type": type]))
     }
 
+    /// 상세 화면 draft 커밋(edit-policy §2 [확인]). 바뀐 필드를 **이벤트 1개**(단일 HLC)로 붙인다
+    /// → "[확인] 한 번 = 이력 한 묶음". `changes`엔 confirmed가 없다(수정 ≠ 확정) — EditDiff가 보장.
+    func commitEdits(_ item: ResolvedItem, changes: [String: String]) {
+        guard !changes.isEmpty else { return }
+        append(.edit(id: item.id, hlc: tick(), changes))
+    }
+
     /// 확정: 사람이 항목을 최종으로 승격(edit-policy §1~3). **단방향** — 되돌리는 API는 없다.
     /// 이미 확정된 항목엔 중복 이벤트를 안 쌓는다(멱등).
     func confirm(_ item: ResolvedItem) {
         guard !item.confirmed else { return }
         append(.confirm(id: item.id, hlc: tick()))
+    }
+
+    /// 수정 이력 요약(경량, edit-policy §4-4의 최소형). 엔진 무변경 — 로드 때 보관한 이벤트를
+    /// id로 묶어 개수만 센다. create(최소 HLC) 1개를 뺀 나머지가 "수정 횟수".
+    /// last = 그 id 이벤트 중 최대 벽시계(밀리). 레거시(wall=0)뿐이면 nil.
+    func historySummary(_ id: String) -> (edits: Int, lastMillis: Int64?) {
+        let evs = allEvents.filter { $0.id == id }
+        guard !evs.isEmpty else { return (0, nil) }
+        let edits = max(0, evs.count - 1)
+        let last = evs.map { $0.hlc.wallMillis }.max() ?? 0
+        return (edits, last > 0 ? last : nil)
     }
 
     /// 보관함 완료 섹션에서 되돌리기(완료 해제).
