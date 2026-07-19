@@ -1,6 +1,6 @@
 # 작업 로그 — 2026-07-19 (SecondBrain · 상세 화면 §6 + "확정 → 기억하기" 재정의)
 
-> **재개 한 줄:** 상세 화면(§6)·"기억하기" 재정의·용어 정합화·대시보드 라벨·원칙 개념 정식화(§3) + **원칙 기능 구현(목록 화면·꾹 눌러 드래그 순서변경·동작 N개 설정·밴드 상위 N/번호/균일 틴트)**까지 main 커밋·push 완료(`ee7b4f8` + 문서 정합), 실기기 확인됨. **다음: ①"총 기억" 대시보드 정의 재결정 ②수집([+]) 실구현 ③원칙 각인 방식(§3 미결 큰 과제) ④원칙 0개 밴드 숨김 실기기 검증.**
+> **재개 한 줄:** 상세 화면(§6)·"기억하기" 재정의·용어 정합화·대시보드 라벨·원칙 기능 + **앱 안 실시간 한국어 STT 음성 수집(온디바이스, 우상단 마이크)**까지 main 커밋·push 완료(`5446995` + 문서 정합), 실기기 확인됨(전사·저장·성역 스탬프·iPhone 16 Pro·음성). **다음: ①자동 분류(Claude API) ②액션 버튼 연동(이 STT에) ③"총 기억" 대시보드 정의 재결정 ④원칙 각인 방식(§3 큰 과제)·원칙 0개 밴드 숨김 검증.**
 
 ## 0. 한 일 요약
 상세 화면(§6 "편집의 무대")을 처음부터 만들고, 그 과정에서 "확정" 개념을 **"기억하기"**로 재정의했다. §2·§3 원칙(수정≠기억하기, 단방향)은 이름만 바뀌고 그대로. 재확인 팝업은 커스텀 대화상자로 안착.
@@ -47,11 +47,19 @@
 - **N 설정**: SettingsView Stepper(기본 3, 1–10, 최소 1), `@AppStorage("principleActiveCount")`. 상한이지 강제 아님.
 - `memory-philosophy.md §3·§5` 구현 상태 "구현됨"으로 정합. (`.xcodeproj`는 XcodeGen 재생성 — 새 파일 인식 위해 `xcodegen generate` 했음, git 미추적.)
 
+## 4-e. 앱 안 음성/텍스트 수집 — 실시간 한국어 STT (`5446995`)
+- **네이티브 create**: `InboxModel.capture(text:source:)` — UUID 항목, 시각·기기·방식을 create에 성역 스탬프, `inbox-iphone-*.md`에 append. 자동 분류 뒤로 → 미분류로 "새 기억들".
+- **Core(가법적)**: EventWriter create 블록에 `device`; CaptureDevice `currentLabel()`/`label(stored:)`. 테스트 62→64.
+- **STT**: `SpeechCapture` — SFSpeechRecognizer ko-KR, **온디바이스 강제**(프라이버시 §7). iPhone 16 Pro에서 ko-KR 온디바이스 지원 확인. 권한 = 마이크·음성인식 usage string(entitlement 불필요, 무료 서명).
+- **크래시 해결(핵심 교훈)**: `@MainActor` 클래스면 콜백 클로저가 격리돼 오디오 스레드 실행 시 `dispatch_assert_queue_fail` 크래시(실기기 3회 재현, 스크린샷으로 진단). → **@MainActor 제거 + `@unchecked Sendable` + @Published·엔진 조작 전부 메인 큐 dispatch**로 근본 해결. (Swift 6 strict concurrency + AVAudioEngine/Speech 패턴.)
+- **UI**: `CaptureSheet`(열리면 바로 STT→실시간 전사→교정→저장), 헤더 폴더→마이크(폴더는 설정으로). `memory-philosophy §5` 수집 서술 갱신.
+
 ## 5. 상태
-- main = origin/main = `ee7b4f8`(+문서 정합 커밋). working tree clean. worktree·브랜치·열린 PR 잔재 없음.
+- main = origin/main = `5446995`(+문서 정합 커밋). working tree clean. worktree·브랜치·열린 PR 잔재 없음.
 
 ## 6. 다음 할 일
-1. **"총 기억" 대시보드 정의 재결정** (현재 = 살아있는 전체).
-2. **수집([+]) 실구현**.
-3. 원칙 **각인 방식**(어떻게 반복·불편하지 않게) — §3 미결 큰 과제. 원칙 0개 밴드 숨김 실기기 검증.
-4. 보류: 완전 삭제(edit-policy §8), 완료취소 재확인(§5) 강제, 원문 성역 코드 강제, 완전 이력(§4-4), 대화상자 헬퍼 앱 전역 공용화(메모리 `confirm-dialog-style`).
+1. **자동 분류(Claude API)** — 수집된 새 항목 자동 분류(다음 단계로 미뤄둔 것).
+2. **액션 버튼 연동** — 아이폰 16 Pro 액션 버튼 → 이 STT 수집(App Intent/URL 스킴, 익스텐션 불필요·무료 서명 OK — 조사 완료).
+3. **"총 기억" 대시보드 정의 재결정** (현재 = 살아있는 전체).
+4. 원칙 **각인 방식**(§3 큰 과제) · 원칙 0개 밴드 숨김 검증.
+5. 보류: 완전 삭제(edit-policy §8), 완료취소 재확인(§5) 강제, 원문 성역 코드 강제, 완전 이력(§4-4), 원문 여러 줄 보존(현재 수집은 줄바꿈→공백), 대화상자 헬퍼 앱 전역 공용화.
