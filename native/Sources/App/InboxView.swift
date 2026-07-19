@@ -19,9 +19,11 @@ extension View {
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
+    @State private var path = NavigationPath()
+    @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 headerRow
                 if model.needsFolder {
@@ -35,6 +37,7 @@ struct InboxView: View {
             .background(Palette.bg.ignoresSafeArea())
             .hiddenNavBar()
             .navigationDestination(for: ResolvedItem.self) { DetailView(item: $0, model: model) }
+            .navigationDestination(for: PrincipleListRoute.self) { _ in PrincipleListView(model: model) }
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
@@ -44,15 +47,26 @@ struct InboxView: View {
     private var content: some View {
         let tab = model.newTab
         return List {
-            if !model.principles.isEmpty {
+            if !model.orderedPrinciples.isEmpty {
                 Section {
-                    ForEach(model.principles, id: \.id) { p in
-                        PrincipleRow(item: p)
-                            .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
-                            .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                    // 밴드 전체가 하나의 버튼 — 아무 데나 터치 → 원칙 목록(§3). 상위 N개만, 순서대로 번호.
+                    // (NavigationLink 대신 Button+path — List 자동 chevron(>) 제거.)
+                    Button {
+                        path.append(PrincipleListRoute())
+                    } label: {
+                        VStack(spacing: 6) {
+                            ForEach(Array(model.orderedPrinciples.prefix(activeN).enumerated()), id: \.element.id) { idx, p in
+                                PrincipleRow(item: p, number: idx + 1)
+                            }
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+                    .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                 } header: {
-                    sectionTitle("원칙", count: model.principles.count).listRowInsets(EdgeInsets())
+                    sectionTitle("원칙", count: model.principleCount,
+                                 symbol: "star.fill", symbolColor: TypeCatalog.meta("principle").color)
+                        .listRowInsets(EdgeInsets())
                 }
             }
 
@@ -139,8 +153,12 @@ struct InboxView: View {
         Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
     }
 
-    func sectionTitle(_ title: String, count: Int) -> some View {
+    func sectionTitle(_ title: String, count: Int,
+                      symbol: String? = nil, symbolColor: Color = Palette.textSecondary) -> some View {
         HStack(spacing: 6) {
+            if let symbol {
+                Image(systemName: symbol).font(.caption).foregroundStyle(symbolColor)
+            }
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             Text("\(count)").font(.caption2).foregroundStyle(Palette.textTertiary)
             Spacer()
@@ -205,11 +223,15 @@ struct DashboardRow: View {
 
 struct PrincipleRow: View {
     let item: ResolvedItem
+    var number: Int? = nil            // 순서 번호(1,2,3…). 별 아이콘은 섹션 제목으로 옮김.
     private var tint: Color { TypeCatalog.meta("principle").color }
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint).padding(.top, 3)
+            if let number {
+                Text("\(number)").font(.callout.weight(.bold)).monospacedDigit()
+                    .foregroundStyle(tint).frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
+            }
             Text(item.raw ?? "")
                 .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -217,7 +239,9 @@ struct PrincipleRow: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .areaStyle(tint: tint)
+        // 그라데이션 대신 틴트 색을 균일하게 깐다(원칙 항목 전용).
+        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: Palette.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Palette.radius, style: .continuous).strokeBorder(tint.opacity(0.28)))
     }
 }
 

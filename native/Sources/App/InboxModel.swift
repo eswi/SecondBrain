@@ -32,6 +32,34 @@ final class InboxModel: ObservableObject {
     /// 원칙(ambient) — 새로운 기억 화면 상단 띠. 세 영역 분할에서는 뺀다(별도 상시 노출).
     var principles: [ResolvedItem] { liveNonDone.filter { $0.type == "principle" } }
 
+    /// 원칙을 **순서대로**(위=고순위, memory-philosophy §3).
+    /// - `order` 필드(정수) 있으면 우선(오름차순).
+    /// - 없으면 그 뒤에, **포함 순서**(principle이 된 시점 = type=principle 세팅 최소 HLC)로.
+    /// 엔진 무변경 — order는 일반 필드(LWW), 포함 시점은 allEvents에서 계산.
+    var orderedPrinciples: [ResolvedItem] {
+        principles.sorted { a, b in
+            switch (orderValue(a), orderValue(b)) {
+            case let (x?, y?):  return x != y ? x < y : a.id < b.id
+            case (_?, nil):     return true              // 명시 순서 있는 것이 앞
+            case (nil, _?):     return false
+            case (nil, nil):
+                let ha = inclusionHLC(a.id), hb = inclusionHLC(b.id)
+                if let ha, let hb, ha != hb { return ha < hb }   // 이른 포함 = 상위
+                return a.id < b.id
+            }
+        }
+    }
+
+    private func orderValue(_ it: ResolvedItem) -> Int? {
+        guard let s = it.fields["order"] else { return nil }
+        return Int(s)
+    }
+
+    /// 그 id가 principle이 된 시점(type=principle 세팅 최소 HLC). 기본 순서용.
+    private func inclusionHLC(_ id: String) -> HLC? {
+        allEvents.filter { $0.id == id && $0.fields["type"] == "principle" }.map(\.hlc).min()
+    }
+
     var deletedCount: Int { trashed.count }
 
     /// 전체 항목 회계(고유 id 합). 합계가 원본(예: inbox.md 68)과 같아야 파싱 누락이 없다.
@@ -203,6 +231,24 @@ final class InboxModel: ObservableObject {
     private func append(_ e: Event) {
         try? FragmentFolder.appendLine(EventWriter.serialize(e) + "\n", deviceId: deviceId)
         load()   // 파일이 진실원 → 재읽기·재병합
+    }
+
+    /// 여러 이벤트를 한 번에 append 후 **한 번만** 재로드(순서 재부여용 — N개 항목 재기록).
+    private func appendBatch(_ events: [Event]) {
+        guard !events.isEmpty else { return }
+        for e in events {
+            try? FragmentFolder.appendLine(EventWriter.serialize(e) + "\n", deviceId: deviceId)
+        }
+        load()
+    }
+
+    /// 원칙 목록 드래그 순서 변경 → 새 순서대로 `order` 재부여(0..n-1). 바뀐 항목만 기록.
+    func reorderPrinciples(_ ordered: [ResolvedItem]) {
+        var events: [Event] = []
+        for (i, it) in ordered.enumerated() where orderValue(it) != i {
+            events.append(.edit(id: it.id, hlc: tick(), ["order": String(i)]))
+        }
+        appendBatch(events)
     }
 
     private func nowMillis() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

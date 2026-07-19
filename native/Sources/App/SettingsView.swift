@@ -19,6 +19,7 @@ extension View {
 struct SettingsView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
+    @AppStorage(PrincipleSettings.activeCountKey) private var principleN = PrincipleSettings.defaultActiveCount
 
     var body: some View {
         NavigationStack {
@@ -35,6 +36,20 @@ struct SettingsView: View {
                         }
                         .listRowBackground(Palette.surface)
                     } header: { header("데이터") }
+
+                    Section {
+                        Stepper(value: $principleN, in: 1...PrincipleSettings.maxActiveCount) {
+                            HStack {
+                                Text("각인 동작 개수").foregroundStyle(Palette.textPrimary)
+                                Spacer()
+                                Text("\(principleN)").foregroundStyle(Palette.textSecondary).monospacedDigit()
+                            }
+                        }
+                        .listRowBackground(Palette.surface)
+                    } header: { header("원칙") } footer: {
+                        Text("상단 원칙 영역에 노출되는 상위 개수. 원칙이 이보다 적으면 있는 만큼만.")
+                            .font(.caption2).foregroundStyle(Palette.textTertiary)
+                    }
 
                     Section {
                         row("총 기억", "\(model.totalMemoryCount)")
