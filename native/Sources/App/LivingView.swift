@@ -11,7 +11,7 @@ struct LivingView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 headerRow
-                FilterChipsBar(model: model)
+                FilterChipsBar(filter: $model.filter)
                 content
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -44,7 +44,7 @@ struct LivingView: View {
                         .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                         .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+                            Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
                         }
                         .swipeActions(edge: .leading) {
                             Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
@@ -53,7 +53,7 @@ struct LivingView: View {
                         .contextMenu {
                             Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
                             Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
-                            Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+                            Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
                         }
                 }
             }

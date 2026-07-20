@@ -15,6 +15,10 @@ final class InboxModel: ObservableObject {
 
     @Published var filter: TypeFilter = .all      // 받은함 필터 칩 선택(기억 목록에만 적용)
 
+    /// 리스트(스와이프·컨텍스트) 삭제 재확인 대기 항목. nil이 아니면 RootView가 공용 확인 팝업을 띄운다.
+    /// (상세 화면 [삭제하기]는 자체 확인 후 dismiss하므로 이 경로를 안 쓴다.)
+    @Published var pendingDelete: ResolvedItem?
+
     /// 자동 분류 진행 상태(설정의 수동 버튼에서 그 자리 인라인 표시).
     enum ClassifyPhase: Equatable { case idle, running, done(Int), failed(String) }
     @Published var classifyPhase: ClassifyPhase = .idle

@@ -44,6 +44,18 @@ struct RootView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: model.autoToast)
+        // 리스트(스와이프·컨텍스트) 삭제 재확인 — 어느 탭이든 여기 한 곳에서 공용 팝업으로 처리.
+        // 상세 화면 [삭제하기]는 자체 확인(dismiss 필요)이라 이 경로를 쓰지 않는다.
+        .overlay {
+            if let pending = model.pendingDelete {
+                ConfirmDialog(title: "정말로 삭제하시겠습니까?",
+                              confirmTitle: "삭제", confirmTint: Palette.overdue,
+                              onCancel: { model.pendingDelete = nil },
+                              onConfirm: { model.delete(pending); model.pendingDelete = nil })
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: model.pendingDelete)
         // 성공·실패 토스트는 잠시 뒤 자동으로 사라짐(진행 중 토스트는 다음 상태가 대체).
         .onChange(of: model.autoToast) { _, new in
             guard let t = new, t.kind != .running else { return }

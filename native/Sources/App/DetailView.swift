@@ -34,6 +34,8 @@ struct DetailView: View {
     @State private var showRememberConfirm = false
     /// 미기억 항목을 원칙으로 지정하고 저장할 때 "기억하기 자동 결정" 안내(원칙=살아있는 기억).
     @State private var showPrincipleAutoRemember = false
+    /// [삭제하기] 재확인(공용 대화상자). 확인 시 삭제 + 화면 닫기.
+    @State private var showDeleteConfirm = false
 
     init(item: ResolvedItem, model: InboxModel) {
         self.item = item
@@ -70,8 +72,10 @@ struct DetailView: View {
         #endif
         .overlay { if showRememberConfirm { rememberDialog } }
         .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
+        .overlay { if showDeleteConfirm { deleteDialog } }
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
         .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
+        .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)
     }
 
     // MARK: 원문 (§8 잠금)
@@ -244,8 +248,8 @@ struct DetailView: View {
 
     private var bottomBar: some View {
         HStack(spacing: 10) {
-            // 왼편: 삭제하기(tombstone, 보관함서 복구 가능)
-            Button(role: .destructive) { model.delete(item); dismiss() } label: {
+            // 왼편: 삭제하기(tombstone, 보관함서 복구 가능) — 공용 확인 대화상자를 거친다.
+            Button(role: .destructive) { showDeleteConfirm = true } label: {
                 barLabel("삭제하기", "trash")
             }
             .buttonStyle(.bordered).tint(Palette.overdue)
@@ -267,59 +271,29 @@ struct DetailView: View {
         .background(.ultraThinMaterial)
     }
 
-    /// 기억하기 재확인 — 표준 대화상자. [취소하기] / [기억하기].
+    /// 기억하기 재확인 — 공용 대화상자. [취소하기] / [기억하기].
     private var rememberDialog: some View {
-        standardDialog("정말로 기억하시겠습니까?") {
-            HStack(spacing: 0) {
-                dialogButton("취소하기") { showRememberConfirm = false }
-                Divider().overlay(Palette.border)
-                dialogButton("기억하기", prominent: true) { showRememberConfirm = false; remember() }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
+        ConfirmDialog(title: "정말로 기억하시겠습니까?",
+                      cancelTitle: "취소하기", confirmTitle: "기억하기",
+                      onCancel: { showRememberConfirm = false },
+                      onConfirm: { showRememberConfirm = false; remember() })
     }
 
-    /// 원칙 지정 시 기억하기 자동 결정 안내 — 표준 대화상자, 안내형 단일 버튼.
+    /// 원칙 지정 시 기억하기 자동 결정 안내 — 공용 대화상자, 안내형 단일 버튼.
     private var principleAutoRememberDialog: some View {
-        standardDialog("'기억하기'로 자동 결정됩니다") {
-            dialogButton("확인", prominent: true) { commitAsPrinciple() }
+        StandardDialog(title: "'기억하기'로 자동 결정됩니다") {
+            DialogButton(title: "확인", prominent: true) { commitAsPrinciple() }
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    // MARK: 표준 확인·안내 대화상자 (메모리 confirm-dialog-style — 앱 공용 형식)
-    // 배경 딤 + 가운데 카드 + 큰 제목(표준 alert보다 2단계) + 하단 버튼 행.
-
-    private func standardDialog<Buttons: View>(_ title: String,
-                                               @ViewBuilder buttons: () -> Buttons) -> some View {
-        ZStack {
-            Color.black.opacity(0.4).ignoresSafeArea()
-            VStack(spacing: 0) {
-                Text(title)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(Palette.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 20).padding(.vertical, 24)
-                Divider().overlay(Palette.border)
-                buttons()
-            }
-            .frame(width: 300)
-            .background(Palette.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.border))
-            .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
-        }
-    }
-
-    private func dialogButton(_ title: String, prominent: Bool = false,
-                              _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(prominent ? .title3.weight(.semibold) : .title3)
-                .frame(maxWidth: .infinity, minHeight: 52)
-        }
-        .foregroundStyle(prominent ? Palette.accent : Palette.textSecondary)
+    /// [삭제하기] 재확인 — 공용 대화상자. [취소] / [삭제](overdue 톤). 확인 시 삭제 후 화면 닫기.
+    /// 삭제 로직 자체는 무변경(tombstone → 보관된 기억, 복구 가능). 확인 단계만 앞에 둔다.
+    private var deleteDialog: some View {
+        ConfirmDialog(title: "정말로 삭제하시겠습니까?",
+                      confirmTitle: "삭제", confirmTint: Palette.overdue,
+                      onCancel: { showDeleteConfirm = false },
+                      onConfirm: { showDeleteConfirm = false; model.delete(item); dismiss() })
     }
 
     /// 하단 바 버튼 라벨 — 줄바꿈 금지 + 좌우 여백으로 폭 확보(확정 글자 깨짐 방지).

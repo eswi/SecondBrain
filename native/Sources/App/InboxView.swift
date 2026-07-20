@@ -138,7 +138,7 @@ struct InboxView: View {
         Button { model.confirm(item) } label: { Label("기억하기", systemImage: "checkmark.seal.fill") }.tint(Palette.accent)
     }
     @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
-        Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+        Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
     @ViewBuilder private func doneDeferActions(_ item: ResolvedItem) -> some View {
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
@@ -148,14 +148,14 @@ struct InboxView: View {
     @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
         Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
-        Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+        Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
     /// 새 기억(미확정) 컨텍스트: 확정을 맨 앞에.
     @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
         Button { model.confirm(item) } label: { Label("기억하기 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
         Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
-        Button(role: .destructive) { model.delete(item) } label: { Label("삭제", systemImage: "trash") }
+        Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
 
     func sectionTitle(_ title: String, count: Int,
@@ -253,7 +253,9 @@ struct PrincipleRow: View {
 // MARK: - 필터 칩 한 줄 (살아있는 기억 탭에서 사용)
 
 struct FilterChipsBar: View {
-    @ObservedObject var model: InboxModel
+    /// 필터 상태를 **바인딩으로** 받는다 → 살아있는 기억(model.filter)과 검색(독립 상태)이 같은 UI를
+    /// 각자의 상태에 물려 재사용. 거르는 대상은 각 화면이 정한다(살아있는 기억 / 검색 결과 전체).
+    @Binding var filter: TypeFilter
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -265,7 +267,7 @@ struct FilterChipsBar: View {
                 }
                 Menu {
                     ForEach(TypeCatalog.overflowFilters, id: \.self) { f in
-                        Button { model.filter = f } label: {
+                        Button { filter = f } label: {
                             if case .type(let k) = f { Label(TypeCatalog.meta(k).label, systemImage: TypeCatalog.meta(k).symbol) }
                         }
                     }
@@ -282,8 +284,8 @@ struct FilterChipsBar: View {
     }
 
     private func chip(_ f: TypeFilter, label: String, color: Color) -> some View {
-        let on = model.filter == f
-        return Button { model.filter = f } label: {
+        let on = filter == f
+        return Button { filter = f } label: {
             Text(label)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(on ? Palette.bg : color)
