@@ -20,6 +20,9 @@ struct SettingsView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
     @AppStorage(PrincipleSettings.activeCountKey) private var principleN = PrincipleSettings.defaultActiveCount
+    #if os(iOS)
+    @AppStorage(SpeechSettings.autoStopKey) private var sttAutoStop = SpeechSettings.defaultAutoStop
+    #endif
     @State private var apiKeyInput = ""
     @State private var keySaved = KeychainStore.hasKey
 
@@ -52,6 +55,23 @@ struct SettingsView: View {
                         Text("상단 원칙 영역에 노출되는 상위 개수. 원칙이 이보다 적으면 있는 만큼만.")
                             .font(.caption2).foregroundStyle(Palette.textTertiary)
                     }
+
+                    #if os(iOS)
+                    Section {
+                        Stepper(value: $sttAutoStop, in: SpeechSettings.minAutoStop...SpeechSettings.maxAutoStop) {
+                            HStack {
+                                Text("받아쓰기 자동 종료").foregroundStyle(Palette.textPrimary)
+                                Spacer()
+                                Text(sttAutoStop == 0 ? "끄기" : "\(sttAutoStop)초")
+                                    .foregroundStyle(Palette.textSecondary).monospacedDigit()
+                            }
+                        }
+                        .listRowBackground(Palette.surface)
+                    } header: { header("음성") } footer: {
+                        Text("마지막 말이 끝난 뒤 이만큼 침묵이 지속되면 자동으로 받아쓰기를 끝냅니다. 말하는 중이나 짧은 멈춤은 안 끊고 이어갑니다. 0(끄기)이면 침묵으로 끝내지 않고 [완료] 버튼으로만 종료합니다.")
+                            .font(.caption2).foregroundStyle(Palette.textTertiary)
+                    }
+                    #endif
 
                     Section {
                         row("Claude API 키", keySaved ? "저장됨" : "미설정")

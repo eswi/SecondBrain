@@ -16,6 +16,9 @@ struct CaptureSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 #if os(iOS)
                 statusLine
+                if speech.isRecording && speech.autoStopEnabled {
+                    SilenceBar(progress: speech.silenceProgress)
+                }
                 #endif
                 TextEditor(text: $text)
                     .font(.body)
@@ -93,11 +96,32 @@ struct CaptureSheet: View {
         }
     }
 
+    /// 침묵 진행 막대 — 받아쓰기 네모 바로 위. 왼→오로 채워지며 자동 종료까지 남은 시간을 보여준다.
+    /// 발화가 다시 시작되면 progress가 0으로 리셋되어 막대가 왼쪽으로 되돌아간다(반복).
+    /// 끝에 가까우면(임박) 색을 경고색으로 바꿔 곧 종료됨을 알린다.
+    private struct SilenceBar: View {
+        let progress: Double
+        var body: some View {
+            let p = min(max(progress, 0), 1)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Palette.surface)
+                    Capsule()
+                        .fill(p >= 0.75 ? Palette.overdue : Palette.accent)
+                        .frame(width: geo.size.width * p)
+                }
+            }
+            .frame(height: 5)
+            .animation(.linear(duration: 0.05), value: p)
+            .accessibilityLabel("자동 종료까지 남은 시간")
+        }
+    }
+
     @ViewBuilder private var micControl: some View {
         HStack {
             Spacer()
             Button {
-                if speech.isRecording { speech.stop() } else { speech.start() }
+                if speech.isRecording { speech.stop() } else { speech.resume(seed: text) }
             } label: {
                 Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 52))
