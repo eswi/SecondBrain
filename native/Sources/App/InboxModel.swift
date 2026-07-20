@@ -34,6 +34,7 @@ final class InboxModel: ObservableObject {
 
     let deviceId: String
     private var clock: HLCClock
+    private var loadGen = 0        // 비동기 로드 세대 — 늦게 끝난 낡은 로드 결과를 버리기 위한 가드
 
     /// 로드 때 파싱한 전체 이벤트(수정 이력 요약용). 엔진은 안 건드리고 여기서 경량 집계.
     private(set) var allEvents: [Event] = []
@@ -135,7 +136,13 @@ final class InboxModel: ObservableObject {
 
     // MARK: 로드
 
-    func load() {
+    /// 파일에서 다시 읽어 상태 반영(fire-and-forget). append·행동 경로에서 호출.
+    func load() { Task { await reload() } }
+
+    /// 로드 본체(await 가능 — 초기 로드 뒤 자동분류를 잇기 위해 뷰가 기다릴 수 있게).
+    /// **파일 I/O(iCloud 조율 읽기)는 백그라운드**에서 돈다 — 메인 스레드를 막지 않는다.
+    /// (콜드 iCloud에서 동기 조율 읽기가 수십 초 앱을 얼리던 문제 수정.) 결과 반영만 메인.
+    func reload() async {
         guard FragmentFolder.hasFolder else {
             #if DEBUG
             if SampleData.useInSimulator {
@@ -150,12 +157,22 @@ final class InboxModel: ObservableObject {
             return
         }
         needsFolder = false
+        loadGen &+= 1
+        let gen = loadGen
+        let (events, label) = await Self.readAndParse()
+        guard gen == loadGen else { return }   // 그사이 더 최신 로드가 시작됨 → 낡은 결과 버림
+        resolve(events, label: label)
+    }
 
-        let frags = FragmentFolder.readFragments()
-        var events: [Event] = []
-        for f in frags { events.append(contentsOf: EventLog.parse(f.text)) }
-        let names = frags.map(\.name)
-        resolve(events, label: names.isEmpty ? "(빈 폴더)" : names.joined(separator: ", "))
+    /// 폴더의 조각을 읽고 파싱 — 전부 **메인 밖**(Task.detached). 순수 값(Event: Sendable)만 돌려준다.
+    private static func readAndParse() async -> ([Event], String) {
+        await Task.detached(priority: .userInitiated) {
+            let frags = FragmentFolder.readFragments()
+            var events: [Event] = []
+            for f in frags { events.append(contentsOf: EventLog.parse(f.text)) }
+            let label = frags.isEmpty ? "(빈 폴더)" : frags.map(\.name).joined(separator: ", ")
+            return (events, label)
+        }.value
     }
 
     /// 이벤트 배열을 병합해 상태에 반영(시계 전진·알림 재조정 포함).

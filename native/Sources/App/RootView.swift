@@ -64,10 +64,13 @@ struct RootView: View {
                 if model.autoToast == t { model.autoToast = nil }
             }
         }
-        .onAppear { model.load() }
-        // 앱 열 때 미분류를 모아 자동 분류(사양서 §0-A: 백그라운드는 iOS 제약 → "앱 열 때 모아 분류"가 현실적).
-        // 키가 있고 미분류가 있을 때만. classifyUnclassified가 .running을 중복 차단(메인 액터 직렬화).
-        .task { autoClassify() }
+        // 초기 로드(백그라운드 I/O)를 기다린 뒤 자동 분류를 잇는다 — 로드 완료 전엔 미분류 목록이
+        // 비어 있어 분류가 헛돌기 때문. load I/O가 메인 밖이라 이 await 동안에도 UI는 안 막힌다.
+        // (사양서 §0-A: 백그라운드는 iOS 제약 → "앱 열 때 모아 분류"가 현실적. .running 중복은 내부 차단.)
+        .task {
+            await model.reload()
+            autoClassify()
+        }
         .onChange(of: scenePhase) { _, phase in if phase == .active { autoClassify() } }
         // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
         .onChange(of: launcher.showCapture) { _, show in if show { tab = .new } }
