@@ -6,6 +6,9 @@
 - 웹 v0(PWA)와 **네이티브 v1**(Swift, `native/`) 두 층. 데이터 = iCloud의 평문 `inbox*.md`.
 - 정본 사양 = `second-brain-v0-spec.md` · 병합 규칙 = `docs/native/merge-design.md` · 분류 = `classify.py`.
 
+## 작업 기기
+- 집에서 사용하는 컴퓨터는 **맥미니(mac mini)**, 회사에서 사용하는 컴퓨터는 **맥북(맥북프로, macbook pro)**. 항상 인지하고 내 지시에 따라야 함.
+
 ## 항시 규칙
 1. **사양서 우선 · 즉흥 금지** — 전략·방향 결정을 즉흥으로 하지 않는다. Claude 챗에서 정해진 방향을
    사양서(`second-brain-v0-spec.md`)를 통해 받아서 진행한다.
