@@ -230,21 +230,30 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), changes))
     }
 
-    /// 앱 안 수집 — **네이티브 항목(UUID) 생성**. 최초 수집 정보(시각·기기·source)를
+    /// 앱 안 수집 — **네이티브 항목(UUID) 생성**. 최초 수집 정보(시각·기기·source·음성)를
     /// create 이벤트에 **성역으로 찍는다**(이후 어떤 편집도 안 건드림). 자동 분류는 다음 단계 → 미분류로 시작.
     /// v1은 원문 한 줄 유지를 위해 줄바꿈을 공백으로 접는다(여러 줄 보존은 나중).
-    func capture(text: String, source: String) {
+    /// - Parameter audioTemp: 캡처 중 녹음된 임시 음성 파일. 있으면 항목 UUID로 확정(`<uuid>.m4a`, 불변)하고
+    ///   `audio:` 포인터를 성역에 찍는다. 확정 실패·없음이면 음성 없이 생성(graceful).
+    func capture(text: String, source: String, audioTemp: URL? = nil) {
         let raw = text
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty else { return }
+        guard !raw.isEmpty else {
+            if let audioTemp { AudioStore.deleteTemp(audioTemp) }   // 텍스트 없으면 저장 안 함 → 임시 정리
+            return
+        }
         let now = Date()
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"; let date = f.string(from: now)
         f.dateFormat = "HH:mm";     let time = f.string(from: now)
-        let e = Event.create(id: UUID().uuidString, hlc: tick(),
-                             date: date, time: time, source: source, raw: raw,
-                             extra: ["device": CaptureDevice.currentLabel()])
+        let id = UUID().uuidString
+        var extra = ["device": CaptureDevice.currentLabel()]
+        if let audioTemp, let name = AudioStore.finalize(temp: audioTemp, forId: id) {
+            extra["audio"] = name   // 원본 음성 포인터(성역·불변)
+        }
+        let e = Event.create(id: id, hlc: tick(),
+                             date: date, time: time, source: source, raw: raw, extra: extra)
         append(e)
     }
 

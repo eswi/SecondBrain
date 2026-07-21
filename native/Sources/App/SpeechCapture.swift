@@ -36,6 +36,12 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
 
+    // 원본 음성 녹음(설계 audio-capture-design §2) — **시트 세션 전체를 하나의 파일로**.
+    // 조각 회전(tap 재설치)·[정지]→[재개](엔진 재시작)를 다 넘어 같은 파일에 이어 쓴다.
+    // 파일은 [저장]/[취소] 때만 닫는다(그 전엔 계속 append = 모든 take 시간순 보존).
+    private var audioTempURL: URL?
+    private var audioFile: AVAudioFile?
+
     // 조각 누적 상태(전부 메인에서만 접근). transcript = committedText + (partial 있으면 " " + partial).
     private var committedText = ""            // isFinal로 확정된 이전 조각들
     private var partial = ""                   // 현재 조각의 진행 중 전사
@@ -74,6 +80,12 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
             self.partial = ""
             self.transcript = self.committedText
             self.autoStopSeconds = SpeechSettings.autoStopSeconds
+            if reset {
+                // 새 수집 세션: 임시 오디오 파일 하나 준비(이후 정지/재개/조각회전 다 여기에 이어 씀).
+                if let old = self.audioTempURL { AudioStore.deleteTemp(old) }
+                self.audioFile = nil
+                self.audioTempURL = AudioStore.newTempURL(sessionId: UUID().uuidString)
+            }
         }
         SFSpeechRecognizer.requestAuthorization { [weak self] auth in
             guard let self else { return }
@@ -99,6 +111,7 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
             // startSegment가 inputNode를 접근·탭 설치 → 그래프에 노드가 생긴다. 이걸 prepare/start보다
             // **먼저** 해야 한다. 노드 없이 prepare/start하면 AVAudioEngine Initialize가
             // `inputNode != nullptr || outputNode != nullptr` assertion으로 크래시한다.
+            openAudioFileIfNeeded()       // 세션 첫 진입에만 파일 생성(재개 땐 기존 파일 유지해 이어 씀)
             try startSegment()            // 첫 조각(request+task+tap) — 반드시 start 전에
             engine.prepare()
             try engine.start()
@@ -129,9 +142,12 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw SpeechError.badFormat
         }
-        // 탭 콜백은 오디오 스레드에서 돈다 — 클래스가 비격리라 클로저도 비격리(안전). 로컬 req만 만짐.
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        // 탭 콜백은 오디오 스레드에서 돈다 — 클래스가 비격리라 클로저도 비격리(안전).
+        // req.append(STT) + 같은 버퍼를 세션 오디오 파일에도 기록(원본 보존). 파일은 이미 열려 있고,
+        // 닫기(nil)는 항상 tap 제거 뒤에만 하므로 이 시점 audioFile은 유효하거나 nil(무시).
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             req.append(buffer)
+            self?.writeAudio(buffer)
         }
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             guard let self else { return }
@@ -183,15 +199,60 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
     }
 
     private func teardown() {
-        if engine.isRunning {
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
-        }
+        engine.inputNode.removeTap(onBus: 0)   // 항상 먼저 — in-flight 콜백 차단 후에 파일을 닫는다
+        if engine.isRunning { engine.stop() }
         request?.endAudio()
         task?.cancel()
         request = nil
         task = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    // MARK: 원본 음성 파일 (세션 전체 하나 · 정지/재개 넘어 이어 씀)
+
+    /// 세션 오디오 파일을 (없으면) 연다 — 첫 start에만 생성, 재개 땐 기존 파일 유지해 이어 쓴다.
+    private func openAudioFileIfNeeded() {
+        guard audioFile == nil, let url = audioTempURL else { return }
+        let fmt = engine.inputNode.outputFormat(forBus: 0)
+        guard fmt.sampleRate > 0, fmt.channelCount > 0 else { return }
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: fmt.sampleRate,
+            AVNumberOfChannelsKey: fmt.channelCount,
+        ]
+        audioFile = try? AVAudioFile(forWriting: url, settings: settings)
+    }
+
+    /// tap 버퍼를 세션 오디오 파일에 기록(오디오 스레드). **1차: 직접 쓰기.** 파일 포맷은 첫 start의
+    /// 입력 포맷으로 고정 → 같은 기기에서 정지→재개하면 포맷이 일치해 그대로 이어 쓴다(연속 단일 파일).
+    /// 만약 재개 중 오디오 경로가 바뀌어 포맷이 달라지면 그 조각은 건너뛴다(드문 경우) — 이 상황이
+    /// 실기기에서 실제로 문제되면 설계 §2 폴백(재개 구간별 세그먼트 → [저장] 때 이어붙이기)으로 전환한다.
+    private func writeAudio(_ buffer: AVAudioPCMBuffer) {
+        guard let file = audioFile, buffer.format == file.processingFormat else { return }
+        try? file.write(from: buffer)
+    }
+
+    /// [저장](메인 호출): 엔진 정지·파일 닫기(flush·moov) 후 임시 URL 반환(내용 없으면 nil).
+    /// 이후 caller가 `AudioStore.finalize`로 `<uuid>.m4a`에 확정(불변)한다.
+    func finishAndURL() -> URL? {
+        stopSilenceTicker()
+        teardown()                 // tap 제거 포함 → 이제 파일 닫아도 안전
+        audioFile = nil            // 닫기(release = m4a 컨테이너 마무리·flush)
+        if status == .recording { status = .idle }
+        defer { audioTempURL = nil }
+        guard let url = audioTempURL else { return nil }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        return size > 0 ? url : nil
+    }
+
+    /// [취소]/미저장 종료(메인 호출): 엔진 정지·파일 닫기·임시 삭제.
+    func cancelAndDiscard() {
+        stopSilenceTicker()
+        teardown()
+        audioFile = nil
+        if status == .recording { status = .idle }
+        if let url = audioTempURL { AudioStore.deleteTemp(url) }
+        audioTempURL = nil
     }
 
     // MARK: 침묵 티커 (메인 큐 — 조각 회전 + 진행률 갱신 + 자동 [완료])

@@ -7,6 +7,7 @@ struct CaptureSheet: View {
     @ObservedObject var model: InboxModel
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var saved = false   // [저장]으로 확정됐는지 — onDisappear의 임시 음성 정리 판단용
     #if os(iOS)
     @StateObject private var speech = SpeechCapture()
     #endif
@@ -55,23 +56,22 @@ struct CaptureSheet: View {
             }
         }
         #if os(iOS)
-        .onAppear { speech.start() }                          // 열리면 바로 STT
+        .onAppear { speech.start() }                          // 열리면 바로 STT(+ 원본 음성 녹음)
         .onChange(of: speech.transcript) { _, t in text = t } // 실시간 전사를 편집칸에
-        .onDisappear { speech.stop() }
+        .onDisappear { if !saved { speech.cancelAndDiscard() } }   // 미저장 종료 → 임시 음성 삭제
         #endif
     }
 
     private func save() {
-        #if os(iOS)
-        speech.stop()
-        #endif
         // source: iOS는 음성 수집이 기본, macOS는 텍스트.
         #if os(iOS)
-        let source = "voice"
+        // 엔진 정지 + 세션 음성 파일 닫기 → 임시 URL(모든 take 이어진 하나). capture가 <uuid>.m4a로 확정.
+        let audioURL = speech.finishAndURL()
+        model.capture(text: text, source: "voice", audioTemp: audioURL)
         #else
-        let source = "text"
+        model.capture(text: text, source: "text")
         #endif
-        model.capture(text: text, source: source)
+        saved = true
         dismiss()
     }
 

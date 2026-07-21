@@ -34,6 +34,17 @@ final class EventWriterTests: XCTestCase {
         XCTAssertEqual(back[0].fields["type"], "info-action")
     }
 
+    // 원본 음성 포인터(audio)는 create 성역 필드로 직렬화·파싱 왕복돼야 한다(설계 audio-capture-design §1).
+    func testSerializeParseRoundtrip_audioPointer() {
+        let c = Event.create(id: "c2", hlc: HLC(wallMillis: 2, counter: 0, deviceId: "iphone"),
+                             date: "2026-07-22", time: "10:00", source: "voice", raw: "음성 메모",
+                             extra: ["audio": "c2.m4a"])
+        let back = EventLog.parse(EventWriter.serialize(c))
+        XCTAssertEqual(back.count, 1)
+        XCTAssertEqual(back[0].fields["audio"], "c2.m4a")   // 성역 포인터 왕복
+        XCTAssertEqual(back[0].fields["raw"], "음성 메모")
+    }
+
     // 앱이 하는 것: 조각 파일에 이벤트 append → 다시 읽어 병합에 반영되는가 (쓰기→읽기 왕복).
     func testAppendThenLoadReflects() throws {
         let dir = FileManager.default.temporaryDirectory

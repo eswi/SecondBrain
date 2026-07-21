@@ -37,6 +37,9 @@ struct DetailView: View {
     /// [삭제하기] 재확인(공용 대화상자). 확인 시 삭제 + 화면 닫기.
     @State private var showDeleteConfirm = false
 
+    /// 원본 음성 "다시 듣기" 재생기(성역 카드).
+    @StateObject private var audio = AudioPlayer()
+
     init(item: ResolvedItem, model: InboxModel) {
         self.item = item
         self.model = model
@@ -107,6 +110,7 @@ struct DetailView: View {
             metaRow("clock", when.isEmpty ? "(시각 없음)" : when)                    // 언제
             metaRow("iphone", device)                                               // 기기
             metaRow(SourceIcon.symbol(item.source), Self.sourceLabel(item.source))   // 방식
+            if item.fields["audio"] != nil { audioRow }                              // 원본 음성(있으면)
             Text("이 값은 어떤 편집으로도 바뀌지 않아요").font(.caption2).foregroundStyle(Palette.textTertiary)
         }
         .padding(14).card()
@@ -116,6 +120,26 @@ struct DetailView: View {
         HStack(spacing: 8) {
             Image(systemName: symbol).font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
             Text(text).font(.callout).foregroundStyle(Palette.textPrimary)
+        }
+    }
+
+    /// 원본 음성 "다시 듣기" — 이 기기에 파일이 있으면 재생 버튼, 없으면(다른 기기 녹음) 안내.
+    @ViewBuilder private var audioRow: some View {
+        if let url = AudioStore.url(forId: item.id) {
+            Button { audio.toggle(url: url) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: audio.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                        .font(.callout).foregroundStyle(Palette.accent).frame(width: 16)
+                    Text(audio.isPlaying ? "정지" : "원본 음성 다시 듣기")
+                        .font(.callout).foregroundStyle(Palette.accent)
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "mic.slash").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
+                Text("원본 음성 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
+            }
         }
     }
 
