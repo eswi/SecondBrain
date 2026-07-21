@@ -107,8 +107,15 @@ struct RootView: View {
         withTransaction(t) { tab = newTab }
     }
 
+    /// 앱 열 때/재진입 자동 분류 스윕 실행 여부.
+    /// **2026-07-22: 꺼둠** — "앱 열 때마다 자동"을 멈춘다. 내일 "화면 아래로 당기면 분류"(pull-to-classify)로
+    /// 대체 예정. 설정의 수동 "지금 분류하기"(model.classifyUnclassified 직접 호출)는 이 플래그와 무관하게 살아있음.
+    private static let autoClassifyOnOpen = false
+
     /// 앱 열 때 스윕 — 키·미분류가 있을 때만 분류를 걸어둔다. 진행은 상단 토스트(auto:true).
+    /// 호출 지점(.task·scenePhase active)은 그대로 두고, 실행만 위 플래그로 통제한다(끄면 두 곳 동시 무효).
     private func autoClassify() {
+        guard Self.autoClassifyOnOpen else { return }   // 자동 스윕 비활성화(수동 버튼은 영향 없음)
         guard KeychainStore.hasKey, !model.unclassifiedItems.isEmpty else { return }
         Task { await model.classifyUnclassified(auto: true) }
     }
