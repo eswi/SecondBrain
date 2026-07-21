@@ -6,10 +6,15 @@ import SwiftUI
 struct RootView: View {
     @StateObject private var model = InboxModel()
     @ObservedObject private var launcher = CaptureLauncher.shared   // 액션 버튼/단축어 수집 신호
-    // 마지막 머문 탭을 결정적으로 복원(재진입 시 탭이 튀지 않게). @State는 iOS 화면상태 복원과 충돌.
+    // 마지막 머문 탭을 재실행/scene 복원 사이에 유지.
     @SceneStorage("selectedTab") private var tab: AppTab = .new
     @Environment(\.scenePhase) private var scenePhase
-    @State private var tabDebugEntries: [String] = []   // 임시 탭 튐 진단
+    // 마지막으로 "사용자가" 고른 탭. 홈으로 나가려 화면 하단을 쓸어 올릴 때, iOS가 그 제스처를
+    // 홈 제스처로 확정하기 직전까지 터치가 앱에 전달돼 손가락이 스친 탭바 버튼이 선택돼 버린다
+    // (실기기 A/B로 확정: 터치 없이 백그라운드로 보내면=전원버튼 안 튐, 홈스와이프만 튄다).
+    // 이 우발적 선택은 scene이 .active가 아닐 때 들어오므로 onChange에서 걸러 이 값엔 반영하지 않고,
+    // 나가는 즉시(그리고 복귀 시 보강) 이 값으로 되돌린다. 시스템 제스처라 원천 차단은 불가.
+    @State private var stableTab: AppTab = .new
 
     var body: some View {
         TabView(selection: $tab) {
@@ -72,44 +77,34 @@ struct RootView: View {
             await model.reload()
             autoClassify()
         }
-        .onChange(of: scenePhase) { old, phase in
-            TabDebug.log("phase \(old)→\(phase) tab=\(tab.rawValue)")   // 임시 진단
-            tabDebugEntries = TabDebug.entries
-            if phase == .active { autoClassify() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                // 복귀 보강: 나가는 순간 못 잡았거나 프레임워크가 다시 덮어썼으면 여기서 원복(무애니메이션).
+                if tab != stableTab { setTabNoAnimation(stableTab) }
+                autoClassify()
+            }
         }
         // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
         .onChange(of: launcher.showCapture) { _, show in if show { tab = .new } }
         .sheet(isPresented: $launcher.showCapture) { CaptureSheet(model: model) }
-        // ⬇︎ 임시 탭 튐 진단 (실험 후 제거)
-        .onChange(of: tab) { oldTab, newTab in
-            TabDebug.log("TAB \(oldTab.rawValue)→\(newTab.rawValue)")
-            tabDebugEntries = TabDebug.entries
+        .onChange(of: tab) { _, newTab in
+            if scenePhase == .active {
+                // 사용자가 실제로 고른 탭(active일 때만 일어남) → 기억.
+                stableTab = newTab
+            } else if newTab != stableTab {
+                // 나가는 중 홈 제스처가 탭바를 스쳐 생긴 우발적 선택 → 화면 밖일 때 즉시 원복(무애니메이션).
+                // (onChange는 상태 확정 뒤 실행돼 이 시점 scene이 .active가 아님이 보장된다.)
+                setTabNoAnimation(stableTab)
+            }
         }
-        .onAppear {
-            TabDebug.log("onAppear tab=\(tab.rawValue) phase=\(scenePhase)")
-            tabDebugEntries = TabDebug.entries
-        }
-        .overlay(alignment: .top) { tabDebugOverlay }
+        .onAppear { stableTab = tab }   // 최초 진입: 복원된 탭을 기준값으로
     }
 
-    /// 임시 탭 튐 진단 오버레이 (실험 후 제거).
-    private var tabDebugOverlay: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack {
-                Text("TAB DEBUG").font(.system(size: 9, weight: .bold))
-                Spacer()
-                Button("지우기") { TabDebug.clear(); tabDebugEntries = [] }
-                    .font(.system(size: 9)).buttonStyle(.plain)
-            }
-            ForEach(Array(tabDebugEntries.suffix(12).enumerated()), id: \.offset) { _, line in
-                Text(line).font(.system(size: 9, design: .monospaced)).lineLimit(1)
-            }
-        }
-        .padding(6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.8))
-        .foregroundStyle(Color.green)
-        .padding(.top, 44)
+    /// 탭을 애니메이션 없이 설정 — 우발적 선택 원복 시 슬라이드가 눈에 보이지 않게.
+    private func setTabNoAnimation(_ newTab: AppTab) {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { tab = newTab }
     }
 
     /// 앱 열 때 스윕 — 키·미분류가 있을 때만 분류를 걸어둔다. 진행은 상단 토스트(auto:true).
