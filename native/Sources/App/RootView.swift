@@ -9,6 +9,7 @@ struct RootView: View {
     // 마지막 머문 탭을 결정적으로 복원(재진입 시 탭이 튀지 않게). @State는 iOS 화면상태 복원과 충돌.
     @SceneStorage("selectedTab") private var tab: AppTab = .new
     @Environment(\.scenePhase) private var scenePhase
+    @State private var tabDebugEntries: [String] = []   // 임시 탭 튐 진단
 
     var body: some View {
         TabView(selection: $tab) {
@@ -71,10 +72,44 @@ struct RootView: View {
             await model.reload()
             autoClassify()
         }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { autoClassify() } }
+        .onChange(of: scenePhase) { old, phase in
+            TabDebug.log("phase \(old)→\(phase) tab=\(tab.rawValue)")   // 임시 진단
+            tabDebugEntries = TabDebug.entries
+            if phase == .active { autoClassify() }
+        }
         // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
         .onChange(of: launcher.showCapture) { _, show in if show { tab = .new } }
         .sheet(isPresented: $launcher.showCapture) { CaptureSheet(model: model) }
+        // ⬇︎ 임시 탭 튐 진단 (실험 후 제거)
+        .onChange(of: tab) { oldTab, newTab in
+            TabDebug.log("TAB \(oldTab.rawValue)→\(newTab.rawValue)")
+            tabDebugEntries = TabDebug.entries
+        }
+        .onAppear {
+            TabDebug.log("onAppear tab=\(tab.rawValue) phase=\(scenePhase)")
+            tabDebugEntries = TabDebug.entries
+        }
+        .overlay(alignment: .top) { tabDebugOverlay }
+    }
+
+    /// 임시 탭 튐 진단 오버레이 (실험 후 제거).
+    private var tabDebugOverlay: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack {
+                Text("TAB DEBUG").font(.system(size: 9, weight: .bold))
+                Spacer()
+                Button("지우기") { TabDebug.clear(); tabDebugEntries = [] }
+                    .font(.system(size: 9)).buttonStyle(.plain)
+            }
+            ForEach(Array(tabDebugEntries.suffix(12).enumerated()), id: \.offset) { _, line in
+                Text(line).font(.system(size: 9, design: .monospaced)).lineLimit(1)
+            }
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.8))
+        .foregroundStyle(Color.green)
+        .padding(.top, 44)
     }
 
     /// 앱 열 때 스윕 — 키·미분류가 있을 때만 분류를 걸어둔다. 진행은 상단 토스트(auto:true).

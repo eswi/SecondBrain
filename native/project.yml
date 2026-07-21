@@ -11,6 +11,13 @@ settings:
 packages:
   SecondBrainCore:
     path: SecondBrainCore
+schemes:
+  SecondBrainApp-iOS:
+    build:
+      targets:
+        SecondBrainApp-iOS: all
+    run:
+      config: Debug
 targets:
   SecondBrainApp-iOS:
     type: application
