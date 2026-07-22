@@ -378,7 +378,7 @@ struct MemoryRow: View {
             NavigationLink(value: item) {                                    // 나머지 탭 = 상세 화면
                 HStack(spacing: 10) {
                     Text(item.raw ?? "(내용 없음)")
-                        .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                        .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)   // 원문 2줄까지(넘치면 …)
                     Spacer(minLength: 4)
                     if provisional { ProvisionalBadge() }
                     SourceBadge(source: item.source)
