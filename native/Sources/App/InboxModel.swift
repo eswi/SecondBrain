@@ -260,20 +260,29 @@ final class InboxModel: ObservableObject {
     // MARK: 자동 분류 (Claude API · 사양서 §0-A·§3)
 
     /// 미분류 항목을 Claude API로 분류(iPhone 직접 호출). 결과(type/due/resurface)를
-    /// **기존 edit 이벤트 경로**로 기기 조각에 붙인다(엔진·직렬화 무변경). 앱 열 때·수동 버튼에서 호출.
+    /// **기존 edit 이벤트 경로**로 기기 조각에 붙인다(엔진·직렬화 무변경). "당겨서 분류"·수동 버튼에서 호출.
     /// 키는 Keychain에서만 읽는다(§7). 성역(원문·수집시각·기기)은 절대 안 건드린다.
-    /// - Parameter auto: true면 **앱 열 때 자동 스윕** — 진행을 상단 토스트(autoToast)로 알린다.
-    ///   false(수동 버튼)면 토스트 없이 classifyPhase만 갱신(설정 그 자리에서 표시).
-    func classifyUnclassified(auto: Bool = false) async {
+    /// - Parameter auto: true면 진행/결과를 **화면 중앙 토스트**(autoToast)로 알린다("당겨서 분류").
+    ///   false(설정 수동 버튼)면 토스트 없이 classifyPhase만 갱신(설정 그 자리에서 표시).
+    /// - Parameter runningToast: auto일 때 "분류하는 중…" 진행 토스트를 띄울지. "당겨서 분류"는
+    ///   네이티브 새로고침 스피너가 이미 진행을 표시하므로 false로 껐다(중복 스피너 방지) — 완료/실패/없음
+    ///   결과 토스트는 그대로 뜬다.
+    func classifyUnclassified(auto: Bool = false, runningToast: Bool = true) async {
         if case .running = classifyPhase { return }
         guard let key = KeychainStore.loadAPIKey() else {
-            classifyPhase = .failed("API 키가 없습니다. 설정에서 넣어 주세요."); return
+            classifyPhase = .failed("API 키가 없습니다. 설정에서 넣어 주세요.")
+            if auto { autoToast = ClassifyToast(kind: .failure, text: "API 키가 없어요 — 설정에서 넣어 주세요") }
+            return
         }
         let targets = unclassifiedItems.filter { !($0.raw ?? "").isEmpty }
-        guard !targets.isEmpty else { classifyPhase = .done(0); return }
+        guard !targets.isEmpty else {
+            classifyPhase = .done(0)
+            if auto { autoToast = ClassifyToast(kind: .success, text: "분류할 새 기억이 없어요") }
+            return
+        }
 
         classifyPhase = .running
-        if auto { autoToast = ClassifyToast(kind: .running, text: "새 기억을 분류하는 중…") }
+        if auto && runningToast { autoToast = ClassifyToast(kind: .running, text: "새 기억을 분류하는 중…") }
         let items = targets.enumerated().map { (index: $0.offset, raw: $0.element.raw ?? "") }
         do {
             let results = try await ClaudeClassifier.classify(items: items, apiKey: key)
@@ -287,7 +296,8 @@ final class InboxModel: ObservableObject {
             appendBatch(events)   // 재읽기·재병합 포함
             classifyPhase = .done(events.count)
             if auto {
-                autoToast = events.isEmpty ? nil
+                autoToast = events.isEmpty
+                    ? ClassifyToast(kind: .success, text: "새로 분류된 기억이 없어요")
                     : ClassifyToast(kind: .success, text: "새 기억 \(events.count)개를 분류했어요")
             }
         } catch {

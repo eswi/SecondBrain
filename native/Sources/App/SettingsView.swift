@@ -143,7 +143,7 @@ struct SettingsView: View {
 
     /// 자동 분류 안내 + 마지막 실행 결과. 키는 이 기기 Keychain에만 저장(§7).
     private var classifyFooter: String {
-        let base = "미분류를 Claude가 종류·시점으로 분류합니다. 키는 이 기기 Keychain에만 저장되고 파일·iCloud엔 안 담깁니다. 앱을 열 때도 자동으로 한 번 분류합니다."
+        let base = "미분류를 Claude가 종류·시점으로 분류합니다. 키는 이 기기 Keychain에만 저장되고 파일·iCloud엔 안 담깁니다. \"새로운 기억\" 화면을 아래로 당겨도 분류할 수 있습니다."
         switch model.classifyPhase {
         case .done(let n):     return n > 0 ? "\(base)\n방금 \(n)개를 분류했습니다." : base
         case .failed(let msg): return "\(base)\n실패: \(msg)"

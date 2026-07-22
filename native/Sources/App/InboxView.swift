@@ -114,6 +114,9 @@ struct InboxView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
+        // 화면을 아래로 당기면 미분류를 분류(pull-to-classify, §0-A). 진행은 네이티브 새로고침
+        // 스피너가 표시하고(그래서 runningToast:false), 결과·실패·"없음"은 중앙 토스트로 알린다.
+        .refreshable { await model.classifyUnclassified(auto: true, runningToast: false) }
     }
 
     // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)

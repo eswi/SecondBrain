@@ -40,7 +40,7 @@ struct RootView: View {
         }
         .tint(Palette.accent)
         .preferredColorScheme(.dark)
-        // 자동 스윕 토스트 — 어느 탭에 있든 **화면 중앙**에 뜬다(설정으로 안 끌고 감).
+        // 당겨서 분류(pull-to-classify) 결과 토스트 — 어느 탭에 있든 **화면 중앙**에 뜬다.
         // 터치는 안 막는다(allowsHitTesting=false) → 밑 화면 계속 조작 가능.
         .overlay {
             if let toast = model.autoToast {
@@ -70,18 +70,15 @@ struct RootView: View {
                 if model.autoToast == t { model.autoToast = nil }
             }
         }
-        // 초기 로드(백그라운드 I/O)를 기다린 뒤 자동 분류를 잇는다 — 로드 완료 전엔 미분류 목록이
-        // 비어 있어 분류가 헛돌기 때문. load I/O가 메인 밖이라 이 await 동안에도 UI는 안 막힌다.
-        // (사양서 §0-A: 백그라운드는 iOS 제약 → "앱 열 때 모아 분류"가 현실적. .running 중복은 내부 차단.)
+        // 초기 로드(백그라운드 I/O). load I/O가 메인 밖이라 이 await 동안에도 UI는 안 막힌다.
+        // 분류는 자동으로 걸지 않는다 — 사용자가 "새로운 기억"을 아래로 당길 때만(pull-to-classify, §0-A).
         .task {
             await model.reload()
-            autoClassify()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 // 복귀 보강: 나가는 순간 못 잡았거나 프레임워크가 다시 덮어썼으면 여기서 원복(무애니메이션).
                 if tab != stableTab { setTabNoAnimation(stableTab) }
-                autoClassify()
             }
         }
         // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
@@ -105,19 +102,6 @@ struct RootView: View {
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) { tab = newTab }
-    }
-
-    /// 앱 열 때/재진입 자동 분류 스윕 실행 여부.
-    /// **2026-07-22: 꺼둠** — "앱 열 때마다 자동"을 멈춘다. 내일 "화면 아래로 당기면 분류"(pull-to-classify)로
-    /// 대체 예정. 설정의 수동 "지금 분류하기"(model.classifyUnclassified 직접 호출)는 이 플래그와 무관하게 살아있음.
-    private static let autoClassifyOnOpen = false
-
-    /// 앱 열 때 스윕 — 키·미분류가 있을 때만 분류를 걸어둔다. 진행은 상단 토스트(auto:true).
-    /// 호출 지점(.task·scenePhase active)은 그대로 두고, 실행만 위 플래그로 통제한다(끄면 두 곳 동시 무효).
-    private func autoClassify() {
-        guard Self.autoClassifyOnOpen else { return }   // 자동 스윕 비활성화(수동 버튼은 영향 없음)
-        guard KeychainStore.hasKey, !model.unclassifiedItems.isEmpty else { return }
-        Task { await model.classifyUnclassified(auto: true) }
     }
 }
 
