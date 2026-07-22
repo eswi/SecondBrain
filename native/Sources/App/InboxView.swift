@@ -14,13 +14,16 @@ extension View {
 }
 
 /// "새로운 기억" 화면(다크) — 일상 화면(memory-philosophy.md §5).
-/// 위→아래: 원칙 띠 · 지금 챙길 것 · 대시보드 · 새 기억들(미확정, 오래된 순).
+/// 위→아래: 원칙 띠 · 지금 챙길 것 · 대시보드 · 새 기억들(미확정, 기본 오래된 순 · 역순 보기 토글).
 /// 필터는 여기 없다 — 살아있는 기억 탭의 몫.
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
     @State private var showCapture = false
     @State private var path = NavigationPath()
+    // "새 기억들" 표시 순서 뒤집기 토글. **세션 한정**(탭 전환엔 유지, 앱 재실행 시 기본=오래된 순).
+    // 데이터·성역은 불변 — model.newTab.newMemories는 늘 오래된 순(선입선출)이고, 여기서 보기 순서만 뒤집는다.
+    @State private var reverseNewOrder = false
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
     var body: some View {
@@ -48,6 +51,8 @@ struct InboxView: View {
 
     private var content: some View {
         let tab = model.newTab
+        // 데이터는 그대로(오래된 순) — 토글이 켜지면 보기 순서만 뒤집는다.
+        let orderedNew = reverseNewOrder ? Array(tab.newMemories.reversed()) : tab.newMemories
         return List {
             if !model.orderedPrinciples.isEmpty {
                 Section {
@@ -97,7 +102,7 @@ struct InboxView: View {
                 if tab.newMemories.isEmpty {
                     emptyNewRow
                 } else {
-                    ForEach(tab.newMemories, id: \.id) { item in
+                    ForEach(orderedNew, id: \.id) { item in
                         MemoryRow(item: item, model: model, provisional: true)
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
@@ -107,7 +112,9 @@ struct InboxView: View {
                     }
                 }
             } header: {
-                sectionTitle("새 기억들", count: tab.newMemories.count)
+                // 항목이 둘 이상일 때만 역순 토글을 보인다(하나 이하면 순서 의미 없음).
+                sectionTitle("새 기억들", count: tab.newMemories.count,
+                             trailing: tab.newMemories.count > 1 ? AnyView(reverseOrderToggle) : nil)
                     .listRowInsets(EdgeInsets())
             }
         }
@@ -162,7 +169,8 @@ struct InboxView: View {
     }
 
     func sectionTitle(_ title: String, count: Int,
-                      symbol: String? = nil, symbolColor: Color = Palette.textSecondary) -> some View {
+                      symbol: String? = nil, symbolColor: Color = Palette.textSecondary,
+                      trailing: AnyView? = nil) -> some View {
         HStack(spacing: 6) {
             if let symbol {
                 Image(systemName: symbol).font(.caption).foregroundStyle(symbolColor)
@@ -170,11 +178,29 @@ struct InboxView: View {
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             Text("\(count)").font(.caption2).foregroundStyle(Palette.textTertiary)
             Spacer()
+            trailing
         }
         .textCase(nil)
         .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.bg)
+    }
+
+    /// "새 기억들" 정렬 방향 토글 — 표시 순서만 뒤집는다(데이터·성역 불변). 세션 한정.
+    /// 아이콘 = **현재** 보기 방향: 기본 오래된 순(오름차순)=arrow.up, 역순 최신 순(내림차순)=arrow.down.
+    /// 역순(비기본)일 때 accent로 틴트해 "지금 뒤집혀 있음"을 알린다.
+    private var reverseOrderToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { reverseNewOrder.toggle() }
+        } label: {
+            Image(systemName: reverseNewOrder ? "arrow.down" : "arrow.up")
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(reverseNewOrder ? Palette.accent : Palette.textSecondary)
+                .frame(width: 28, height: 22)   // 넉넉한 탭 타깃
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(reverseNewOrder ? "최신 순으로 보는 중 — 오래된 순으로" : "오래된 순으로 보는 중 — 최신 순으로")
     }
 
     private var emptyNewRow: some View {
