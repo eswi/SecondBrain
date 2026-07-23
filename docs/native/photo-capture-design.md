@@ -1,0 +1,146 @@
+# 사진 첨부 + 주차위치 분류 설계 — 카메라·EXIF·유연층 (native v1)
+
+> **정본 위치.** "사진을 기억에 첨부"하는 **공통 미디어 인프라**와, 그 위에 얹는 **유연층 첫 분류(주차위치)**의 설계 정본.
+> 근거: `audio-capture-design.md`(음성 선례 — 이 문서는 그걸 **미러링**), edit-policy §6(원본 미디어=불변·텍스트 층=가변), memory-philosophy, `classification-redesign-open-questions.md`(기본층/유연층 D1, 반복=속성 D3, 그릇 우선 방향).
+>
+> **상태: 설계 확정 · 구현 단계별 진행 중(2026-07-23).** 병합 안전성(B2 펼침) 코드 추적으로 확인 — 아래 §3.
+>
+> **보호 자산 무변경 선언:** §2 `TypeCatalog`(Theme.swift) · §3 프롬프트(`classify.py`/`ClassifyPrompt.swift`) · **`MergeEngine` 병합 로직 · `merge-design.md` 규칙**은 이 설계로 **바뀌지 않는다.** 바뀌는 Core는 **직렬화 층(`EventLog`/`EventWriter`)뿐**이다(§3).
+
+## 0. 왜 / 두 겹
+
+주차위치 = "차 어디 있나 다시 찾는" 기억. **사진 한 장 + 위치 설명**이면 충분. 이걸 만들며 두 겹이 생긴다:
+
+1. **사진 첨부 인프라** — 주차 전용이 아니라 나중 다른 분류(추억 등)도 쓸 **공통 미디어 층.** 음성(`audio:`)을 그대로 미러링.
+2. **주차위치 분류(유연층)** — "공통 그릇 + 분류별 필드 정의(코드)"(D4)의 첫 검증 대상.
+
+그리고 위치 설명·메모 같은 **긴 텍스트**를 그릇이 담아야 하는데, 지금 `set k=v` 직렬화가 공백을 못 담는다(관통점 3). 그래서 실제로는 **세 조각**: 그릇(§3) · 사진(§4·§5) · 주차(§6).
+
+## 1. 확정된 범위 (2026-07-23)
+
+| 항목 | 결정 | 근거 |
+|---|---|---|
+| 사진 획득 | **카메라 촬영만** (앨범 선택 없음) | 범위 좁힘 |
+| 사진 수 | **한 장부터** (여러 장은 나중) | `<uuid>.jpg` 1:1 (음성과 동일) |
+| 위치(GPS) | **사진 EXIF에만** 두고 볼 때 읽음. **그릇엔 안 박음** | 프라이버시 — GPS가 iCloud로 안 새게(§5) |
+| 별도 GPS 인프라 | **안 만듦** | EXIF 활용으로 대체 |
+| 사진 원본 정의 | **캡처 시 1회 압축본 = 원본, 이후 불변** | §4-④ |
+| 긴 텍스트/구조화 | **fields.v1 JSON 편집 블록(B2 펼침)** | §3 — 평문 유지 + 병합 안전 |
+| 유연층 레지스트리 | **parking 하드코딩**부터(사용자 관리 UI 나중) | 이번 목표=그릇 검증 |
+
+## 2. 데이터 모델 — 음성 미러링
+
+- **파일명 = 항목 UUID.** `<uuid>.jpg`. 항목 ↔ 사진 1:1 결정적(음성 `<uuid>.m4a`와 동형).
+- **포인터 필드 = create 블록의 `photo: <uuid>.jpg`.** `audio:`·`device:`와 같은 자리(성역·불변, create에만).
+  - 파서(`EventLog`)는 create 블록 임의 `key: value`를 이미 처리 → **파싱 무변경.**
+  - 직렬화(`EventWriter`)만 create-블록 화이트리스트에 **`"photo"` 1줄 추가.**
+  - create에만 있으므로 per-field LWW상 **절대 안 덮임 = 사실상 불변.** (음성과 동일 보장.)
+- **포맷 = JPEG.** HEIC→JPEG 변환(기기 간·Mac 호환·단순성).
+
+## 3. 그릇 — fields.v1 편집 블록 (긴 텍스트·구조화 데이터) ★
+
+### 문제
+변이 이벤트 `@ hlc | id | set k=v k2=v2`는 **공백으로 쪼개** 파싱·직렬화(`EventWriter`/`EventLog`)한다. 값에 공백 있으면 깨진다. `question`이 이 때문에 파일에 못 써졌고, 위치·메모도 같은 벽.
+
+`raw`(원문, 공백 잔뜩)는 잘 써진다 — create 블록 `key: value` 줄이라 **줄 끝까지 읽기** 때문. **블록 형식은 공백을 이미 담는다.** 깨지는 건 인라인 `set`뿐.
+
+### 해결 — B2: JSON은 "직렬화 그릇", 파싱 때 개별 필드로 펼침
+
+디스크 포맷(블록형 — `|` 분해 충돌 회피):
+```
+@ 1737600000000.3.iphone | <id> | edit
+  fields.v1: {"location":"지하 2층 B구역, 빨간 기둥 옆","memo":"엘리베이터 왼쪽 30m"}
+```
+- **파서(`EventLog`):** verb가 `edit`면 다음 들여쓴 줄을 create 블록처럼 읽어 `fields.v1:` 값을 JSONDecode → **`Event.fields`에 `location`·`memo`를 평평하게 펼침.**
+- **직렬화(`EventWriter`):** 편집 이벤트의 값 중 **공백·줄바꿈이 있으면** JSON 블록으로, 없으면 기존 `set k=v`(하위호환).
+- JSON은 **그 이벤트가 세팅한 필드 집합만** 담음(병합된 전체 상태 아님) → **append-only 유지.**
+- **평문 유지:** JSONSerialization은 한글을 UTF-8 그대로 출력(`\uXXXX` 아님) → 파일이 사람이 읽을 수 있게 유지. percent-encode/base64 안 씀.
+- **결정적:** `.sortedKeys`로 키 정렬 → 같은 입력 같은 출력.
+
+### 병합 영향 = 없음 (코드 추적 확인)
+`MergeEngine.merge`는 `Event.fields`(평평한 `[String:String]`)를 **키별로** LWW한다(`MergeEngine.swift:49-60`). 엔진은 그 필드가 파일에서 `set`으로 왔든 JSON 블록으로 왔든 **모른다.** 파서가 펼쳐서 평평하게 넘기므로 **엔진 입력 모양 불변.**
+- **`MergeEngine` 코드 무변경 · `merge-design.md` 규칙 무변경** (per-field LWW 그대로 → 두 기기가 각각 location/memo를 고쳐도 둘 다 생존).
+- **B1(덩어리, JSON을 필드 하나의 값으로) 금지:** 코드는 안 바뀌어도 병합 granularity가 필드→덩어리로 퇴화해 동시 편집을 조용히 삭제(무손실 위반). **반드시 B2(펼침).**
+- 바뀌는 곳: **`EventLog`(edit 블록 파싱·펼침) + `EventWriter`(edit 블록 출력)** = 직렬화 층만.
+
+### 보너스
+`question`(공백 있는 재확인 질문)도 이 경로로 자연히 해결(그동안 미지원이던 후속 과제 닫힘).
+
+## 4. 사진 — 카메라 촬영 · 압축 · 불변
+
+- **획득 = 카메라 촬영만.** `AVCapturePhotoOutput`(또는 `UIImagePickerController` 카메라 소스). 앨범 선택 없음.
+- **권한:** `NSCameraUsageDescription`. 거부 시 사진 없이 진행(graceful).
+- **① 어떻게 얻나:** 촬영 → 임시 파일 → [저장] 때 항목 UUID로 확정(이동).
+- **② 여러 장:** 지금은 **1장.** 파일명 `<uuid>.jpg`. (여러 장은 `<uuid>-N.jpg` + 쉼표 목록으로 나중 확장 — create 블록 값이 줄 끝까지라 목록도 파서 안전.)
+- **③ 용량:** 촬영 원본 3~12MB → **캡처 시 1회 리사이즈+압축**: 긴 변 ~2048px, JPEG 품질 ~0.7 → 약 200~500KB.
+- **④ write-once·불변:** 확정(이동) 후 재오픈 없음 = 음성과 동일한 write-once.
+  - **원본의 정의(명시):** 사진은 **캡처 시 1회 압축한 그 파일이 곧 원본**이다(무손실 아님 — 주차엔 충분·용량 절약). **한 번 압축하면 다신 안 건드린다(불변).** edit-policy §6의 "원본 미디어=불변"은 "그 순간 확정한 것"을 원본으로 삼아 지켜진다.
+
+## 5. 위치 — 사진 EXIF GPS (별도 인프라 없음) ★
+
+### iOS 현실
+시스템 카메라 앱 사진은 위치 켜져 있으면 GPS EXIF가 있지만, **앱이 직접 촬영하면 iOS가 프라이버시상 GPS를 자동으로 안 박는다.** 앱이 위치 권한을 갖고 **직접 넣어야** 담긴다.
+
+### 설계
+- **① GPS 확보:** 촬영 순간 Core Location으로 좌표 1회 읽어, 저장하는 불변 JPEG의 **EXIF GPS 태그에 직접 기록.** (권한 = `NSLocationWhenInUseUsageDescription`. 별도 인프라 아님 — 촬영 시 한 단계.)
+  - 권한 거부·실외 신호 없음 → **GPS 없이 저장(graceful).**
+- **② 읽기:** `ImageIO`(`CGImageSourceCopyPropertiesAtIndex` → `kCGImagePropertyGPSDictionary`)로 위/경도 읽음. 온디바이스.
+- **③ 저장 위치 = 사진 EXIF에만, 볼 때 읽음 (그릇엔 안 박음):**
+  - **텍스트 그릇(조각 파일)은 기기 간 동기화**되지만 **사진은 기기에만.** GPS 좌표를 그릇에 박으면 **사진은 안 올라가는데 좌표만 iCloud로 동기화** = 민감정보 누출.
+  - → **GPS는 사진 파일 EXIF 안에만**(기기 전용), **볼 때 사진에서 읽어** 표시. 사진 불변이라 EXIF도 불변 → read-on-view 안전.
+  - **`location`(위치 텍스트)와 구분:** `location`은 사람이 쓰는 설명("지하 2층…") → 그릇에 들어가고 동기화돼도 OK(좌표 아님). **GPS 좌표(기계값)만 EXIF 전용.**
+- **불변 정합:** JPEG를 finalize 때 GPS 박아 1회 쓰고 이후 안 고침 → write-once 유지(태어날 때부터 GPS 포함).
+- (나중·선택) 좌표→주소 역지오코딩, 좌표 검색 등은 지금 범위 밖. 좌표 검색 불가는 주차엔 무문제.
+
+## 6. 주차위치 분류 (유연층) — 공통 그릇 + 분류별 필드
+
+### 그릇은 안 바뀐다
+데이터 그릇 = 이벤트 소싱 `[String:String]` + 미디어 포인터(그대로). 분류가 늘어도 그릇 불변(D4). 주차는 **필드 조합**으로 얹힐 뿐.
+
+### 분류별 스키마(코드) — §2 밖
+```
+ClassSchema { key, label, layer(.base/.flex), fields: [FieldSpec] }
+FieldSpec  { key, kind(.text/.longText/.photo/.date…), sanctuary(성역?), required }
+```
+
+**주차위치 스키마:**
+
+| 필드 | kind | 성역/가변 | 필수/선택 | 담기는 곳 |
+|---|---|---|---|---|
+| id·date·time·device | — | 성역 | 필수 | create 블록(기존) |
+| `photo` | photo(카메라 1장) | **성역·불변** | 권장 | create `photo: <uuid>.jpg` (§2·§4) |
+| GPS 좌표 | (사진 EXIF) | 성역·기기전용 | 있으면 | **사진 파일 안에만** (§5) |
+| `location` | 텍스트(긴 것 가능) | **가변** | 필수 | `fields.v1` JSON edit (§3) |
+| `memo` | 텍스트(긴 것 가능) | **가변** | 선택 | `fields.v1` JSON edit (§3) |
+| `type` | — | 가변 | =`parking` | 기존 type 필드 |
+
+- **성역/가변 = 어느 이벤트에 쓰느냐로 강제:** 성역=create 블록, 가변=`fields.v1` edit 블록. 스키마의 `sanctuary` 플래그가 UI·검증에서 이 규율을 표현.
+- **유연층 레지스트리 = 별도**(§2 `TypeCatalog` 무변경). 처음엔 parking 하드코딩.
+- **자동분류 안전:** `classifyFields`의 `validTypes`가 `parking`을 모름 → **AI가 안 찍음·사람 수동 지정만.** §3 프롬프트 무변경과 정합.
+
+## 7. 저장 위치 · 프라이버시 · 용량 (음성과 동일)
+
+- **기본 = 기기에만.** 앱 샌드박스 `Application Support/SecondBrain/photo/<uuid>.jpg`.
+- `PhotoStore`가 저장 위치를 추상화(`searchDirs()`) → 나중 **항목별 iCloud 옵트인**을 재생/표시에 자동 반영(음성 §7과 동형). 불변 포인터(`photo:`=정체성)와 가변 위치 분리.
+- **용량:** 압축 후 항목당 ~200~500KB. 1,000개 ≈ ~200~500MB(기기 저장, 사소).
+- **다른 기기:** 텍스트·location은 보이되 사진·GPS 없음 → "이 기기에 사진 없음" 표시.
+
+## 8. 변경 범위
+
+| 파일 | 변경 | 단계 |
+|---|---|---|
+| `EventLog.swift` (Core) | `\| edit` 블록 파싱 → fields.v1 JSONDecode·펼침 | 1 |
+| `EventWriter.swift` (Core) | edit 블록 출력(공백 시) + create `photo` 화이트리스트 | 1(+2) |
+| **새 `PhotoStore.swift`** | `AudioStore` 미러 + 리사이즈/JPEG/EXIF GPS 기록·읽기 | 2·3 |
+| 새 카메라 촬영 UI | `AVCapturePhotoOutput` (앨범 없음) | 2 |
+| project.yml(Info.plist) | `NSCameraUsageDescription`·`NSLocationWhenInUseUsageDescription` | 2·3 |
+| `InboxModel` | `photoTemp:` 확정 + 긴 텍스트 edit 경로 | 2·4 |
+| 새 `ClassSchema`/`FlexTypeCatalog` | 유연층 레지스트리 + 주차 스키마(§2 분리) | 4 |
+| `DetailView.swift` | 주차 렌더(위치·메모 편집·사진·EXIF 위치 표시) | 4 |
+
+## 9. 리스크·검증
+
+- **그릇(§3)** — 헤드리스 검증 가능(`swift test`): 왕복·per-field LWW·하위호환. 실기기 검증은 `question` 실쓰기로 겸함.
+- **사진(§4)·EXIF(§5)** — 헤드리스 불가(촬영·GPS·표시) → **실기기 청취/확인**(edit-policy·CLAUDE 규칙 #3).
+- **압축본=원본** — 무손실 아님을 문서에 명시(§4-④). 나중 고화질 필요한 분류(추억)는 그때 품질 정책 재검토.
+- **EXIF GPS 미탑재 케이스** — 권한 거부·실내 흔함 → 없어도 정상 동작(graceful) 필수.

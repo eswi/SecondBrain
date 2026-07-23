@@ -21,9 +21,24 @@ public enum EventWriter {
         }
         if f["deleted"] == "true" { return "@ \(e.hlc.serialized) | \(e.id) | delete" }
         if f["deleted"] == "false" { return "@ \(e.hlc.serialized) | \(e.id) | undelete" }
+        // 값에 공백·줄바꿈이 있으면 `set k=v` 경로가 못 담는다(공백으로 쪼개짐 — 예: 위치 설명·메모·question).
+        // → fields.v1 JSON 편집 블록. create 블록처럼 들여쓴 한 줄에 JSON을 담아 줄 끝까지 읽게 한다(파싱 안전).
+        // 병합: 파서가 이 JSON을 **개별 필드로 펼쳐** 넘기므로 per-field LWW 그대로 — MergeEngine·merge-design 무변경.
+        // (설계 `docs/native/photo-capture-design.md` §3. B2=펼침. 덩어리 LWW인 B1은 병합 퇴화라 금지.)
+        if f.values.contains(where: { $0.contains(" ") || $0.contains("\n") }) {
+            return "@ \(e.hlc.serialized) | \(e.id) | edit\n  fields.v1: \(compactJSON(f))"
+        }
         // set k=v ... (키 정렬 → 결정적). 값에 공백 없는 필드만 이 경로로 온다(raw는 create 블록).
         let sets = f.keys.sorted().map { "\($0)=\(f[$0] ?? "")" }.joined(separator: " ")
         return "@ \(e.hlc.serialized) | \(e.id) | set \(sets)"
+    }
+
+    /// 필드 딕셔너리 → 결정적 compact JSON(키 정렬). 한글은 UTF-8 그대로(= 평문 자산 유지, `\uXXXX` 아님).
+    private static func compactJSON(_ f: [String: String]) -> String {
+        guard let data = try? JSONSerialization.data(
+                withJSONObject: f, options: [.sortedKeys, .withoutEscapingSlashes]),
+              let s = String(data: data, encoding: .utf8) else { return "{}" }
+        return s
     }
 
     /// 이벤트를 파일 끝에 append. 파일 없으면 생성. (append-only, 원자성은 append 자체로 충분.)

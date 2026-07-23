@@ -6,7 +6,8 @@ public enum EventLog {
     public static func parse(_ text: String) -> [Event] {
         let itemRe = try! NSRegularExpression(
             pattern: #"^-\s+(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+\|\s+([^|]+?)\s+\|\s+(.*)$"#)
-        let fieldRe = try! NSRegularExpression(pattern: #"^\s+([A-Za-z_]+):\s*(.*)$"#)
+        // key에 '.'·숫자 허용(예: `fields.v1`). 기존 키(id/type/…)는 그대로 매치 — charset 확장은 무해.
+        let fieldRe = try! NSRegularExpression(pattern: #"^\s+([A-Za-z0-9_.]+):\s*(.*)$"#)
         func cap(_ m: NSTextCheckingResult, _ idx: Int, _ s: String) -> String {
             guard let r = Range(m.range(at: idx), in: s) else { return "" }
             return String(s[r])
@@ -75,6 +76,37 @@ public enum EventLog {
                         events.append(.delete(id: id, hlc: hlc))
                     } else if verb == "undelete" {
                         events.append(.undelete(id: id, hlc: hlc))
+                    } else if verb == "edit" {
+                        // 블록형 편집: 다음 들여쓴 줄들의 `fields.v1: <JSON>`을 읽어 **개별 필드로 펼친다**.
+                        // (공백 있는 값을 담는 경로 — set k=v가 못 함. 엔진엔 평평한 [String:String]로 전달 →
+                        //  per-field LWW 그대로. 설계 `photo-capture-design.md` §3.)
+                        var fields: [String: String] = [:]
+                        var j = i + 1
+                        while j < lines.count {
+                            let l2 = lines[j]
+                            if l2.trimmingCharacters(in: .whitespaces).isEmpty { break }
+                            if l2.hasPrefix("@") { break }
+                            if !(l2.first == " " || l2.first == "\t") { break }
+                            if let fm = matches(fieldRe, l2) {
+                                let k = cap(fm, 1, l2).lowercased()
+                                let v = cap(fm, 2, l2)
+                                if k == "fields.v1" || k == "fieldsv1" {
+                                    let js = v.trimmingCharacters(in: .whitespaces)
+                                    if let d = js.data(using: .utf8),
+                                       let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                                        for (kk, vv) in obj {
+                                            fields[kk] = (vv as? String) ?? String(describing: vv)
+                                        }
+                                    }
+                                } else {
+                                    fields[k] = v.trimmingCharacters(in: .whitespaces)
+                                }
+                            }
+                            j += 1
+                        }
+                        if !fields.isEmpty { events.append(Event(id: id, hlc: hlc, fields: fields)) }
+                        i = j
+                        continue
                     } else if verb.hasPrefix("set ") {
                         var f: [String: String] = [:]
                         for a in verb.dropFirst(4).split(separator: " ") {
