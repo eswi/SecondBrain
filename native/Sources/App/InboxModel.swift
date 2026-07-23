@@ -235,12 +235,16 @@ final class InboxModel: ObservableObject {
     /// v1은 원문 한 줄 유지를 위해 줄바꿈을 공백으로 접는다(여러 줄 보존은 나중).
     /// - Parameter audioTemp: 캡처 중 녹음된 임시 음성 파일. 있으면 항목 UUID로 확정(`<uuid>.m4a`, 불변)하고
     ///   `audio:` 포인터를 성역에 찍는다. 확정 실패·없음이면 음성 없이 생성(graceful).
-    func capture(text: String, source: String, audioTemp: URL? = nil) {
+    /// - Parameter photoTemp: 촬영된 임시 사진 파일(리사이즈·압축본). 있으면 `<uuid>.jpg`로 확정하고
+    ///   `photo:` 포인터를 성역에 찍는다(audio와 동형·불변). 확정 실패·없음이면 사진 없이 생성(graceful).
+    ///   **원문 없는 기억은 만들지 않는다** — raw 비면 audio·photo 임시를 지우고 항목을 안 만든다(마지막 백스톱).
+    func capture(text: String, source: String, audioTemp: URL? = nil, photoTemp: URL? = nil) {
         let raw = text
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             if let audioTemp { AudioStore.deleteTemp(audioTemp) }   // 텍스트 없으면 저장 안 함 → 임시 정리
+            if let photoTemp { PhotoStore.deleteTemp(photoTemp) }
             return
         }
         let now = Date()
@@ -251,6 +255,9 @@ final class InboxModel: ObservableObject {
         var extra = ["device": CaptureDevice.currentLabel()]
         if let audioTemp, let name = AudioStore.finalize(temp: audioTemp, forId: id) {
             extra["audio"] = name   // 원본 음성 포인터(성역·불변)
+        }
+        if let photoTemp, let name = PhotoStore.finalize(temp: photoTemp, forId: id) {
+            extra["photo"] = name   // 원본 사진 포인터(성역·불변)
         }
         let e = Event.create(id: id, hlc: tick(),
                              date: date, time: time, source: source, raw: raw, extra: extra)

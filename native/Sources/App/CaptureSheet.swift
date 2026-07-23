@@ -1,5 +1,8 @@
 import SwiftUI
 import SecondBrainCore
+#if os(iOS)
+import UIKit
+#endif
 
 /// 앱 안 수집 시트. iOS: 열리면 바로 한국어 STT 시작 → 실시간 전사 → 정지·교정 → [저장].
 /// macOS: STT 없이 텍스트 입력. 저장 = 네이티브 항목 생성(미분류 → "새 기억들").
@@ -7,9 +10,12 @@ struct CaptureSheet: View {
     @ObservedObject var model: InboxModel
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
-    @State private var saved = false   // [저장]으로 확정됐는지 — onDisappear의 임시 음성 정리 판단용
+    @State private var saved = false   // [저장]으로 확정됐는지 — onDisappear의 임시 음성·사진 정리 판단용
     #if os(iOS)
     @StateObject private var speech = SpeechCapture()
+    @State private var showCamera = false
+    @State private var photoTemp: URL?                       // 촬영한 임시 사진(저장 시 확정 / 취소 시 삭제)
+    @State private var photoSessionId = UUID().uuidString    // 이 시트 세션의 임시 파일 이름
     #endif
 
     var body: some View {
@@ -36,6 +42,7 @@ struct CaptureSheet: View {
                     }
                 #if os(iOS)
                 micControl
+                photoControl
                 #endif
                 Spacer(minLength: 0)
             }
@@ -58,7 +65,19 @@ struct CaptureSheet: View {
         #if os(iOS)
         .onAppear { speech.start() }                          // 열리면 바로 STT(+ 원본 음성 녹음)
         .onChange(of: speech.transcript) { _, t in text = t } // 실시간 전사를 편집칸에
-        .onDisappear { if !saved { speech.cancelAndDiscard() } }   // 미저장 종료 → 임시 음성 삭제
+        .onDisappear {                                        // 미저장 종료 → 임시 음성·사진 삭제
+            if !saved {
+                speech.cancelAndDiscard()
+                if let p = photoTemp { PhotoStore.deleteTemp(p) }
+            }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraCapture { img in
+                if let old = photoTemp { PhotoStore.deleteTemp(old) }   // 다시 찍기 → 이전 임시 삭제(고아 방지)
+                photoTemp = PhotoStore.saveCaptured(img, sessionId: photoSessionId)
+            }
+            .ignoresSafeArea()
+        }
         #endif
     }
 
@@ -67,7 +86,7 @@ struct CaptureSheet: View {
         #if os(iOS)
         // 엔진 정지 + 세션 음성 파일 닫기 → 임시 URL(모든 take 이어진 하나). capture가 <uuid>.m4a로 확정.
         let audioURL = speech.finishAndURL()
-        model.capture(text: text, source: "voice", audioTemp: audioURL)
+        model.capture(text: text, source: "voice", audioTemp: audioURL, photoTemp: photoTemp)
         #else
         model.capture(text: text, source: "text")
         #endif
@@ -129,6 +148,57 @@ struct CaptureSheet: View {
             }
             .buttonStyle(.plain)
             Spacer()
+        }
+    }
+
+    // MARK: 사진 첨부 (본문 먼저 → 그 위에 사진. photo-capture-design.md §4)
+    // 활성 조건 = 본문 있음 + 녹음 중 아님. "원문 없는 기억"을 원천 차단(저장 버튼·capture guard와 3중).
+
+    /// 본문(원문)이 있는가 — 공백만이면 없음으로 본다.
+    private var hasText: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// 카메라 활성 조건: 본문 있음 + 녹음 중 아님(오디오 세션 충돌·발화 끊김 방지 → "말 멈추면 활성화").
+    private var canAttachPhoto: Bool { hasText && !speech.isRecording }
+
+    /// 왜 못 누르는지 안내(활성일 땐 nil).
+    private var photoHint: String? {
+        if !hasText { return "먼저 말하거나 입력하세요" }
+        if speech.isRecording { return "녹음을 멈춘 뒤 사진을 찍어요" }
+        return nil
+    }
+
+    @ViewBuilder private var photoControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Button {
+                    if speech.isRecording { speech.stop() }   // 방어(활성 조건상 이미 정지)
+                    showCamera = true
+                } label: {
+                    Label(photoTemp == nil ? "사진 찍기" : "다시 찍기", systemImage: "camera.fill")
+                        .font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canAttachPhoto)
+
+                if let url = photoTemp, let thumb = UIImage(contentsOfFile: url.path) {
+                    Image(uiImage: thumb).resizable().scaledToFill()
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Text("사진 1장 첨부됨").font(.caption).foregroundStyle(Palette.textSecondary)
+                    Button {
+                        PhotoStore.deleteTemp(url); photoTemp = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            if let hint = photoHint {
+                Text(hint).font(.caption2).foregroundStyle(Palette.textTertiary)
+            }
         }
     }
     #endif

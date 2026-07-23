@@ -45,6 +45,18 @@ final class EventWriterTests: XCTestCase {
         XCTAssertEqual(back[0].fields["raw"], "음성 메모")
     }
 
+    // 원본 사진 포인터(photo)도 create 성역 필드로 왕복돼야 한다(photo-capture-design §2, audio 미러).
+    func testSerializeParseRoundtrip_photoPointer() {
+        let c = Event.create(id: "c3", hlc: HLC(wallMillis: 3, counter: 0, deviceId: "iphone"),
+                             date: "2026-07-24", time: "10:00", source: "image", raw: "주차 위치",
+                             extra: ["photo": "c3.jpg", "type": "parking"])
+        let back = EventLog.parse(EventWriter.serialize(c))
+        XCTAssertEqual(back.count, 1)
+        XCTAssertEqual(back[0].fields["photo"], "c3.jpg")   // 성역 포인터 왕복
+        XCTAssertEqual(back[0].fields["type"], "parking")
+        XCTAssertEqual(back[0].fields["raw"], "주차 위치")
+    }
+
     // 앱이 하는 것: 조각 파일에 이벤트 append → 다시 읽어 병합에 반영되는가 (쓰기→읽기 왕복).
     func testAppendThenLoadReflects() throws {
         let dir = FileManager.default.temporaryDirectory

@@ -12,9 +12,9 @@ public enum EventWriter {
             var lines = ["- \(date) \(time) | \(source) | \(raw)",
                          "  id: \(e.id)",
                          "  hlc: \(e.hlc.serialized)"]
-            // device = 최초 수집 기기(성역), audio = 원본 음성 포인터(<uuid>.m4a, 성역·불변).
-            // 둘 다 create 블록에만 쓰고 이후 안 건드림. 블록의 `key: value`는 값에 공백 허용(파싱 안전).
-            for k in ["type", "due", "resurface", "status", "device", "audio"] {
+            // device = 최초 수집 기기(성역), audio = 원본 음성 포인터(<uuid>.m4a), photo = 원본 사진 포인터(<uuid>.jpg).
+            // 모두 create 블록에만 쓰고 이후 안 건드림(성역·불변). 블록의 `key: value`는 값에 공백 허용(파싱 안전).
+            for k in ["type", "due", "resurface", "status", "device", "audio", "photo"] {
                 if let v = f[k] { lines.append("  \(k): \(v)") }
             }
             return lines.joined(separator: "\n")

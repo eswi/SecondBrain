@@ -1,5 +1,8 @@
 import SwiftUI
 import SecondBrainCore
+#if os(iOS)
+import UIKit
+#endif
 
 /// 상세 화면 — "편집의 무대" (memory-philosophy.md §6, 정책 정본 = edit-policy.md).
 ///
@@ -112,6 +115,7 @@ struct DetailView: View {
             metaRow("iphone", device)                                               // 기기
             metaRow(SourceIcon.symbol(item.source), Self.sourceLabel(item.source))   // 방식
             if item.fields["audio"] != nil { audioRow }                              // 원본 음성(있으면)
+            if item.fields["photo"] != nil { photoRow }                              // 원본 사진(있으면)
             Text("이 값은 어떤 편집으로도 바뀌지 않아요").font(.caption2).foregroundStyle(Palette.textTertiary)
         }
         .padding(14).card()
@@ -141,6 +145,31 @@ struct DetailView: View {
                 Image(systemName: "mic.slash").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
                 Text("원본 음성 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
             }
+        }
+    }
+
+    /// 원본 사진 — 이 기기에 파일이 있으면 이미지, 없으면(다른 기기 촬영) 안내. audioRow 미러.
+    @ViewBuilder private var photoRow: some View {
+        #if os(iOS)
+        if let url = PhotoStore.url(forId: item.id), let img = UIImage(contentsOfFile: url.path) {
+            Image(uiImage: img)
+                .resizable().scaledToFit()
+                .frame(maxWidth: .infinity)
+                .frame(maxHeight: 260)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+        } else {
+            photoMissingRow
+        }
+        #else
+        photoMissingRow
+        #endif
+    }
+
+    private var photoMissingRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "photo").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
+            Text("원본 사진 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
         }
     }
 
