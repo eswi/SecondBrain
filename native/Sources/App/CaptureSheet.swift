@@ -15,6 +15,7 @@ struct CaptureSheet: View {
     @StateObject private var speech = SpeechCapture()
     @State private var showCamera = false
     @State private var photoTemp: URL?                       // 촬영한 임시 사진(저장 시 확정 / 취소 시 삭제)
+    @StateObject private var location = LocationProvider()   // 촬영 위치(사진 EXIF에만 · 그릇엔 안 감)
     #endif
 
     var body: some View {
@@ -65,6 +66,7 @@ struct CaptureSheet: View {
         .onAppear { speech.start() }                          // 열리면 바로 STT(+ 원본 음성 녹음)
         .onChange(of: speech.transcript) { _, t in text = t } // 실시간 전사를 편집칸에
         .onDisappear {                                        // 미저장 종료 → 임시 음성·사진 삭제
+            location.stop()
             if !saved {
                 speech.cancelAndDiscard()
                 if let p = photoTemp { PhotoStore.deleteTemp(p) }
@@ -75,7 +77,8 @@ struct CaptureSheet: View {
                 if let old = photoTemp { PhotoStore.deleteTemp(old) }   // 다시 찍기 → 이전 임시 삭제(고아 방지)
                 // 촬영마다 **고유** 임시 경로 → photoTemp(URL)이 바뀌어 SwiftUI가 새 썸네일을 다시 그린다.
                 // (같은 경로에 덮으면 URL 불변 → 재렌더 안 돼 옛 썸네일이 남는 버그.)
-                photoTemp = PhotoStore.saveCaptured(img, sessionId: UUID().uuidString)
+                // 촬영 위치를 사진 EXIF에 박는다(있으면). 없으면 GPS 없이 저장(graceful).
+                photoTemp = PhotoStore.saveCaptured(img, location: location.last, sessionId: UUID().uuidString)
             }
             .ignoresSafeArea()
         }
@@ -175,6 +178,7 @@ struct CaptureSheet: View {
             HStack(spacing: 12) {
                 Button {
                     if speech.isRecording { speech.stop() }   // 방어(활성 조건상 이미 정지)
+                    location.begin()                          // 프레이밍하는 동안 촬영 위치 취득(EXIF용)
                     showCamera = true
                 } label: {
                     Label(photoTemp == nil ? "사진 찍기" : "다시 찍기", systemImage: "camera.fill")

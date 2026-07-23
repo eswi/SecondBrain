@@ -1,5 +1,7 @@
 import SwiftUI
 import SecondBrainCore
+import MapKit
+import CoreLocation
 #if os(iOS)
 import UIKit
 #endif
@@ -148,16 +150,19 @@ struct DetailView: View {
         }
     }
 
-    /// 원본 사진 — 이 기기에 파일이 있으면 이미지, 없으면(다른 기기 촬영) 안내. audioRow 미러.
+    /// 원본 사진 — 이 기기에 파일이 있으면 이미지(+ EXIF 위치 지도), 없으면 안내. audioRow 미러.
     @ViewBuilder private var photoRow: some View {
         #if os(iOS)
         if let url = PhotoStore.url(forId: item.id), let img = UIImage(contentsOfFile: url.path) {
-            Image(uiImage: img)
-                .resizable().scaledToFit()
-                .frame(maxWidth: .infinity)
-                .frame(maxHeight: 260)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+            VStack(alignment: .leading, spacing: 8) {
+                Image(uiImage: img)
+                    .resizable().scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .frame(maxHeight: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+                if let coord = PhotoStore.coordinate(forId: item.id) { photoMap(coord) }  // 사진 EXIF의 촬영 위치
+            }
         } else {
             photoMissingRow
         }
@@ -165,6 +170,30 @@ struct DetailView: View {
         photoMissingRow
         #endif
     }
+
+    #if os(iOS)
+    /// 사진 EXIF 좌표를 작은 지도로(비상호작용) + 지도 앱 열기. 좌표는 사진 안에만 있음(그릇 X).
+    @ViewBuilder private func photoMap(_ coord: CLLocationCoordinate2D) -> some View {
+        let region = MKCoordinateRegion(center: coord,
+                                        span: MKCoordinateSpan(latitudeDelta: 0.003, longitudeDelta: 0.003))
+        VStack(alignment: .leading, spacing: 6) {
+            Map(initialPosition: .region(region), interactionModes: []) {
+                Marker("촬영 위치", coordinate: coord)
+            }
+            .frame(height: 150)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+            Button {
+                if let u = URL(string: "http://maps.apple.com/?ll=\(coord.latitude),\(coord.longitude)") {
+                    UIApplication.shared.open(u)
+                }
+            } label: {
+                Label("지도 앱에서 열기", systemImage: "map").font(.caption)
+            }
+            .buttonStyle(.plain).foregroundStyle(Palette.accent)
+        }
+    }
+    #endif
 
     private var photoMissingRow: some View {
         HStack(spacing: 8) {

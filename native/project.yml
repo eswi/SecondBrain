@@ -37,6 +37,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "새 기억을 음성으로 받아쓰기 위해 마이크를 사용합니다."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "받아쓴 음성을 이 기기에서 글로 바꾸기 위해 음성 인식을 사용합니다(외부 전송 없음)."
         INFOPLIST_KEY_NSCameraUsageDescription: "기억에 사진을 첨부하기 위해 카메라를 사용합니다. 사진은 이 기기에만 저장됩니다."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "사진에 촬영 위치를 함께 남기기 위해 위치를 사용합니다. 위치는 사진 안에만 저장되고 이 기기에만 남습니다."
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"

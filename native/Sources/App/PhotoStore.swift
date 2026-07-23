@@ -1,4 +1,7 @@
 import Foundation
+import CoreLocation
+import ImageIO
+import UniformTypeIdentifiers
 #if os(iOS)
 import UIKit
 #endif
@@ -75,29 +78,68 @@ enum PhotoStore {
         return nil
     }
 
-    // MARK: 촬영 이미지 저장 (음성엔 없던 것 — 리사이즈·압축)
+    // MARK: 촬영 이미지 저장 (음성엔 없던 것 — 리사이즈·압축 + EXIF GPS)
 
     #if os(iOS)
     /// 촬영한 원본 이미지를 **긴 변 ~2048px 리사이즈 + JPEG 품질 0.7**로 임시 파일에 저장.
+    /// `location`이 있으면 **EXIF GPS 태그에 직접 박는다**(사진 안에만 · 그릇엔 안 감 — §5, Stage 3).
     /// 이 압축본이 §4-④의 불변 원본. 성공 시 임시 URL, 실패 시 nil.
-    static func saveCaptured(_ image: UIImage, sessionId: String) -> URL? {
-        let resized = downscaled(image, maxEdge: 2048)
-        guard let data = resized.jpegData(compressionQuality: 0.7) else { return nil }
+    static func saveCaptured(_ image: UIImage, location: CLLocation?, sessionId: String) -> URL? {
+        // 방향 정규화 + 리사이즈(항상 재렌더 → orientation upright, EXIF 회전 불필요).
+        guard let cg = normalized(image, maxEdge: 2048).cgImage else { return nil }
         let url = newTempURL(sessionId: sessionId)
-        do { try data.write(to: url, options: .atomic); return url } catch { return nil }
+        guard let dest = CGImageDestinationCreateWithURL(
+                url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.7]
+        if let loc = location { props[kCGImagePropertyGPSDictionary] = gpsDictionary(loc) }
+        CGImageDestinationAddImage(dest, cg, props as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return url
     }
 
-    /// 긴 변이 maxEdge보다 크면 비율 유지 축소. 이미 작으면 그대로.
-    private static func downscaled(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
+    /// 긴 변이 maxEdge보다 크면 비율 유지 축소. **항상 재렌더**해 카메라 방향 메타를 픽셀로 굽는다(upright).
+    private static func normalized(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
         let w = image.size.width, h = image.size.height
         let longest = max(w, h)
-        guard longest > maxEdge, longest > 0 else { return image }
-        let scale = maxEdge / longest
+        guard longest > 0 else { return image }
+        let scale = longest > maxEdge ? maxEdge / longest : 1
         let newSize = CGSize(width: w * scale, height: h * scale)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1                                   // 픽셀 크기 = 논리 크기(과대 렌더 방지)
         let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
         return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
     }
+
+    /// CLLocation → EXIF GPS 딕셔너리(위/경도 + 반구 ref, 고도 있으면).
+    private static func gpsDictionary(_ loc: CLLocation) -> [CFString: Any] {
+        let lat = loc.coordinate.latitude, lon = loc.coordinate.longitude
+        var d: [CFString: Any] = [
+            kCGImagePropertyGPSLatitude: abs(lat),
+            kCGImagePropertyGPSLatitudeRef: lat >= 0 ? "N" : "S",
+            kCGImagePropertyGPSLongitude: abs(lon),
+            kCGImagePropertyGPSLongitudeRef: lon >= 0 ? "E" : "W",
+        ]
+        if loc.verticalAccuracy >= 0 {
+            d[kCGImagePropertyGPSAltitude] = abs(loc.altitude)
+            d[kCGImagePropertyGPSAltitudeRef] = loc.altitude >= 0 ? 0 : 1
+        }
+        return d
+    }
     #endif
+
+    // MARK: EXIF GPS 읽기 (볼 때 — 그릇엔 없음, 사진에서만)
+
+    /// 사진 파일 EXIF의 촬영 좌표. 없으면(권한 거부·실내 등) nil. 온디바이스.
+    static func coordinate(forId id: String) -> CLLocationCoordinate2D? {
+        guard let url = url(forId: id),
+              let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+              let lat = gps[kCGImagePropertyGPSLatitude] as? Double,
+              let lon = gps[kCGImagePropertyGPSLongitude] as? Double else { return nil }
+        let latRef = gps[kCGImagePropertyGPSLatitudeRef] as? String ?? "N"
+        let lonRef = gps[kCGImagePropertyGPSLongitudeRef] as? String ?? "E"
+        return CLLocationCoordinate2D(latitude: latRef == "S" ? -lat : lat,
+                                      longitude: lonRef == "W" ? -lon : lon)
+    }
 }
