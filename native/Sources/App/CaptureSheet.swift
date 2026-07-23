@@ -15,7 +15,6 @@ struct CaptureSheet: View {
     @StateObject private var speech = SpeechCapture()
     @State private var showCamera = false
     @State private var photoTemp: URL?                       // 촬영한 임시 사진(저장 시 확정 / 취소 시 삭제)
-    @State private var photoSessionId = UUID().uuidString    // 이 시트 세션의 임시 파일 이름
     #endif
 
     var body: some View {
@@ -74,7 +73,9 @@ struct CaptureSheet: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraCapture { img in
                 if let old = photoTemp { PhotoStore.deleteTemp(old) }   // 다시 찍기 → 이전 임시 삭제(고아 방지)
-                photoTemp = PhotoStore.saveCaptured(img, sessionId: photoSessionId)
+                // 촬영마다 **고유** 임시 경로 → photoTemp(URL)이 바뀌어 SwiftUI가 새 썸네일을 다시 그린다.
+                // (같은 경로에 덮으면 URL 불변 → 재렌더 안 돼 옛 썸네일이 남는 버그.)
+                photoTemp = PhotoStore.saveCaptured(img, sessionId: UUID().uuidString)
             }
             .ignoresSafeArea()
         }

@@ -1,6 +1,7 @@
 name: SecondBrain
 options:
   bundleIdPrefix: kr.teri.secondbrain
+  developmentLanguage: ko   # 앱 기본 언어=한국어 → 시스템 UI(카메라 "다시 찍기/사용하기" 등)도 한국어로
   deploymentTarget:
     iOS: "26.0"
     macOS: "26.0"
