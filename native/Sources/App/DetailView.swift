@@ -61,6 +61,7 @@ struct DetailView: View {
                 metaSection
                 if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
                 typeSection
+                if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
                 timeSection
                 historyRow
             }
@@ -200,6 +201,17 @@ struct DetailView: View {
             }
             .menuStyle(.button).buttonStyle(.plain)
         }
+        .padding(14).card()
+    }
+
+    // MARK: 재확인 질문 (info-action, §3 자동분류가 남긴 "구체적으로 뭘·언제")
+    // 읽기 전용 표시. fields.v1 편집 블록으로 파일에 저장되므로 재실행에도 유지된다(그릇 Stage 1 검증 지점).
+    private func questionSection(_ q: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("확인이 필요해요")
+            Text(q).font(.callout).foregroundStyle(Palette.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14).card()
     }
 

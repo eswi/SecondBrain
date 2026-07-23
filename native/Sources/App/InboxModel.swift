@@ -316,7 +316,9 @@ final class InboxModel: ObservableObject {
     /// - **discard는 반영하지 않는다**: AI가 사람이 수집한 기억을 조용히 삭제(=삭제 취급)하면 안 됨.
     ///   미분류로 보존 → 사람이 직접 검토/삭제. (삭제는 단방향·사람 몫.)
     /// - due/resurface는 실제 YYYY-MM-DD로 파싱되는 것만 씀(weekly/none/깨진 값=시점 없음).
-    /// - question은 값에 공백이 있어 현재 set 직렬화 경로가 미지원 → 제외(후속 과제).
+    /// - question(info-action 재확인 질문, 공백 있음)은 이제 fields.v1 편집 블록으로 직렬화된다
+    ///   (그릇 Stage 1 — EventWriter/EventLog). 있으면 함께 쓴다. 이 이벤트는 question 때문에 자동으로
+    ///   set→edit 블록으로 직렬화되며, 파서가 개별 필드로 펼쳐 병합에 반영(per-field LWW 그대로).
     private func classifyFields(_ c: Classification) -> [String: String]? {
         let type = c.type.trimmingCharacters(in: .whitespaces)
         guard Self.validTypes.contains(type), type != "discard" else { return nil }
@@ -325,6 +327,8 @@ final class InboxModel: ObservableObject {
             f["due"] = c.due
             if ItemSchedule.parseDay(c.resurface) != nil { f["resurface"] = c.resurface }
         }
+        let q = c.question.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty { f["question"] = q }            // 공백 있어도 편집 블록이 담음(Stage 1)
         return f
     }
 
