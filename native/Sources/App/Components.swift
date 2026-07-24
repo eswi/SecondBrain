@@ -50,7 +50,7 @@ struct TypeMenuButton: View {
 
     var body: some View {
         Menu {
-            ForEach(TypeCatalog.assignable) { m in
+            ForEach(ClassRegistry.assignable) { m in    // 기본층 6 + 유연층(주차 위치) — 상세화면과 동일 집합
                 Button {
                     if let k = m.key { onChange(k) }
                 } label: {
@@ -59,7 +59,7 @@ struct TypeMenuButton: View {
                 .disabled(m.key == item.type)
             }
         } label: {
-            let m = TypeCatalog.meta(item.type)
+            let m = ClassRegistry.meta(item.type)       // 유연층-인지 조회(주차=car). 기본층-전용이면 미분류로 폴백됨
             Image(systemName: m.symbol)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(m.color)
@@ -75,7 +75,7 @@ struct TypeMenuButton: View {
 struct TypeGlyph: View {
     let type: String?
     var body: some View {
-        let m = TypeCatalog.meta(type)
+        let m = ClassRegistry.meta(type)                // 유연층-인지 조회(주차 포함) — TypeMenuButton과 통일
         Image(systemName: m.symbol)
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(m.color)
