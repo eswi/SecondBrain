@@ -32,8 +32,6 @@ struct DetailView: View {
     @State private var type: String?
     @State private var due: String?
     @State private var resurface: String?
-    /// 유연층 분류별 텍스트 필드 draft(주차: 위치·메모). 그릇 fields.v1로 저장(공백 안전).
-    @State private var flexDrafts: [String: String]
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -54,24 +52,10 @@ struct DetailView: View {
         _due = State(initialValue: item.due)
         _resurface = State(initialValue: item.resurface)
         _isRemembered = State(initialValue: item.confirmed)
-        _flexDrafts = State(initialValue: [
-            "location": item.fields["location"] ?? "",
-            "memo": item.fields["memo"] ?? "",
-        ])
     }
 
     private var changes: [String: String] {
-        var c = EditDiff.changes(type: type, due: due, resurface: resurface, from: item)
-        // 유연층 분류별 텍스트 필드(주차: 위치·메모) — 현재 분류 스키마의 필드 중 바뀐 것만.
-        // 값에 공백이 있어 EventWriter가 자동으로 fields.v1 편집 블록으로 직렬화(Stage 1) → per-field LWW.
-        if let schema = ClassRegistry.schema(normalizedType) {
-            for f in schema.fields {
-                let new = (flexDrafts[f.key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                let old = item.fields[f.key] ?? ""
-                if new != old { c[f.key] = new }
-            }
-        }
-        return c
+        EditDiff.changes(type: type, due: due, resurface: resurface, from: item)
     }
     private var dirty: Bool { !changes.isEmpty }
 
@@ -82,7 +66,6 @@ struct DetailView: View {
                 metaSection
                 if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
                 typeSection
-                flexFieldsSection      // 유연층 분류별 필드(주차=위치·메모). 스키마 있는 분류에만 나타남.
                 if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
                 timeSection
                 historyRow
@@ -277,38 +260,6 @@ struct DetailView: View {
             .menuStyle(.button).buttonStyle(.plain)
         }
         .padding(14).card()
-    }
-
-    // MARK: 유연층 분류별 필드 (주차=위치·메모) — 스키마 있는 분류에만 나타난다(분류마다 다른 필드, D4)
-
-    @ViewBuilder private var flexFieldsSection: some View {
-        if let schema = ClassRegistry.schema(normalizedType) {
-            VStack(alignment: .leading, spacing: 14) {
-                sectionLabel(ClassRegistry.meta(normalizedType).label)   // 예: "주차 위치"
-                ForEach(schema.fields) { f in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 3) {
-                            Text(f.label).font(.callout).foregroundStyle(Palette.textPrimary)
-                            if f.required {   // 표시만 — 저장 강제는 안 함(D4)
-                                Text("*").font(.callout).foregroundStyle(Palette.overdue)
-                            }
-                        }
-                        TextField(f.placeholder, text: flexBinding(f.key), axis: .vertical)
-                            .lineLimit(1...4)
-                            .font(.callout)
-                            .padding(10)
-                            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
-                    }
-                }
-            }
-            .padding(14).card()
-        }
-    }
-
-    /// flexDrafts[key] ↔ TextField 브릿지.
-    private func flexBinding(_ key: String) -> Binding<String> {
-        Binding(get: { flexDrafts[key] ?? "" }, set: { flexDrafts[key] = $0 })
     }
 
     // MARK: 재확인 질문 (info-action, §3 자동분류가 남긴 "구체적으로 뭘·언제")
