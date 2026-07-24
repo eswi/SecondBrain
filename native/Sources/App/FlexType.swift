@@ -5,8 +5,10 @@ import SecondBrainCore
 /// "공통 그릇 + 분류별 필드 정의"(classification-redesign-open-questions.md D4)의 실체:
 /// 데이터 그릇은 공통(이벤트 소싱 fields), **쓰는 필드만 분류별**로 여기서 정의한다.
 ///
-/// 자동 분류는 이 층을 **절대 참조하지 않는다** — `InboxModel.classifyFields`의 `validTypes`(§2)에 없어
-/// AI가 유연층 type을 찍지 못한다(사람 수동 지정만). 지금은 주차위치 하나 하드코딩(관리 UI는 나중 — D4).
+/// 자동 분류는 **지금은** 이 층을 참조하지 않는다(임시) — `InboxModel.classifyFields`의 `validTypes`(§2)에 없어
+/// AI가 유연층 type을 찍지 못한다(사람 수동 지정만). **"안 하기로 한 것"이 아니라 "아직 안 한 것"** — 원래
+/// 의도는 유연층도 자동분류 대상이며, 유연층이 쌓이면 편입 예정(`classification-redesign-open-questions.md` O4).
+/// 지금 수동뿐인 이유 = §3 프롬프트(보호 자산) 보류 + 유연층이 주차위치 하나뿐. 관리 UI는 나중 — D4.
 enum FlexTypeCatalog {
     static let parking = TypeMeta(key: "parking", label: "주차 위치",
                                   color: Color(hex: 0x34D399), symbol: "car.fill")
