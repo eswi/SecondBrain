@@ -17,11 +17,15 @@ struct SearchView: View {
         !query.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    /// ①원문 부분일치 후보 → ②타입 필터. 필터는 특정 영역이 아니라 검색 결과 합집합에 적용된다.
-    private var results: [ResolvedItem] {
+    /// ①원문 부분일치 후보(타입 필터 전). 필터 칩의 "실제 있는 분류"도 이 후보 기준으로 뽑는다.
+    private var hits: [ResolvedItem] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
-        let hits = (model.liveNonDone + model.doneItems).filter { ($0.raw ?? "").lowercased().contains(q) }
+        return (model.liveNonDone + model.doneItems).filter { ($0.raw ?? "").lowercased().contains(q) }
+    }
+
+    /// ①원문 부분일치 후보 → ②타입 필터. 필터는 특정 영역이 아니라 검색 결과 합집합에 적용된다.
+    private var results: [ResolvedItem] {
         switch filter {
         case .all:            return hits
         case .type(let key):  return hits.filter { norm($0.type) == key }
@@ -33,7 +37,9 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if searching { FilterChipsBar(filter: $filter) }   // 검색창 아래 필터 UI(살아있는 기억 재사용)
+                if searching {   // 검색창 아래 필터 UI(살아있는 기억 재사용) — 실재 분류만
+                    FilterChipsBar(filter: $filter, presentTypes: Array(Set(hits.map { norm($0.type) })))
+                }
                 resultsArea
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

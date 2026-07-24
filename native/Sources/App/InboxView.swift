@@ -286,25 +286,28 @@ struct FilterChipsBar: View {
     /// 각자의 상태에 물려 재사용. 거르는 대상은 각 화면이 정한다(살아있는 기억 / 검색 결과 전체).
     @Binding var filter: TypeFilter
 
+    /// **실제 존재하는 분류만** 칩으로 — 각 화면이 필터 전 데이터의 distinct 타입을 넘긴다.
+    /// (고정 목록 아님 → 데이터에 주차위치가 있으면 자동으로 칩이 뜬다. `84f3152` 표시·메뉴 통일과 같은 뿌리.)
+    let presentTypes: [String?]
+
+    /// 노출 칩 순서: `ClassRegistry` 정본 순(기본층 6 → 유연층 주차), 미분류는 끝.
+    /// 현재 선택된 타입이 present에서 사라져도(마지막 기억이 바뀜) **계속 노출** → 보이지 않는 필터에 갇히지 않게.
+    private var orderedTypes: [String?] {
+        var keys = Set(presentTypes)
+        if case .type(let k) = filter { keys.insert(k) }   // 선택된 필터는 present 여부와 무관하게 유지
+        let order = ClassRegistry.assignable.map { $0.key }         // 기본층 → 유연층
+        let typed = order.filter { keys.contains($0) }              // 정본 순서로 정렬된 실재 분류
+        let untyped: [String?] = keys.contains(nil) ? [nil] : []    // 미분류(있으면) 끝에
+        return typed + untyped
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 chip(.all, label: "전체", color: Palette.accent)
-                ForEach(TypeCatalog.primaryFilters, id: \.self) { key in
-                    let m = TypeCatalog.meta(key)
+                ForEach(orderedTypes, id: \.self) { key in
+                    let m = ClassRegistry.meta(key)
                     chip(.type(key), label: m.label, color: m.color)
-                }
-                Menu {
-                    ForEach(TypeCatalog.overflowFilters, id: \.self) { f in
-                        Button { filter = f } label: {
-                            if case .type(let k) = f { Label(TypeCatalog.meta(k).label, systemImage: TypeCatalog.meta(k).symbol) }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.footnote.weight(.bold)).foregroundStyle(Palette.textSecondary)
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Palette.surface, in: Capsule())
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 8)

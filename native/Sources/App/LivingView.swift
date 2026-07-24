@@ -11,7 +11,7 @@ struct LivingView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 headerRow
-                FilterChipsBar(filter: $model.filter)
+                FilterChipsBar(filter: $model.filter, presentTypes: model.livingPresentTypes)
                 content
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

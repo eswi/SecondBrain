@@ -127,6 +127,12 @@ final class InboxModel: ObservableObject {
         }
     }
 
+    /// 살아있는 기억 필터 칩에 노출할 분류 = **실제 존재하는 것만**(필터 전 `partition.living` 기준).
+    /// 순서·라벨은 `FilterChipsBar`가 `ClassRegistry`로 정리 — 여기선 distinct 집합만.
+    var livingPresentTypes: [String?] {
+        Array(Set(partition.living.map { norm($0.type) }))
+    }
+
     // 대시보드 5숫자
     var principleCount: Int { principles.count }               // 원칙(ambient 띠) 개수
     var upcomingCount: Int { partition.upcoming.count }        // 챙길 것 = 지금 챙길 것 섹션과 동일
