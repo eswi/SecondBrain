@@ -3,7 +3,7 @@
 > 생성: 2026-07-26 (mac mini). 저장소 전체 훑어 작성. **추측 배제 — 각 항목에 근거 파일 경로·커밋 표기.**
 > 정본 문서는 그대로 두고, 이 문서는 **현재 상태의 지도**다. 상충 시 각 정본(사양서·정책 문서)이 우선.
 > 두 층: 웹 v0(PWA, `app.js`, iCloud `inbox.md` 실사용) · **네이티브 v1**(`native/`, Swift+SwiftUI). 이 노트는 v1 중심.
-> **네이티브 v1 대상 플랫폼 = Mac 앱 + iPhone 앱 둘 다**(iOS 전용 아님). 하나의 코드베이스에서 두 타깃(`SecondBrainApp-iOS`·`SecondBrainApp-macOS`)을 빌드하며, 진입점·뷰를 공유하고 플랫폼 차이는 `#if os()`로 분기한다. 근거: `native/project.yml`(두 타깃, deploymentTarget iOS/macOS 26.0), `native/Sources/App/SecondBrainApp.swift`("iOS·macOS 공유"), `second-brain-v0-spec.md` §0-A("v1 = Mac 앱 + iPhone 앱, 둘로 국한"). iPad·Windows는 나중 확장(설계가 막지 않음).
+> **네이티브 v1 대상 플랫폼 = Mac 앱 + iPhone 앱 둘 다**(iOS 전용 아님). 하나의 코드베이스에서 두 타깃(`SecondBrainApp-iOS`·`SecondBrainApp-macOS`)을 빌드하며, 진입점·뷰를 공유하고 플랫폼 차이는 `#if os()`로 분기한다. 근거: `native/project.yml`(두 타깃, deploymentTarget iOS/macOS 26.0), `native/Sources/App/SecondBrainApp.swift`("iOS·macOS 공유"), **`second-brain-v0-spec.md`**(**저장소 루트**에 위치 — 다른 정본 문서는 `docs/native/`에 있으나 이 사양서만 루트) §0-A("v1 = Mac 앱 + iPhone 앱, 둘로 국한"). iPad·Windows는 나중 확장(설계가 막지 않음).
 
 ---
 
@@ -29,6 +29,7 @@
 | **성역 (불변)** | 최초 수집 **시각·기기·방식**, 원본 미디어(음성·사진)는 절대 안 고침. "원본 미디어=불변, 텍스트 층=가변." | `edit-policy.md` §4-1·§6; `second-brain-v0-spec.md` §1 |
 | **세부정보 = field / 그릇** | 모든 기억이 공유하는 **공통 이벤트 소싱 `[String:String]` fields + 미디어 포인터**. 분류가 늘어도 그릇 불변. | `docs/native/photo-capture-design.md` §2·§6; `memory-philosophy.md` §7; 코드 `native/SecondBrainCore/Sources/SecondBrainCore/Event.swift` |
 | **분류 = 그릇 위의 정의** | 분류는 새 구조가 아니라, 각 세부정보의 **쓸지·제목(=의미)·동작·누가 값 정하나**를 정하는 정의(코드로). | `memory-philosophy.md` §7-1 |
+| **question** | `info-action`인데 "구체적으로 뭘·언제 할지"가 불명확할 때 **자동분류(§3)가 붙이는 한 줄 재확인 질문**(불명확 아니면 빈 문자열). 공백이 있어 **`fields.v1` 편집 블록으로 직렬화**돼 파일에 저장(앱 재실행에도 유지)되고, 상세 화면에 **"확인이 필요해요" 카드(읽기전용)**로 뜬다. | `native/Sources/App/ClassifyPrompt.swift`(L19·L52); `ClaudeClassifier.swift`(L10 `question`); 커밋 `f80724c`(`InboxModel.classifyFields`·`DetailView` L69 `questionSection`) |
 | **조각 파일** | 기기별 `inbox-<device>.md`(append 전용). 각 기기는 **자기 파일에만** 씀 → iCloud "마지막이 이긴다" 원천 회피. 레거시 `inbox.md`는 불변. | `second-brain-v0-spec.md` §0-A |
 | **HLC** (Hybrid Logical Clock) | 이벤트 전순서 키 `(wall, counter, deviceId)` — 무승부 없는 완전한 전순서. | `docs/native/merge-design.md` §2 |
 | **LWW** (Last-Writer-Wins) | 항목별·**필드별** 레지스터. 다른 필드 동시편집=둘 다 반영(무손실), 같은 필드 충돌만 HLC 최신 승. | `merge-design.md` §3 |
@@ -36,6 +37,8 @@
 | **confirmed** | 기억하기의 코드 표현 = **OR-머지(grow-only)** — 하나라도 true면 영원히 true(단방향 이중 보장). | 커밋 `f63cf5d`; `SecondBrainCore/.../MergeEngine.swift` |
 | **source** | 입구 종류: voice / web / doc / chat / mail / meeting / image. | `second-brain-v0-spec.md` §1 |
 | **type (§2 6종)** | promise·event·info-action·info·idea·principle (+ 미분류 nil). `discard`는 **개념 제거 → 삭제 취급**. | `native/Sources/App/Theme.swift`(`TypeCatalog`); `second-brain-v0-spec.md` §2 |
+| **분류 2층 구조** (구 개념) | 2026-07-23 정한 구분: **기본층**(고정 6 = §2, 시스템 논리가 기대는 뼈대) + **유연층**(사람이 자유롭게 추가/삭제하는 살점). 공통 그릇이 두 층 모두 받음. → **`memory-philosophy.md` §7에서 "모든 분류 평등"으로 재구성됨**(층 구분 폐기). 재구성 이유: 분류를 코드로 고정하면(§7) 층을 나눌 필요 없이 모든 분류가 그릇 위 정의로 평등. | `classification-redesign-open-questions.md` D1(→§7 포인터 포함); `memory-philosophy.md` §7 |
+| **유연층** | 기본층(§2 6종) 밖의 분류를 담는 별도 레지스터 `FlexTypeCatalog`(현재 **주차위치 하나** 하드코딩). `ClassRegistry`가 기본층+유연층을 **통합 조회**. 자동분류는 **지금은** 유연층을 안 찍음(수동 지정만 — O4 "아직 안 함"). §7 평등 모델의 **초기 형태**로 보고 나중에 흡수. | `native/Sources/App/FlexType.swift`(`FlexTypeCatalog`·`ClassRegistry`); `classification-redesign-open-questions.md` O4 |
 | **소비 3방식** | pull(검색) · push(적시 재노출) · ambient(원칙 상시). | `second-brain-v0-spec.md` §0-A·§5 |
 | **AI 삭제 금지** | 자동분류가 `discard`로 판단해도 반영 안 함 → 미분류 보존. 삭제는 사람만·단방향. | `second-brain-v0-spec.md` §0-A; `memory-philosophy.md` §5 |
 
@@ -74,7 +77,7 @@
 
 | # | 이슈 | 상태·우선순위 | 근거 |
 |---|------|------------|------|
-| B1 | **탭 점프 버그** — 다른 앱 갔다 복귀 시 탭이 튐 | **해결됨** (홈 제스처 중 하단 탭바 우발 터치가 원인 → `stableTab`+`onChange` 무애니메이션 원복). 재발 관측되면 재조사. | 커밋 `c7dc963`; `native/Sources/App/RootView.swift`; `docs/lessons/2026-07-21-tab-jump-home-gesture-touch.md`; 메모리 [[tab-jump-bug-pending]] |
+| B1 | **탭 점프 버그** — 다른 앱 갔다 복귀 시 탭이 튐 | **해결됨** (홈 제스처 중 하단 탭바 우발 터치가 원인 → `stableTab`+`onChange` 무애니메이션 원복). 재발 관측되면 재조사. | 커밋 `c7dc963`; `native/Sources/App/RootView.swift`; `docs/lessons/2026-07-21-tab-jump-home-gesture-touch.md`; 메모리 [[tab-jump-bug-resolved]] |
 | B2 | **'원칙 0개면 밴드 숨김'** — 코드 처리했으나 실기기 미검증 | 열림 · **낮음** | `memory-philosophy.md` §3 주의 |
 | B3 | **'총 기억' 정의** 재검토 중 (현재 = 살아있는 전체) | 열림 · 낮음 | `memory-philosophy.md` §5 |
 | C1 | 스크롤 위치 기반 접힘/요약 = SwiftUI `List` 제약으로 **폐기**(버그 아님, 제약) | 종결 | `native-v1-state` 메모리 교훈 |
