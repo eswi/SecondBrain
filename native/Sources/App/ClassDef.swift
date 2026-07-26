@@ -33,16 +33,17 @@ struct ClassDef {
 
 /// 분류별 `ClassDef` 목록. **§2·유연층과 무관한 §7 정의 층**(TypeMeta 안 건드림).
 enum ClassCatalog {
-    /// **현재 동작의 거울(Stage B):** 지금 `DetailView`는 모든 분류에 마감·다시보기를 항상 표시하고
-    /// (`timeSection`), 사진·위치는 있으면 표시한다(`photoRow`, 타입 무관). 즉 분류별 차등이 아직 0 →
-    /// **7개 분류(기본층 6 + 주차) 전부 네 Detail을 모두 씀**으로 서술하면 화면 동작과 정확히 일치한다.
-    /// 주차의 마감 제외(첫 차등)는 Stage C.
+    /// 세부정보 정의(Stage C — 첫 분류별 차등). 기준(mirror) = 마감·다시보기·사진·위치 모두 씀
+    /// (기본층 6종의 현재 동작 그대로 유지). **주차위치만 마감(due)을 뺀다** — §7 "주차는 사진·위치·본문으로
+    /// 충분, 마감 안 씀". 이 차등은 **표시 전용**이다(`DetailView.timeSection`이 읽어 마감 행을 숨김).
+    /// 저장된 due 값을 지우거나 무효화하지 않는다(비파괴적 — due 무효화 '동작'은 §7 (c), Stage D 몫).
     static let all: [String: ClassDef] = {
         let mirror: Set<Detail> = [.due, .resurface, .photo, .location]
         var m: [String: ClassDef] = [:]
         for meta in ClassRegistry.assignable {          // 기본층 6 + 유연층(주차) — 평등
             guard let key = meta.key else { continue }
-            m[key] = ClassDef(key: key, uses: mirror)
+            let uses = key == FlexTypeCatalog.parking.key ? mirror.subtracting([.due]) : mirror
+            m[key] = ClassDef(key: key, uses: uses)
         }
         return m
     }()

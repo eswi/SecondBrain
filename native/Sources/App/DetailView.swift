@@ -276,10 +276,15 @@ struct DetailView: View {
     // MARK: 시간 설정 (Due · Resurface — 임의 날짜 + 지우기/none, §4-2·§4-3)
 
     private var timeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        // §7 Stage C: 분류가 마감(due)을 쓰는지 ClassDef가 정한다. 정의 없으면(미분류·미등록) 기본=씀
+        // → 주차위치만 false로 마감 행이 숨고, 6종·미분류는 그대로 마감 표시(회귀 없음).
+        let usesDue = ClassRegistry.def(normalizedType)?.uses(.due) ?? true
+        return VStack(alignment: .leading, spacing: 12) {
             sectionLabel("시간 설정")
-            timeRow("마감 (Due)", value: $due, showDefer: false)
-            Divider().overlay(Palette.border)
+            if usesDue {
+                timeRow("마감 (Due)", value: $due, showDefer: false)
+                Divider().overlay(Palette.border)
+            }
             timeRow("다시 보기 (Resurface)", value: $resurface, showDefer: true)
         }
         .padding(14).card()
