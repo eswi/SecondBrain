@@ -56,19 +56,6 @@ struct SettingsView: View {
                             .font(.caption2).foregroundStyle(Palette.textTertiary)
                     }
 
-                    Section {
-                        NavigationLink {
-                            ClassificationManagerView()
-                        } label: {
-                            Label("분류 관리", systemImage: "square.grid.2x2")
-                                .foregroundStyle(Palette.textPrimary)
-                        }
-                        .listRowBackground(Palette.surface)
-                    } header: { header("분류") } footer: {
-                        Text("지금은 보기용 — 실제 분류(§2)는 읽기 전용이고, 재설계 후보는 검토 중 메모로 저장만 됩니다(자동 분류엔 안 쓰임).")
-                            .font(.caption2).foregroundStyle(Palette.textTertiary)
-                    }
-
                     #if os(iOS)
                     Section {
                         Stepper(value: $sttAutoStop, in: SpeechSettings.minAutoStop...SpeechSettings.maxAutoStop) {
