@@ -16,7 +16,18 @@
 - '살아있는 기억'의 진짜 역할은 저장이 아니라 **적절한 순간에 다시 들이밀기(refresh/push)** — 날짜·날씨·키워드 등 실마리로 관련 기억을 꺼내 보여준다. 바깥(기사·노래)까지 끌어오는 능동 에이전트. (§1)
 - 수집의 목적 = 단순 보관이 아니라 **미래 refresh의 연료 축적.** (§1)
 
-정본 관계: `memory-philosophy.md`(무엇인가) · `edit-policy.md`(편집·기억하기·시간의 왜) · `merge-design.md`(병합의 왜) · `second-brain-v0-spec.md`(아키텍처, 위 문서를 링크). (`memory-philosophy.md` "관계" 절)
+**정본 문서 전체** (각 문서 머리말·`memory-philosophy.md` "관계" 절 기준. 경로 표기):
+
+| 정본 | 역할 (한 줄) | 근거(머리말) |
+|------|------------|------|
+| `second-brain-v0-spec.md` (**저장소 루트**) | 아키텍처 정본 — 데이터 형식·입구·빌드 3층. 아래 문서들을 링크로 가리킴 | §0-A·"관계" |
+| `docs/native/memory-philosophy.md` | "이 앱은 무엇인가" — 존재 이유·기억 3영역·화면 개념의 정본 | "관계" 절 |
+| `docs/native/edit-policy.md` | 편집·기억하기·시간 정책의 "왜"의 정본 | `memory-philosophy.md` "관계" 절 |
+| `docs/native/merge-design.md` | 병합 엔진의 "왜"의 정본 ("코드보다 이 문서가 규칙의 정본") | 머리말 |
+| `docs/native/photo-capture-design.md` | 사진·공통 미디어 인프라 + 유연층 첫 분류(주차) 설계 정본 | 머리말 "정본 위치" |
+| `docs/native/audio-capture-design.md` | 음성 원본 보존(녹음·저장·다시 듣기) 설계 정본 | 머리말 "정본 위치" |
+
+**정본 아님(참고 문서):** `docs/native/classification-redesign-open-questions.md` — 머리말이 "논의(결정·미결)…여기 적힌 결정도 아직 **문서상 결정**이지 코드 반영이 아니다"라 밝히므로 **정본이 아닌 논의·결정 기록**. 분류 재설계 결정(D1~D5)·미결(O1~O4)의 근거로만 인용. (`legacy-uuid-migration.md`도 설계+실행 기록 문서.)
 
 ---
 
@@ -46,9 +57,10 @@
 
 ## 3. 구현 완료된 기능
 
-근거: `native-v1-state` 메모리 · 각 커밋 · worklog. iOS 코어 테스트 `swift test` **71개 통과**(2026-07-25 확인).
+근거: `native-v1-state` 메모리 · 각 커밋 · worklog. 코어 테스트 `swift test` **71개 통과**(2026-07-25 확인) — SwiftPM 패키지라 **macOS 호스트에서 실행**(iOS 기기/시뮬 아님). 코어 로직은 플랫폼 무관이나 **실행 호스트는 Mac**이다.
 
 > "검증 플랫폼" = 저장소에 **명시된 근거**로만 표기. 근거 없으면 **미확인**(구현은 됐어도 검증 기록이 없다는 뜻). "실기기"는 이 프로젝트에서 iPhone 16 Pro(worklog·`docs/native/iphone-verify-checklist.md`).
+> **"코어 테스트" = SwiftPM `swift test`로 macOS 호스트에서 실행**(iOS 아님) — 코어 로직은 플랫폼 무관이나 실행 호스트는 Mac이다. 즉 "코어 테스트" 표기는 곧 **macOS 호스트 실행**을 뜻한다. 근거: `native/SecondBrainCore/Package.swift`(주석 "`swift test`로 CLI에서 검증"), 실행 로그 타깃 `arm64-apple-macos`, CI 없음(`.github/workflows` 부재).
 
 | 기능 | 상태 | 검증 플랫폼 | 근거 |
 |------|------|-----------|------|
@@ -89,9 +101,22 @@
 
 - **빌드 타깃 존재:** `native/project.yml`에 `SecondBrainApp-macOS`(platform macOS, deploymentTarget 26.0) 정의. 진입점 `SecondBrainApp.swift`는 iOS·macOS 공유.
 - **플랫폼 분기 존재:** 13개 파일에 `#if os()` 분기. Mac 전용 처리 예 — `FragmentFolder.swift`(폴더 접근), `DeviceStore.swift`(기기 식별), `CaptureSheet.swift`("macOS: STT 없이 텍스트 입력"), `SettingsView.swift`(리스트 스타일), `NotificationScheduler.swift`(macOS 알림도 entitlement 불필요).
-- **Mac에서 검증된 것:** 코어 병합 엔진의 **실데이터(inbox.md 68) 로드·쓰기·불변 검증이 macOS에서** 이뤄짐(메모리 [[native-v1-state]]). iOS·macOS 양쪽 **빌드 통과** 기록.
+- **Mac에서 검증된 것:** ① 코어 테스트 **71개 전체가 SwiftPM `swift test`로 macOS 호스트에서 실행**됨 → 코어 로직(병합·직렬화·planner 등) 전반이 **Mac에서 exercised**. ② 코어 병합 엔진의 **실데이터(inbox.md 68) 로드·쓰기·불변 검증도 macOS에서** 이뤄짐(메모리 [[native-v1-state]]). ③ iOS·macOS 양쪽 **빌드 통과** 기록. **단, ①②는 코어(CLI 패키지) 검증이지 macOS *앱 UI/실사용* 검증이 아니다.**
 - **Mac에서 미검증:** macOS 로컬 알림(검증 체크리스트 D는 "선택"이라 건너뜀 — `notify-verify-checklist.md`). 그 외 대부분 기능의 **Mac 실사용 검증 기록 없음**(위 3장 "검증 플랫폼"이 대부분 iPhone/코어인 이유).
 - **없는 것:** **Mac 전용 상태·검증 체크리스트 문서가 없다**(iPhone은 `iphone-verify-checklist.md`·`notify-verify-checklist.md`가 있으나 Mac 대응물 없음). → 5장 열린 항목으로 등록.
+
+### 검증 부채 (3장 "검증 플랫폼"이 미확인인 것만)
+
+> 아래는 **3장 표를 근거로만** 모은 것 — 구현은 됐으나 검증 기록이 없거나 부분뿐인 항목. 새 항목을 지어내지 않음.
+
+| 기능 | 왜 미확인 | 검증에 필요한 것 | 플랫폼 |
+|------|----------|----------------|--------|
+| **자동분류(pull-to-classify)** | 스윕 자체 실기기 통과 기록 없음(관련 question 배선만 iPhone 실기기 — `f80724c`) | 미분류 여러 개를 당겨 분류 → 결과(type/due)가 조각 파일에 반영·토스트 표시 실기기 확인 | iPhone 실기기 |
+| **수집(STT·텍스트·App Intent)** | 실기기 검증 기록 없음 | 온디바이스 STT 받아쓰기·텍스트·액션버튼으로 항목 생성 실기기 확인(마이크 필요) | iPhone 실기기 |
+| **사진 EXIF GPS** | worklog상 "확인 진행됨"뿐, 명확한 통과 기록 없음 | 촬영 위치가 EXIF에 기록되고 상세 지도에 뜨는지, 실내·권한거부 시 graceful한지 실기기 통과 | iPhone 실기기(카메라·위치) |
+| **원칙 — 목록·드래그·'0개 밴드숨김'** | 세 영역 검증엔 ambient 띠만 포함, 목록 진입·드래그·밴드숨김 검증 기록 없음(B2) | 원칙 목록 진입·꾹눌러 드래그 정렬·원칙 0개 시 밴드 숨김 실기기 확인 | iPhone 실기기 |
+
+(참고: macOS 로컬 알림(D)은 "미확인"이 아니라 "미검증(선택이라 건너뜀)"이라 위 표에서 제외 — 근거는 위 "Mac에서 미검증".)
 
 ---
 
@@ -108,6 +133,7 @@
 | **'살아있는 기억' refresh/push 본격 기획** | 앱의 심장. 급함 문법(D-day) 아닌 소중함의 접근 — 재기획 영역. | `memory-philosophy.md` §1·§2-2 |
 | **완전 삭제** | 엔진 hard-delete + 재확인 절차 후 구현(보류). | `edit-policy.md` §8 |
 | **Mac 쪽 상태 문서화 안 됨** | macOS 타깃은 빌드 설정·`#if os()` 분기가 있고 코어는 Mac 실데이터로 검증됐으나(4장 "Mac 타깃 현황"), **Mac 실사용/UI 검증 체크리스트·상태 문서가 없다.** iPhone처럼 Mac 검증 절차를 문서화할지 논의 필요. | `native/project.yml`; 4장 "Mac 타깃 현황"; iPhone 대응물 = `iphone-verify-checklist.md`(Mac 없음) |
+| **question 답변 경로 없음** | 자동분류가 붙인 `question`(§2 용어)은 상세 화면에 **"확인이 필요해요" 카드로 읽기전용** 표시될 뿐 — **사용자가 그 자리에서 답할 경로가 없다.** 미결: 답변 경로를 만들 것인가? 만든다면 (a) 답이 **어느 field로 들어가나**(예: `raw` 보강 vs 새 `answer` field vs `question` 해소 후 삭제), (b) **병합에서 어떻게 다루나**(field별 LWW라 두 기기 답변 충돌 시 HLC 최신 승 — 손실 없나?), (c) 답하면 `info-action`이 명확해져 due가 생기는 흐름과 어떻게 잇나. | `native/Sources/App/DetailView.swift`(L69 `questionSection` 읽기전용); `ClaudeClassifier.swift`(question 생성); `docs/native/merge-design.md` §3(필드별 LWW) |
 
 ---
 
