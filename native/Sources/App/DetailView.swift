@@ -276,18 +276,22 @@ struct DetailView: View {
     // MARK: 시간 설정 (Due · Resurface — 임의 날짜 + 지우기/none, §4-2·§4-3)
 
     private var timeSection: some View {
-        // §7 Stage C: 분류가 마감(due)을 쓰는지 ClassDef가 정한다. 정의 없으면(미분류·미등록) 기본=씀
-        // → 주차위치만 false로 마감 행이 숨고, 6종·미분류는 그대로 마감 표시(회귀 없음).
-        let usesDue = ClassRegistry.def(normalizedType)?.uses(.due) ?? true
-        return VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("시간 설정")
-            if usesDue {
-                timeRow("마감 (Due)", value: $due, showDefer: false)
-                Divider().overlay(Palette.border)
+        // §7 (a): 분류가 마감·다시보기를 쓰는지 ClassDef가 정한다. 정의 없으면(미분류·미등록) 기본=씀.
+        // → 주차=마감만 숨김 / 정보·아이디어·원칙=둘 다 안 써 "시간 설정" 섹션 통째 숨김 / 6종·미분류=회귀 없음.
+        // 표시 전용(비파괴적): 숨겨도 저장된 due/resurface 값은 안 지운다(무효화·알림 정리는 §7 (c)/D3).
+        let usesDue       = ClassRegistry.def(normalizedType)?.uses(.due) ?? true
+        let usesResurface = ClassRegistry.def(normalizedType)?.uses(.resurface) ?? true
+        return Group {
+            if usesDue || usesResurface {
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionLabel("시간 설정")
+                    if usesDue { timeRow("마감 (Due)", value: $due, showDefer: false) }
+                    if usesDue && usesResurface { Divider().overlay(Palette.border) }
+                    if usesResurface { timeRow("다시 보기 (Resurface)", value: $resurface, showDefer: true) }
+                }
+                .padding(14).card()
             }
-            timeRow("다시 보기 (Resurface)", value: $resurface, showDefer: true)
         }
-        .padding(14).card()
     }
 
     @ViewBuilder

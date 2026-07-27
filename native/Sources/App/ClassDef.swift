@@ -36,12 +36,17 @@ struct ClassDef {
 /// 모든 분류의 **평등한 정본 목록**. 층 구분 없이 한 축.
 /// 순서는 **표시 순서일 뿐**(계층 아님): §2 6종 → 주차. 미분류(nil)는 분류 지정 대상이 아니라 여기 없다.
 enum ClassCatalog {
-    /// 세부정보 정의. 기준(mirror) = 마감·다시보기·사진·위치 모두 씀(현재 동작 유지).
-    /// **주차위치만 마감(due)을 뺀다**(§7 "주차는 사진·위치·본문으로 충분, 마감 안 씀" — Stage C).
-    /// 이 차등은 **표시 전용**(`DetailView.timeSection`이 읽어 마감 행을 숨김) — 저장된 due 값은 안 지운다
-    /// (비파괴적; due 무효화 '동작'은 §7 (c), Stage D3 몫).
+    /// 세부정보 정의(§7 (a) 쓸지/안 쓸지). 기준(mirror) = 마감·다시보기·사진·위치 모두 씀.
+    /// 분류별 차등:
+    /// - **주차** = 마감(due) 안 씀(§7 "주차는 사진·위치·본문으로 충분" — Stage C).
+    /// - **정보·아이디어·원칙**(`noTime`) = 마감·다시보기 **둘 다 안 씀** — 참고 지식·발상·상시 원칙은
+    ///   시점이 본질이 아니다(원칙은 ambient 상시라 날짜·마감이 근본적으로 안 맞음). 상세에서 "시간 설정"
+    ///   섹션 자체가 안 뜬다.
+    /// 이 차등은 **표시 전용**(`DetailView.timeSection`이 읽어 행/섹션을 숨김) — 저장된 due/resurface 값은
+    /// 안 지운다(비파괴적; 값 무효화·알림 정리 '동작'은 §7 (c), Stage D3 몫).
     static let all: [ClassDef] = {
         let mirror: Set<Detail> = [.due, .resurface, .photo, .location]
+        let noTime: Set<Detail> = [.photo, .location]   // 마감·다시보기 안 씀(정보·아이디어·원칙)
         // 시각 메타: 6종은 §2 TypeCatalog(보호자산) 참조, 주차는 여기서 정의(유연층 흡수).
         let parking = TypeMeta(key: "parking", label: "주차 위치",
                                color: Color(hex: 0x34D399), symbol: "car.fill")
@@ -49,9 +54,9 @@ enum ClassCatalog {
             ClassDef(meta: TypeCatalog.meta("promise"),     uses: mirror),
             ClassDef(meta: TypeCatalog.meta("event"),       uses: mirror),
             ClassDef(meta: TypeCatalog.meta("info-action"), uses: mirror),
-            ClassDef(meta: TypeCatalog.meta("info"),        uses: mirror),
-            ClassDef(meta: TypeCatalog.meta("idea"),        uses: mirror),
-            ClassDef(meta: TypeCatalog.meta("principle"),   uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("info"),        uses: noTime),
+            ClassDef(meta: TypeCatalog.meta("idea"),        uses: noTime),
+            ClassDef(meta: TypeCatalog.meta("principle"),   uses: noTime),
             ClassDef(meta: parking,                         uses: mirror.subtracting([.due])),
         ]
     }()
