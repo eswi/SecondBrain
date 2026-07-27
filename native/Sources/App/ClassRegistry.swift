@@ -21,4 +21,10 @@ enum ClassRegistry {
         guard let key else { return nil }
         return ClassCatalog.byKey[key]
     }
+
+    /// (분류, 세부정보) → **제목(=의미)**. §7 (b). 분류가 재정의했으면 그 라벨, 아니면 `Detail.defaultTitle`.
+    /// 미분류(nil)·미등록 key는 기본 라벨. (예: due → 할일·미분류 "마감", 약속 "언제", 일정 "일시".)
+    static func title(_ key: String?, _ detail: Detail) -> String {
+        def(key)?.title(for: detail) ?? detail.defaultTitle
+    }
 }

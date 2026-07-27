@@ -285,9 +285,9 @@ struct DetailView: View {
             if usesDue || usesResurface {
                 VStack(alignment: .leading, spacing: 12) {
                     sectionLabel("시간 설정")
-                    if usesDue { timeRow("마감 (Due)", value: $due, showDefer: false) }
+                    if usesDue { timeRow(ClassRegistry.title(normalizedType, .due), value: $due, showDefer: false) }
                     if usesDue && usesResurface { Divider().overlay(Palette.border) }
-                    if usesResurface { timeRow("다시 보기 (Resurface)", value: $resurface, showDefer: true) }
+                    if usesResurface { timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface, showDefer: true) }
                 }
                 .padding(14).card()
             }

@@ -17,20 +17,36 @@ import SecondBrainCore
 /// 공통 그릇의 세부정보 슬롯. 필요할 때 늘린다.
 /// (원문·성역 메타·audio·question은 **분류 무관 상시**라 §7 지배 대상 밖 → 여기 없음.)
 enum Detail: Hashable {
-    case due        // 마감 (Due)
-    case resurface  // 다시 보기 (Resurface)
+    case due        // 마감
+    case resurface  // 다시 보기
     case photo      // 사진 (미디어 포인터)
     case location   // 사진 EXIF 촬영 위치
+
+    /// 이 세부정보의 **기본 제목(=의미)**. §7 (b). 분류가 재정의하지 않으면 이 라벨을 쓴다(할일 기준 = 가장 일반적).
+    /// 실사용 화면 라벨이므로 개발용 영문 접미사 "(Due)"/"(Resurface)"는 빼고 간결한 한글로 통일한다.
+    var defaultTitle: String {
+        switch self {
+        case .due:       return "마감"
+        case .resurface: return "다시 보기"
+        case .photo:     return "사진"
+        case .location:  return "위치"
+        }
+    }
 }
 
-/// 한 분류의 §7 정의 = **시각 메타 + 쓰는 세부정보 집합**. 집합에 있으면 '씀'.
+/// 한 분류의 §7 정의 = **시각 메타 + 쓰는 세부정보 집합 + 제목 재정의**. 집합에 있으면 '씀'.
 /// (기본층/유연층 필드 없음 — 모든 분류가 이 한 구조로 평등하다.)
 struct ClassDef {
     let meta: TypeMeta
     let uses: Set<Detail>
+    /// 분류별 **제목(=의미) 재정의**(§7 (b)). 같은 데이터라도 분류마다 다른 이름표.
+    /// 비어 있으면 `Detail.defaultTitle`. 예: due가 할일엔 "마감", 약속엔 "언제", 일정엔 "일시".
+    var titles: [Detail: String] = [:]
 
     var key: String? { meta.key }
     func uses(_ detail: Detail) -> Bool { uses.contains(detail) }
+    /// 이 분류에서 detail의 제목(=의미). 재정의 없으면 기본.
+    func title(for detail: Detail) -> String { titles[detail] ?? detail.defaultTitle }
 }
 
 /// 모든 분류의 **평등한 정본 목록**. 층 구분 없이 한 축.
@@ -51,9 +67,11 @@ enum ClassCatalog {
         let parking = TypeMeta(key: "parking", label: "주차 위치",
                                color: Color(hex: 0x34D399), symbol: "car.fill")
         return [
-            ClassDef(meta: TypeCatalog.meta("promise"),     uses: mirror),
-            ClassDef(meta: TypeCatalog.meta("event"),       uses: mirror),
-            ClassDef(meta: TypeCatalog.meta("info-action"), uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("promise"),     uses: mirror,
+                     titles: [.due: "언제", .resurface: "미리 알림"]),   // 약속: 날짜=만나는 시점
+            ClassDef(meta: TypeCatalog.meta("event"),       uses: mirror,
+                     titles: [.due: "일시", .resurface: "미리 알림"]),   // 일정: 날짜=일어나는 시점
+            ClassDef(meta: TypeCatalog.meta("info-action"), uses: mirror),   // 할일: 기본("마감"·"다시 보기")
             ClassDef(meta: TypeCatalog.meta("info"),        uses: noTime),
             ClassDef(meta: TypeCatalog.meta("idea"),        uses: noTime),
             ClassDef(meta: TypeCatalog.meta("principle"),   uses: noTime),
