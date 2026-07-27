@@ -49,7 +49,7 @@
 | **source** | 입구 종류: voice / web / doc / chat / mail / meeting / image. | `second-brain-v0-spec.md` §1 |
 | **type (§2 6종)** | promise·event·info-action·info·idea·principle (+ 미분류 nil). `discard`는 **개념 제거 → 삭제 취급**. | `native/Sources/App/Theme.swift`(`TypeCatalog`); `second-brain-v0-spec.md` §2 |
 | **분류 2층 구조** (구 개념) | 2026-07-23 정한 구분: **기본층**(고정 6 = §2, 시스템 논리가 기대는 뼈대) + **유연층**(사람이 자유롭게 추가/삭제하는 살점). 공통 그릇이 두 층 모두 받음. → **`memory-philosophy.md` §7에서 "모든 분류 평등"으로 재구성됨**(층 구분 폐기). 재구성 이유: 분류를 코드로 고정하면(§7) 층을 나눌 필요 없이 모든 분류가 그릇 위 정의로 평등. | `classification-redesign-open-questions.md` D1(→§7 포인터 포함); `memory-philosophy.md` §7 |
-| **유연층** | 기본층(§2 6종) 밖의 분류를 담는 별도 레지스터 `FlexTypeCatalog`(현재 **주차위치 하나** 하드코딩). `ClassRegistry`가 기본층+유연층을 **통합 조회**. 자동분류는 **지금은** 유연층을 안 찍음(수동 지정만 — O4 "아직 안 함"). §7 평등 모델의 **초기 형태**로 보고 나중에 흡수. | `native/Sources/App/FlexType.swift`(`FlexTypeCatalog`·`ClassRegistry`); `classification-redesign-open-questions.md` O4 |
+| **유연층** (구 개념 → D1에서 흡수) | 한때 기본층(§2 6종) 밖 분류를 담던 별도 레지스터 `FlexTypeCatalog`(주차위치 하나). **§7 Stage D1(`84f6d2f`)에서 `ClassCatalog`(모든 분류 평등한 한 목록)로 흡수·삭제됨** — 층 구분 폐기. 이제 주차도 6종과 나란히 한 항목. 자동분류는 **지금도** 주차(유연층 출신)를 안 찍음(수동 지정만 — O4 "아직 안 함"). | `native/Sources/App/ClassDef.swift`(`ClassCatalog`·`ClassDef`)·`ClassRegistry.swift`; 커밋 `84f6d2f`; `classification-redesign-open-questions.md` O4 |
 | **소비 3방식** | pull(검색) · push(적시 재노출) · ambient(원칙 상시). | `second-brain-v0-spec.md` §0-A·§5 |
 | **AI 삭제 금지** | 자동분류가 `discard`로 판단해도 반영 안 함 → 미분류 보존. 삭제는 사람만·단방향. | `second-brain-v0-spec.md` §0-A; `memory-philosophy.md` §5 |
 
@@ -80,6 +80,15 @@
 | **주차위치 분류** (유연층 첫 사례, 재설계로 이중입력 제거 = 사진·GPS·본문으로 충분) | ✅ | **iPhone 실기기** | 커밋 `923d4a1`·`ca844f7`; `docs/worklog/2026-07-24-macbook.md`; `FlexType.swift` |
 | **필터 ClassRegistry 통일** (실재 분류만 동적 노출, 주차 포함, 선택칩 갇힘 방지) | ✅ | **iPhone 실기기**(A~E 검증) | 커밋 `f79e69a`(2026-07-25); `docs/worklog/2026-07-25-macmini.md`; `InboxView.swift`(`FilterChipsBar`) |
 | **fields.v1 편집 블록** (공백 담는 긴 텍스트·구조화 데이터를 JSON으로 직렬화, 병합 무영향) | ✅ | **코어 테스트** + **iPhone 실기기**(question 배선) | 커밋 `7e5fbf1`·`f80724c`; `EventLog.swift`/`EventWriter.swift`; `photo-capture-design.md` §3 |
+| **§7 분류–세부정보 모델 Stage A~D2** (분류=코드 고정 + 그릇 위 정의층. §7 (a)쓸지·(b)제목이 **화면에서 작동**) | ✅ (단 D3 한계 有, 아래) | **iPhone 실기기**(각 단계 통과) + **코어 테스트**(71 불변) | `memory-philosophy.md` §7; `ClassDef.swift`/`ClassRegistry.swift`/`DetailView.swift`; 커밋 아래 |
+
+> **§7 Stage A~D2 세부** (전부 §2·§3·`MergeEngine`·`TypeMeta` 무변경 — 위에 얹은 표시 정책 층):
+> - **A** 분류 관리 화면 제거(`e118a69`) — 분류는 코드 고정, 사용자가 안 만듦.
+> - **B** `ClassDef` 틀 도입(`c04b999`) — 동작 0, 현재 동작의 거울.
+> - **C** 주차 마감(due) 숨김(`e6cfe96`) — 첫 분류별 차등(표시 전용).
+> - **D1** `FlexTypeCatalog` 흡수(`84f6d2f`) — 모든 분류 평등한 `ClassCatalog` 한 목록(동작 0).
+> - **(a) 씀 여부**(`d00b8de`) — 정보·아이디어·원칙 due·resurface 안 씀 → 시간 섹션 통째 숨김. **§7 (a) 작동.**
+> - **D2 (b) 라벨**(`8bfb603`) — 약속 due"언제"·resurface"미리 알림", 일정 "일시"·"미리 알림". 접미사 "(Due)/(Resurface)" 제거. **§7 (b) 작동.**
 
 ---
 
@@ -94,6 +103,7 @@
 | B3 | **'총 기억' 정의** 재검토 중 (현재 = 살아있는 전체) | 열림 · 낮음 | `memory-philosophy.md` §5 |
 | C1 | 스크롤 위치 기반 접힘/요약 = SwiftUI `List` 제약으로 **폐기**(버그 아님, 제약) | 종결 | `native-v1-state` 메모리 교훈 |
 | C2 | 무료 서명 앱은 **7일 뒤 만료**(재설치 갱신) — 환경 제약 | 상시 | `iphone-verify-checklist.md` A |
+| **D3한계** | **§7 (a) uses 조정이 "표시만 숨김"** — 정보·아이디어·원칙의 due/resurface를 상세에서 안 보이게 했으나(`d00b8de`), **기존 저장된 값·예약된 알림은 안 건드림**(비파괴적). 그 분류에 옛 due/resurface 값이 있으면 화면엔 없어도 **알림 planner가 여전히 발화**할 수 있음. | 열림 · **중간** (§7 (c)/D3에서 값 무효화·알림 정리 필요). **이거 안 하면 사양서에 "안 씀" 박기 위험** | `ClassDef.swift`(주석 "§7 (c) 몫"); `DetailView.timeSection`; `NotificationScheduler.swift` |
 
 **환경 주의(맥미니 고유, 2026-07-25):** ① 최초 `git`/`xcodebuild`가 Xcode 라이선스 미동의로 막힘 → `sudo xcodebuild -license`. ② Xcode 26.6은 iOS SDK 26.5뿐 → 시뮬 런타임 26.5 설치(`xcodebuild -downloadPlatform iOS`) + iPhone 16 Pro(26.5) 시뮬 생성 필요. 근거: `docs/worklog/2026-07-25-macmini.md`.
 
@@ -124,7 +134,9 @@
 
 | 주제 | 내용 | 근거 |
 |------|------|------|
-| **§7 분류–세부정보 모델 구현** | 진행 중 계획: (A)분류 관리 화면 제거 (B)`ClassDef` 틀 도입-서술만 (C)주차만 마감 숨김 (D)FlexTypeCatalog 흡수·6종·자동분류. **코드 미착수**(계획 검토 단계). | `memory-philosophy.md` §7-2; 본 세션 계획 |
+| **§7 분류–세부정보 모델 구현** | **A~D2 완료**(A 관리화면 제거·B ClassDef 틀·C 주차 마감숨김·D1 FlexTypeCatalog 흡수·(a) 씀 여부·(b) 라벨). §7 **(a) 쓸지·(b) 제목이 화면에서 작동**. **남은 것 = D3(§7 (c) 동작)** — 아래 별행. | `memory-philosophy.md` §7; 커밋 `e118a69`·`c04b999`·`e6cfe96`·`84f6d2f`·`d00b8de`·`8bfb603` |
+| **§7 (c) 동작 = Stage D3 (다음)** | **알림 규칙 + 안 쓰는 분류의 값·알림 정리.** 특히 (a)에서 "표시만 숨긴" 정보·아이디어·원칙 due/resurface의 **값 무효화·예약 알림 취소**(§4 D3한계 해소). 이걸 해야 사양서에 "안 씀"을 안전하게 박음. | `memory-philosophy.md` §7 (c); §4 "D3한계"; `NotificationScheduler.swift` |
+| **주차 resurface "기억마다 다름" = §7 (d) 위임** | 지금 주차 resurface는 분류 차원 "씀" 고정. "기억마다 쓸지 다름"은 §7 (d) **세 상태(분류 고정/안 씀/기억에게 위임)** = 새 메커니즘 → **대기**(D3 이후 또는 별도). | `memory-philosophy.md` §7 (d); 2026-07-28 세션 결정 |
 | **O4 유연층 자동분류** | 지금 수동뿐 = "안 하기로 한 것 아니라 아직 안 한 것". 유연층 쌓이고 "분류마다 자동분류 규칙" 서면 편입. | `classification-redesign-open-questions.md` O4; 메모리 [[flex-autoclassify-deferred]] |
 | **해시태그 설계** | 분류 안의 가벼운 세분(저장·표시·검색). 분류 폭발 대신. | `memory-philosophy.md` §7; open-questions §7-2 |
 | **반복 규칙 (O3)** | 반복=속성(D3 확정)이나 표현·resurface 연동·다음 회차 생성은 미결. | `classification-redesign-open-questions.md` O3 |
@@ -143,8 +155,8 @@
 
 | 결정 | 현재 어디에 있나 | 사양서 반영 | 근거 |
 |------|----------------|-----------|------|
-| **§7 분류–세부정보 모델** (분류=코드 고정, 그릇+분류별 정의, 모든 분류 평등, 해시태그) | `memory-philosophy.md` §7 | ❌ 미반영(개념 확정, **며칠 실사용 뒤** 방향 확정 후) | `memory-philosophy.md` §7; `docs/worklog/2026-07-25-macmini.md` |
-| **분류 2층→평등 재구성 / 주차위치(유연층)** | open-questions D1(→§7 포인터), `FlexType.swift` | ❌ 사양서 §2는 여전히 고정 6종만 | open-questions D1; `second-brain-v0-spec.md` §2 |
+| **§7 분류–세부정보 모델** (분류=코드 고정, 그릇+분류별 정의, 모든 분류 평등, 해시태그) | `memory-philosophy.md` §7; **코드 = Stage A~D2 구현됨**(`ClassDef.swift` 등) | ❌ 미반영. **A~D2 구현됐어도 D3(§7 (c) 값·알림 정리)까지 굳은 뒤 반영** — 특히 정보·아이디어·원칙 "안 씀"은 D3 전엔 표시만이라 사양에 박기 위험(§4 D3한계). | `memory-philosophy.md` §7; §4 "D3한계"; `docs/worklog/2026-07-28-macmini.md` |
+| **분류 2층→평등 재구성 / 주차위치(유연층 흡수)** | open-questions D1(→§7 포인터); **D1에서 `ClassCatalog`로 흡수**(`FlexTypeCatalog` 삭제) | ❌ 사양서 §2는 여전히 고정 6종만 | open-questions D1; 커밋 `84f6d2f`; `second-brain-v0-spec.md` §2 |
 | **필터 동적화**(실재 분류만·유연층 포함) | 구현됨 `f79e69a` | ❌ 사양서 §2 부근 L176은 고정 필터 전제 서술 | `second-brain-v0-spec.md`(L176 부근) |
 | **유연층 자동분류 상태(O4)** | open-questions O4 | ❌(개념 문서에만) | open-questions O4 |
 | **참고 — 이미 반영됨** | 사진·카메라·성역·EXIF 프라이버시 | ✅ 반영 완료 | `second-brain-v0-spec.md` "네이티브 v1 확정" 소절(커밋 `db83c9a`) |
