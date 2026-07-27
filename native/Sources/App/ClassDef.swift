@@ -1,19 +1,20 @@
+import SwiftUI
 import SecondBrainCore
 
-/// §7 분류–세부정보 모델의 코드 틀 (Stage B — 틀만, 동작 0).
+/// §7 분류–세부정보 모델의 코드 정본 (Stage D1 — 분류 평등 통합).
 ///
 /// §7(`docs/native/memory-philosophy.md`): 분류는 새 데이터 구조가 아니라 **공통 그릇 위의 정의**다.
-/// 이 틀은 그중 가장 먼저 필요한 한 가지 — **"각 분류가 어떤 세부정보를 쓰는가"(§7 (a) 쓸지/안 쓸지)** 만
-/// 표현한다. 제목(=의미)·동작·누가 값·개수(§7 (b)(c)(d))는 **실제 요구가 생기는 Stage D에서** 코드가
-/// 자란다 — 지금 미리 넣으면 빈 구조 = 과잉추상화(§7-0의 "만능 엔진" 경고, D5).
+/// 여기서 각 분류를 **하나의 평등한 항목**으로 정의한다 — 시각 메타 + 그 분류가 **쓰는 세부정보 집합**
+/// (§7 (a) 쓸지/안 쓸지). **기본층/유연층 구분 없음**(§7 "모든 분류 평등") — 주차위치도 그중 하나일 뿐이다.
+/// D1 이전의 `FlexTypeCatalog`(유연층)는 여기로 흡수됐다.
 ///
-/// **경계:** §2 `TypeCatalog`(시각 메타)·§3 프롬프트·`validTypes`·`MergeEngine` 무변경. 이 층은 표시 정책만.
-/// 자동분류는 여전히 §3/O4 소관(§7이 자동분류를 앞당기지 않는다).
+/// 제목(=의미)·동작·누가 값·개수(§7 (b)(c)(d))는 실제 요구가 생기는 **Stage D2~ 에서** 코드가 자란다 —
+/// 지금 미리 넣으면 빈 구조 = 과잉추상화(§7-0 "만능 엔진" 경고).
 ///
-/// **Stage B 상태: 아무 화면도 이 틀을 읽지 않는다 → 앱 동작 0.** DetailView가 이걸 읽어 주차위치에서
-/// 마감을 숨기는 첫 실제 동작은 Stage C.
+/// **경계:** §2 `TypeCatalog`(6종 시각 메타)는 **보호자산이라 그대로 두고 참조만** 한다. §3 프롬프트·
+/// `validTypes`·`MergeEngine` 무변경. 이 층은 표시 정책만. 자동분류는 §3/O4 소관(§7이 앞당기지 않음).
 
-/// 공통 그릇의 세부정보 슬롯. Stage C에 필요한 것만 먼저 — 필요해지면 늘린다.
+/// 공통 그릇의 세부정보 슬롯. 필요할 때 늘린다.
 /// (원문·성역 메타·audio·question은 **분류 무관 상시**라 §7 지배 대상 밖 → 여기 없음.)
 enum Detail: Hashable {
     case due        // 마감 (Due)
@@ -22,38 +23,43 @@ enum Detail: Hashable {
     case location   // 사진 EXIF 촬영 위치
 }
 
-/// 한 분류의 §7 정의. 지금은 **쓰는 세부정보의 집합**뿐 — 집합에 있으면 '씀'.
-/// 기본층/유연층 구분 없음(§7 "모든 분류 평등").
+/// 한 분류의 §7 정의 = **시각 메타 + 쓰는 세부정보 집합**. 집합에 있으면 '씀'.
+/// (기본층/유연층 필드 없음 — 모든 분류가 이 한 구조로 평등하다.)
 struct ClassDef {
-    let key: String
+    let meta: TypeMeta
     let uses: Set<Detail>
 
+    var key: String? { meta.key }
     func uses(_ detail: Detail) -> Bool { uses.contains(detail) }
 }
 
-/// 분류별 `ClassDef` 목록. **§2·유연층과 무관한 §7 정의 층**(TypeMeta 안 건드림).
+/// 모든 분류의 **평등한 정본 목록**. 층 구분 없이 한 축.
+/// 순서는 **표시 순서일 뿐**(계층 아님): §2 6종 → 주차. 미분류(nil)는 분류 지정 대상이 아니라 여기 없다.
 enum ClassCatalog {
-    /// 세부정보 정의(Stage C — 첫 분류별 차등). 기준(mirror) = 마감·다시보기·사진·위치 모두 씀
-    /// (기본층 6종의 현재 동작 그대로 유지). **주차위치만 마감(due)을 뺀다** — §7 "주차는 사진·위치·본문으로
-    /// 충분, 마감 안 씀". 이 차등은 **표시 전용**이다(`DetailView.timeSection`이 읽어 마감 행을 숨김).
-    /// 저장된 due 값을 지우거나 무효화하지 않는다(비파괴적 — due 무효화 '동작'은 §7 (c), Stage D 몫).
-    static let all: [String: ClassDef] = {
+    /// 세부정보 정의. 기준(mirror) = 마감·다시보기·사진·위치 모두 씀(현재 동작 유지).
+    /// **주차위치만 마감(due)을 뺀다**(§7 "주차는 사진·위치·본문으로 충분, 마감 안 씀" — Stage C).
+    /// 이 차등은 **표시 전용**(`DetailView.timeSection`이 읽어 마감 행을 숨김) — 저장된 due 값은 안 지운다
+    /// (비파괴적; due 무효화 '동작'은 §7 (c), Stage D3 몫).
+    static let all: [ClassDef] = {
         let mirror: Set<Detail> = [.due, .resurface, .photo, .location]
+        // 시각 메타: 6종은 §2 TypeCatalog(보호자산) 참조, 주차는 여기서 정의(유연층 흡수).
+        let parking = TypeMeta(key: "parking", label: "주차 위치",
+                               color: Color(hex: 0x34D399), symbol: "car.fill")
+        return [
+            ClassDef(meta: TypeCatalog.meta("promise"),     uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("event"),       uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("info-action"), uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("info"),        uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("idea"),        uses: mirror),
+            ClassDef(meta: TypeCatalog.meta("principle"),   uses: mirror),
+            ClassDef(meta: parking,                         uses: mirror.subtracting([.due])),
+        ]
+    }()
+
+    /// key → 정의(빠른 조회).
+    static let byKey: [String: ClassDef] = {
         var m: [String: ClassDef] = [:]
-        for meta in ClassRegistry.assignable {          // 기본층 6 + 유연층(주차) — 평등
-            guard let key = meta.key else { continue }
-            let uses = key == FlexTypeCatalog.parking.key ? mirror.subtracting([.due]) : mirror
-            m[key] = ClassDef(key: key, uses: uses)
-        }
+        for d in all { if let k = d.key { m[k] = d } }
         return m
     }()
-}
-
-extension ClassRegistry {
-    /// key → §7 정의. `meta(_:)`가 시각 메타를 통합 조회하듯, 이건 세부정보 정의를 통합 조회한다.
-    /// 미분류(nil)나 목록에 없는 key는 nil.
-    static func def(_ key: String?) -> ClassDef? {
-        guard let key else { return nil }
-        return ClassCatalog.all[key]
-    }
 }
