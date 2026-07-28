@@ -102,7 +102,7 @@
 | B2 | **'원칙 0개면 밴드 숨김'** — 코드 처리했으나 실기기 미검증 | 열림 · **낮음** | `memory-philosophy.md` §3 주의 |
 | B3 | **'총 기억' 정의** 재검토 중 (현재 = 살아있는 전체) | 열림 · 낮음 | `memory-philosophy.md` §5 |
 | C1 | 스크롤 위치 기반 접힘/요약 = SwiftUI `List` 제약으로 **폐기**(버그 아님, 제약) | 종결 | `native-v1-state` 메모리 교훈 |
-| C2 | 무료 서명 앱은 **7일 뒤 만료**(재설치 갱신) — 환경 제약 | 상시 | `iphone-verify-checklist.md` A |
+| C2 | 서명 만료 — **유료 등록이라 ~1년**(현재 2027-02-08, 인증서 기준). Xcode ⌘R 재실행으로 재서명 갱신. **앱 삭제 금지**(기기 id·키체인·알림 권한 소실) | 상시 | `iphone-verify-checklist.md` F·G |
 | **D3한계** | **§7 (a) uses 조정이 "표시만 숨김"** — 정보·아이디어·원칙의 due/resurface를 상세에서 안 보이게 했으나(`d00b8de`), **기존 저장된 값·예약된 알림은 안 건드림**(비파괴적). 그 분류에 옛 due/resurface 값이 있으면 화면엔 없어도 **알림 planner가 여전히 발화**할 수 있음. | 열림 · **중간** (§7 (c)/D3에서 값 무효화·알림 정리 필요). **이거 안 하면 사양서에 "안 씀" 박기 위험** | `ClassDef.swift`(주석 "§7 (c) 몫"); `DetailView.timeSection`; `NotificationScheduler.swift` |
 
 **환경 주의(맥미니 고유, 2026-07-25):** ① 최초 `git`/`xcodebuild`가 Xcode 라이선스 미동의로 막힘 → `sudo xcodebuild -license`. ② Xcode 26.6은 iOS SDK 26.5뿐 → 시뮬 런타임 26.5 설치(`xcodebuild -downloadPlatform iOS`) + iPhone 16 Pro(26.5) 시뮬 생성 필요. 근거: `docs/worklog/2026-07-25-macmini.md`.
