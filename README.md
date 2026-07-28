@@ -62,7 +62,7 @@ GitHub Pages / Netlify / Vercel 어디든 이 폴더를 그대로 올리면 HTTP
 - 2026-06-29 10:40 | voice | 김형석 대표 만나야 됩니다
   type: promise        # event/promise/info-action/idea/discard, (+ principle → 원칙)
   due: 2026-07-11      # YYYY-MM-DD 또는 none
-  resurface: 2026-07-10# 날짜 또는 weekly
+  resurface: 2026-07-10# 날짜 또는 none
   status: open
 ```
 

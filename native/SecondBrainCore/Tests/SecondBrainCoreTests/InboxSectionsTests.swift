@@ -24,6 +24,18 @@ final class InboxSectionsTests: XCTestCase {
         XCTAssertNil(ItemSchedule.effectiveDay(item("D")))
     }
 
+    /// resurface의 새 기본값 "none"이 레거시 "weekly"와 **동일하게** '날짜 없음'으로 처리되는지.
+    /// (weekly는 반복 기능이 아니라 "날짜 없음"의 동의어였다 — 신규 값은 none뿐, weekly는 읽기 호환.)
+    func testEffectiveDay_noneEqualsWeekly_bothNoTime() {
+        // due도 resurface도 시점 없음 → nil (none·weekly 동치)
+        XCTAssertNil(ItemSchedule.effectiveDay(item("N1", due: "none", resurface: "none")))
+        XCTAssertNil(ItemSchedule.effectiveDay(item("N2", resurface: "none")))
+        XCTAssertEqual(ItemSchedule.effectiveDay(item("N3", due: "none", resurface: "weekly")),
+                       ItemSchedule.effectiveDay(item("N4", due: "none", resurface: "none")))  // 둘 다 nil = 동일
+        // resurface가 none이면 막지 말고 due로 폴백해야 한다("weekly가 아니면 날짜" 오인 방지 회귀 가드)
+        XCTAssertEqual(ItemSchedule.effectiveDay(item("N5", due: "2026-07-20", resurface: "none")), "2026-07-20")
+    }
+
     // MARK: DDay
 
     func testDDay_buckets() {

@@ -104,7 +104,7 @@ enum ClaudeClassifier {
                 index: idx,
                 type: type,
                 due: (c["due"] as? String) ?? "none",
-                resurface: (c["resurface"] as? String) ?? "weekly",
+                resurface: (c["resurface"] as? String) ?? "none",
                 status: (c["status"] as? String) ?? "open",
                 question: (c["question"] as? String) ?? "")
         }

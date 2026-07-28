@@ -37,7 +37,7 @@ SYSTEM_PROMPT = """다음은 사용자의 받은함(inbox)의 미가공 수집 �
 각 항목에 붙일 것:
 - type
 - due: 날짜가 명시되거나 맥락에서 추론되면 YYYY-MM-DD, 없으면 "none"
-- resurface: due가 있으면 그 며칠 전 날짜(YYYY-MM-DD), 없으면 "weekly"
+- resurface: due가 있으면 그 며칠 전 날짜(YYYY-MM-DD), 없으면 "none"
 - status: 항상 "open"
 - question: info-action인데 "구체적으로 뭘, 언제 할지"가 불명확하면 그 한 줄 질문. 아니면 빈 문자열.
 
@@ -143,7 +143,7 @@ def field_lines(c):
     out = [
         f"  type: {c['type']}",
         f"  due: {(c.get('due') or 'none').strip() or 'none'}",
-        f"  resurface: {(c.get('resurface') or 'weekly').strip() or 'weekly'}",
+        f"  resurface: {(c.get('resurface') or 'none').strip() or 'none'}",
         f"  status: {(c.get('status') or 'open').strip() or 'open'}",
     ]
     q = (c.get("question") or "").strip()

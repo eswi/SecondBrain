@@ -11,7 +11,7 @@ public struct InboxItem: Equatable, Sendable {
 
     public var type: String?       // event/promise/info-action/info/idea/principle/discard (§2)
     public var due: String?        // "YYYY-MM-DD" | "none" | nil
-    public var resurface: String?  // "YYYY-MM-DD" | "weekly" | nil
+    public var resurface: String?  // "YYYY-MM-DD" | "none" | nil  (레거시 "weekly"는 읽기만 호환 = 날짜 없음)
     public var status: String?     // open / done / ...
     public var question: String?   // info-action 재확인 질문(§3) — 있으면
     public var notes: [String]     // 그 외 들여쓴 줄(여러 줄 원문/메모)

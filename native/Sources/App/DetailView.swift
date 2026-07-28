@@ -313,7 +313,7 @@ struct DetailView: View {
                 DatePicker("", selection: dateBinding(value), displayedComponents: .date)
                     .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
             } else {
-                Text(value.wrappedValue == "weekly" ? "매주" : "없음")
+                Text("없음")   // 시점 없음. (레거시 "weekly" 값도 여기로 — 반복 기능은 없었다: 날짜 없음의 동의어)
                     .font(.caption).foregroundStyle(Palette.textTertiary)
             }
             if showDefer {
