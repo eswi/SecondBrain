@@ -90,8 +90,8 @@ func itemCaption(_ it: ResolvedItem) -> String {
     var parts: [String] = []
     let dt = "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces)
     if !dt.isEmpty { parts.append(dt) }
-    if let due = it.due, due != "none", !due.isEmpty { parts.append("~\(due)") }
-    if let rs = it.resurface, rs != "weekly", rs != "none", !rs.isEmpty { parts.append("↻\(rs)") }
+    if let due = it.due, ItemSchedule.parseDay(due) != nil { parts.append("~\(due)") }
+    if let rs = it.resurface, ItemSchedule.parseDay(rs) != nil { parts.append("↻\(rs)") }
     return parts.joined(separator: " · ")
 }
 

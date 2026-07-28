@@ -33,7 +33,7 @@ public enum EditDiff {
         return n.isEmpty ? "none" : n
     }
 
-    /// `{nil, "", "none"}` → "" (시점 없음). 날짜·"weekly" 등 실제 값은 그대로.
+    /// `{nil, "", "none"}` → "" (시점 없음). 실제 값(날짜 등)은 그대로 둔다.
     private static func normTime(_ s: String?) -> String {
         guard let s = s, !s.isEmpty, s != "none" else { return "" }
         return s

@@ -451,8 +451,8 @@ struct DetailView: View {
     }
 
     static func isRealDate(_ s: String?) -> Bool {
-        guard let s = s, !s.isEmpty, s != "none", s != "weekly" else { return false }
-        return true
+        // 실제 날짜(YYYY-MM-DD)만 "시점 있음". none·빈값·깨진 값·레거시 "weekly"는 전부 false.
+        ItemSchedule.parseDay(s ?? "") != nil
     }
 
     private static func daysFromNow(_ d: Int) -> String {
