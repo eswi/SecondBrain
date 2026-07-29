@@ -33,6 +33,9 @@ struct DetailView: View {
     @State private var due: String?
     @State private var resurface: String?
     @State private var raw: String
+    /// 원문은 기본 읽기전용. [편집]을 눌러야 편집 모드로 — 의도 없는 우발 수정 방지.
+    @State private var editingRaw = false
+    @FocusState private var rawFocused: Bool
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -110,22 +113,52 @@ struct DetailView: View {
         if dirty { showDiscardConfirm = true } else { dismiss() }
     }
 
-    // MARK: 원문 — 편집 가능(텍스트 층 가변, edit-policy.md §6). [저장]으로 마무리(≠ 기억하기, §2).
+    // MARK: 원문 — 3단 편집 UX (edit-policy.md §2-A). 기본 읽기전용 → [편집] 진입 → 체크로 편집만 완료.
+    // ① 상세 진입 시 원문은 읽기전용(대부분 수정 의도 없음 → 우발 편집 방지).
+    // ② 연필 [편집] → 편집 모드(TextEditor·포커스). 고치면 하단 [저장]이 활성(수정 감지).
+    // ③ 체크(원문 편집 완료) → 편집 모드만 닫고 읽기전용으로. **커밋 아님** — draft는 남고 [저장]도 그대로.
+    //    이렇게 원문 편집을 개별 완료하면 이어서 분류·시간을 마저 고치고 한 번에 [저장]할 수 있다.
+    // [저장]=전체 수정 커밋(≠ 기억하기, §2). 편집 중 바로 [저장]도 가능(체크 없이).
 
     private var rawSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("원문")
-            TextEditor(text: $raw)
-                .font(.body)
-                .foregroundStyle(Palette.textPrimary)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 96)
-                .frame(maxWidth: .infinity)
-                .padding(8)
-                .background(Palette.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border))
+            HStack {
+                sectionLabel("원문")
+                Spacer()
+                if editingRaw {
+                    // 체크 = 원문 편집만 완료(읽기전용 복귀). 커밋 아님. 빈 본문이면 완료 막음(내용 없는 기억 방지).
+                    // [편집]과 일관되게 아이콘=caption 크기 + 오른쪽에 '완료' 글자.
+                    Button { editingRaw = false; rawFocused = false } label: {
+                        Label("완료", systemImage: "checkmark").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Palette.accent)
+                    .disabled(rawEmpty)
+                } else {
+                    Button { editingRaw = true; rawFocused = true } label: {
+                        Label("편집", systemImage: "pencil").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Palette.accent)
+                }
+            }
+            if editingRaw {
+                TextEditor(text: $raw)
+                    .font(.body)
+                    .foregroundStyle(Palette.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .focused($rawFocused)
+                    .frame(minHeight: 96)
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(Palette.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border))
+            } else {
+                Text(raw.isEmpty ? "(내용 없음)" : raw)
+                    .font(.body).foregroundStyle(Palette.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if rawEmpty {
-                // 내용 없는 기억 방지 — 저장 차단 이유를 그 자리에서 알린다(하단 [저장]도 비활성).
+                // 내용 없는 기억 방지 — 편집/읽기 어느 모드든 비었으면 알린다(하단 [저장]·체크도 비활성).
                 Text("본문은 비울 수 없어요").font(.caption2).foregroundStyle(Palette.overdue)
             }
         }
