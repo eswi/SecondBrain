@@ -299,6 +299,11 @@ struct DetailView: View {
                 }
             }
             .menuStyle(.button).buttonStyle(.plain)
+            // Menu는 탭을 자기가 삼켜(메뉴 표시) 바깥 TapGesture가 안 걸린다 → touch-down에 걸리는
+            // DragGesture(0)로 메뉴 여는 순간 키보드를 내린다. simultaneous라 메뉴 동작은 그대로.
+            .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in
+                if rawFocused { rawFocused = false }
+            })
         }
         .padding(14).card()
     }
