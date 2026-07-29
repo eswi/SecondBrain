@@ -82,10 +82,18 @@ public enum ClassSpecCatalog {
         return m
     }()
 
-    /// key → 정의. **미분류(nil)·미등록 key(discard 등)는 nil** — "정의 없음"이며,
-    /// 그 폴백 의미("정의 없으면 전부 씀")는 조회하는 쪽이 정한다.
+    /// key → 정의. **미분류(nil)·미등록 key(discard 등)는 nil** = "정의 없음". 폴백은 `uses(_:_:)`에 있다.
     public static func spec(_ key: String?) -> ClassSpec? {
         guard let key else { return nil }
         return byKey[key]
+    }
+
+    /// **"이 분류가 이 칸을 쓰는가"의 유일한 답**(§7 (a)). 화면(상세 "시간 설정")과 판정(알림·"곧 닥칠 것")이
+    /// **같은 함수**를 본다 — 폴백이 두 곳에 흩어지면 보이는 것과 울리는 것이 어긋난다.
+    ///
+    /// **정의 없는 분류(미분류 nil·빈 문자열·`discard`·미등록 key)는 전부 '씀'으로 폴백한다.**
+    /// 사람이 적어둔 날짜가 분류가 안 붙었다는 이유로 조용히 사라지면 안 된다(§7 — 기억은 사람 것).
+    public static func uses(_ key: String?, _ detail: Detail) -> Bool {
+        spec(key)?.uses(detail) ?? true
     }
 }

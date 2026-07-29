@@ -279,8 +279,8 @@ struct DetailView: View {
         // §7 (a): 분류가 마감·다시보기를 쓰는지 ClassDef가 정한다. 정의 없으면(미분류·미등록) 기본=씀.
         // → 주차=마감만 숨김 / 정보·아이디어·원칙=둘 다 안 써 "시간 설정" 섹션 통째 숨김 / 6종·미분류=회귀 없음.
         // 표시 전용(비파괴적): 숨겨도 저장된 due/resurface 값은 안 지운다(무효화·알림 정리는 §7 (c)/D3).
-        let usesDue       = ClassRegistry.def(normalizedType)?.uses(.due) ?? true
-        let usesResurface = ClassRegistry.def(normalizedType)?.uses(.resurface) ?? true
+        let usesDue       = ClassSpecCatalog.uses(normalizedType, .due)
+        let usesResurface = ClassSpecCatalog.uses(normalizedType, .resurface)
         return Group {
             if usesDue || usesResurface {
                 VStack(alignment: .leading, spacing: 12) {
