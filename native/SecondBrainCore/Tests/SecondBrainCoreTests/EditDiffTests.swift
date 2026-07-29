@@ -110,4 +110,21 @@ final class EditDiffTests: XCTestCase {
         XCTAssertEqual(c["raw"], "정정본")
         XCTAssertEqual(c.count, 2)
     }
+
+    // 13) [로드 시 dirty 아님 — 원문 항상 편집 가능 방식의 핵심 가드]
+    // "열고 → 안 만지고 → 나가기"가 팝업 없이 통과해야 한다. draft raw = item.raw ?? "" (DetailView.init과 동일)일 때
+    // nil·앞뒤 공백·줄바꿈·특수문자 항목도 로드만으로 변경이 생기면 안 된다.
+    func testRaw_loadNeverDirty_edgeItems() {
+        let raws: [String?] = [nil, "", "  앞뒤 공백  ", "첫 줄\n둘째 줄", "a|b", "이모지 🙂"]
+        for r in raws {
+            var f: [String: String] = ["date": "d", "time": "t", "source": "voice"]
+            if let r { f["raw"] = r }
+            let it = ResolvedItem(id: "a", fields: f, deleted: false, confirmed: false,
+                                  createdHLC: HLC(wallMillis: 0, counter: 0, deviceId: "legacy"))
+            let draftRaw = it.raw ?? ""   // DetailView: _raw = State(initialValue: item.raw ?? "")
+            let c = EditDiff.changes(type: it.type, due: it.due, resurface: it.resurface,
+                                     raw: draftRaw, from: it)
+            XCTAssertTrue(c.isEmpty, "로드만으로 dirty면 안 됨(원문=\(String(describing: r))): \(c)")
+        }
+    }
 }
