@@ -28,10 +28,11 @@ struct DetailView: View {
     @ObservedObject var model: InboxModel
     @Environment(\.dismiss) private var dismiss
 
-    // draft — 편집 대상 필드만. raw(원문)는 없음(§8 잠금).
+    // draft — 편집 대상 필드. raw(원문)도 편집 대상(edit-policy.md §6 텍스트 층 가변).
     @State private var type: String?
     @State private var due: String?
     @State private var resurface: String?
+    @State private var raw: String
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -41,6 +42,8 @@ struct DetailView: View {
     @State private var showPrincipleAutoRemember = false
     /// [삭제하기] 재확인(공용 대화상자). 확인 시 삭제 + 화면 닫기.
     @State private var showDeleteConfirm = false
+    /// 저장하지 않은 수정이 있는데 뒤로가기로 이탈하려 할 때 재확인(조용히 버리지 않음, 결정 1).
+    @State private var showDiscardConfirm = false
 
     /// 원본 음성 "다시 듣기" 재생기(성역 카드).
     @StateObject private var audio = AudioPlayer()
@@ -51,13 +54,17 @@ struct DetailView: View {
         _type = State(initialValue: item.type)
         _due = State(initialValue: item.due)
         _resurface = State(initialValue: item.resurface)
+        _raw = State(initialValue: item.raw ?? "")
         _isRemembered = State(initialValue: item.confirmed)
     }
 
     private var changes: [String: String] {
-        EditDiff.changes(type: type, due: due, resurface: resurface, from: item)
+        EditDiff.changes(type: type, due: due, resurface: resurface, raw: raw, from: item)
     }
     private var dirty: Bool { !changes.isEmpty }
+    /// 본문을 전부 지운 상태(공백만 남은 것 포함). 내용 없는 기억은 만들지 않는다
+    /// (사진 촬영이 본문 선행을 요구하는 규칙·capture의 원문 선행과 정합). → 저장 차단.
+    private var rawEmpty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         ScrollView {
@@ -78,29 +85,49 @@ struct DetailView: View {
         .navigationTitle("기억")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        // 저장 없이 뒤로가기로 이탈하는 조용한 경로를 막는다(결정 1). 기본 back(스와이프 포함)을 숨기고
+        // 커스텀 back이 dirty면 확인 대화상자, 아니면 즉시 닫기. [취소]는 명시적 버림이라 그대로 둔다.
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { backTapped() } label: { Label("기억", systemImage: "chevron.backward") }
+                    .tint(Palette.accent)
+            }
+        }
         #endif
         .overlay { if showRememberConfirm { rememberDialog } }
         .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
         .overlay { if showDeleteConfirm { deleteDialog } }
+        .overlay { if showDiscardConfirm { discardDialog } }
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
         .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
         .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)
+        .animation(.easeInOut(duration: 0.15), value: showDiscardConfirm)
     }
 
-    // MARK: 원문 (§8 잠금)
+    /// 커스텀 뒤로가기: 저장 안 한 수정이 있으면 확인, 없으면 즉시 닫기.
+    private func backTapped() {
+        if dirty { showDiscardConfirm = true } else { dismiss() }
+    }
+
+    // MARK: 원문 — 편집 가능(텍스트 층 가변, edit-policy.md §6). [저장]으로 마무리(≠ 기억하기, §2).
 
     private var rawSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                sectionLabel("원문")
-                Spacer()
-                Image(systemName: "lock.fill").font(.caption2).foregroundStyle(Palette.textTertiary)
+            sectionLabel("원문")
+            TextEditor(text: $raw)
+                .font(.body)
+                .foregroundStyle(Palette.textPrimary)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 96)
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(Palette.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border))
+            if rawEmpty {
+                // 내용 없는 기억 방지 — 저장 차단 이유를 그 자리에서 알린다(하단 [저장]도 비활성).
+                Text("본문은 비울 수 없어요").font(.caption2).foregroundStyle(Palette.overdue)
             }
-            Text(item.raw ?? "(내용 없음)")
-                .font(.body).foregroundStyle(Palette.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("원문 수정은 준비 중이에요").font(.caption2).foregroundStyle(Palette.textTertiary)
         }
         .padding(14).card()
     }
@@ -368,7 +395,7 @@ struct DetailView: View {
                 barLabel("저장", "square.and.arrow.down")
             }
             .buttonStyle(.borderedProminent).tint(Palette.accent)
-            .disabled(!dirty)
+            .disabled(!dirty || rawEmpty)   // 본문 전부 지운 상태면 저장 불가(내용 없는 기억 방지)
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(.ultraThinMaterial)
@@ -397,6 +424,14 @@ struct DetailView: View {
                       confirmTitle: "삭제", confirmTint: Palette.overdue,
                       onCancel: { showDeleteConfirm = false },
                       onConfirm: { showDeleteConfirm = false; model.delete(item); dismiss() })
+    }
+
+    /// 저장 안 한 수정을 두고 뒤로가기 → 재확인. [계속 편집] / [버리기](overdue 톤).
+    private var discardDialog: some View {
+        ConfirmDialog(title: "저장하지 않은 수정이 있어요.\n버리고 나갈까요?",
+                      cancelTitle: "계속 편집", confirmTitle: "버리기", confirmTint: Palette.overdue,
+                      onCancel: { showDiscardConfirm = false },
+                      onConfirm: { showDiscardConfirm = false; dismiss() })
     }
 
     /// 하단 바 버튼 라벨 — 줄바꿈 금지 + 좌우 여백으로 폭 확보(확정 글자 깨짐 방지).
