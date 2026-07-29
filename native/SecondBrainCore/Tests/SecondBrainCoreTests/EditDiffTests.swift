@@ -77,4 +77,37 @@ final class EditDiffTests: XCTestCase {
         let cleared = EditDiff.changes(type: "info", due: nil, resurface: "none", from: it)
         XCTAssertEqual(cleared["resurface"], "none", "weekly를 비우면 none")
     }
+
+    // 9) raw 미제공(nil) = 하위호환 — 본문을 diff에 안 담는다.
+    func testRaw_omittedByDefault() {
+        let it = item(type: "info")
+        let c = EditDiff.changes(type: "info", due: nil, resurface: nil, from: it)
+        XCTAssertNil(c["raw"], "raw 인자 없으면 diff에 raw 없음")
+    }
+
+    // 10) raw 안 고치면 변경 없음 / 고치면 글자 그대로.
+    func testRaw_changeExact() {
+        let it = item()   // item.raw == "x"
+        XCTAssertTrue(EditDiff.changes(type: nil, due: nil, resurface: nil, raw: "x", from: it).isEmpty,
+                      "같은 본문이면 변경 없음")
+        let c = EditDiff.changes(type: nil, due: nil, resurface: nil, raw: "고친 본문", from: it)
+        XCTAssertEqual(c["raw"], "고친 본문")
+        XCTAssertEqual(c.count, 1, "본문만 바꾸면 raw 한 필드")
+    }
+
+    // 11) [결정 3] 앞뒤 공백은 trim하지 않고 그대로 보존 — 앱이 사람 글을 조용히 바꾸지 않는다.
+    func testRaw_preservesEdgeWhitespace() {
+        let it = item()   // "x"
+        let c = EditDiff.changes(type: nil, due: nil, resurface: nil, raw: "  앞뒤 공백  ", from: it)
+        XCTAssertEqual(c["raw"], "  앞뒤 공백  ", "앞뒤 공백 그대로 커밋")
+    }
+
+    // 12) 본문+분류 동시 수정 → 한 dict(한 이벤트). raw는 성역 아님, 함께 커밋된다.
+    func testRaw_withTypeChange() {
+        let it = item(type: "idea")
+        let c = EditDiff.changes(type: "info", due: nil, resurface: nil, raw: "정정본", from: it)
+        XCTAssertEqual(c["type"], "info")
+        XCTAssertEqual(c["raw"], "정정본")
+        XCTAssertEqual(c.count, 2)
+    }
 }

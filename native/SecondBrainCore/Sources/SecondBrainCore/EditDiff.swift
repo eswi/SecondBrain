@@ -9,16 +9,21 @@ import Foundation
 /// 동일 취급한다. 그래서 원래 없던 시점을 손대지 않았는데 `none`이 써지는 일이 없다.
 /// 사람이 실제 날짜를 지우면(값 → 비움) 그때만 `"none"`을 **명시적으로** 기록한다.
 public enum EditDiff {
-    /// draft의 (type/due/resurface)를 원본 항목과 비교해 바뀐 필드만 담은 dict 반환.
+    /// draft의 (type/due/resurface/raw)를 원본 항목과 비교해 바뀐 필드만 담은 dict 반환.
     /// 비어 있으면 커밋할 것이 없다(이벤트를 만들지 않는다).
+    ///
+    /// `raw`(본문): **글자 그대로** 비교한다 — trim·정규화 없음(앞뒤 공백도 사람이 쓴 그대로 보존,
+    /// edit-policy.md §6 텍스트 층 가변). `nil`이면 이 diff에 본문을 포함하지 않는다(하위호환 기본값).
+    /// "본문 전부 지움" 차단은 UI 정책이므로 여기서 판단하지 않는다(빈값 변경도 diff엔 그대로 담김).
     public static func changes(type: String?, due: String?, resurface: String?,
-                               from item: ResolvedItem) -> [String: String] {
+                               raw: String? = nil, from item: ResolvedItem) -> [String: String] {
         var changes: [String: String] = [:]
         if normType(type) != normType(item.type) {
             changes["type"] = type ?? ""          // 미분류 = "" (기존 set type= 경로와 동일)
         }
         if let v = timeChange(new: due, old: item.due) { changes["due"] = v }
         if let v = timeChange(new: resurface, old: item.resurface) { changes["resurface"] = v }
+        if let raw = raw, raw != (item.raw ?? "") { changes["raw"] = raw }   // 글자 그대로(공백 보존)
         return changes
     }
 
