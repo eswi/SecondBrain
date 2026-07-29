@@ -38,6 +38,22 @@ final class RawEditTests: XCTestCase {
         assertRawRoundtrips("a|b", "파이프+공백없음")
     }
 
+    // Foundation이 줄바꿈으로 보지만 `\n`은 아닌 문자(U+2028 LINE SEP, U+0085 NEL, U+000B VT).
+    // 문자 목록(\n·\r)엔 없어 빠른 1차 거르기는 통과하지만, 왕복 검증(.newlines 단일 줄)이 잡아
+    // **평문으로 새지 않고** JSON 편집 블록으로 가야 한다. 웹 복사 텍스트로 실제 유입 가능.
+    func testRawRoundtrip_unicodeLineSeparators_goToJSONNotPlaintext() {
+        for (raw, name) in [("줄\u{2028}구분", "U+2028 LINE SEPARATOR"),
+                            ("다음\u{0085}줄", "U+0085 NEL"),
+                            ("수직\u{000B}탭", "U+000B VT")] {
+            let e = Event.edit(id: "u", hlc: HLC(wallMillis: 5, counter: 0, deviceId: "iphone"),
+                               ["raw": raw])
+            let s = EventWriter.serialize(e)
+            XCTAssertTrue(s.contains("fields.v1:"), "\(name): 평문 아니라 JSON 편집 블록으로 가야: \(s)")
+            XCTAssertFalse(s.contains("| set "), "\(name): 평문 set으로 새면 안 됨: \(s)")
+            assertRawRoundtrips(raw, name)   // 그리고 글자 그대로 왕복
+        }
+    }
+
     // 전체 경로: create + raw 수정 edit → 병합 시 수정본이 이기고(LWW), 원본은 로그에 남는다.
     func testRawEdit_fullPath_editWins() {
         let c = Event.create(id: "x", hlc: HLC(wallMillis: 1, counter: 0, deviceId: "iphone"),

@@ -22,28 +22,33 @@ public enum EventWriter {
         if f["deleted"] == "true" { return "@ \(e.hlc.serialized) | \(e.id) | delete" }
         if f["deleted"] == "false" { return "@ \(e.hlc.serialized) | \(e.id) | undelete" }
         // 편집 이벤트 직렬화 — **판단은 "안전하다고 확신할 때만 평문"**(위험 문자 나열이 아니라 뒤집힌 기본값).
-        // 평문 `set k=v`가 무손실 왕복된다고 **모든** 키·값에 대해 확신할 때만 그 경로를 쓰고,
-        // 하나라도 확신 못 하면 fields.v1 JSON 편집 블록으로 보낸다. 특정 필드(raw 등)만이 아니라 **값 자체**로 판단.
-        // (JSON 경로는 파서가 개별 필드로 펼쳐 넘기므로 per-field LWW 그대로 — MergeEngine·merge-design 무변경.
+        // 최종 판단은 **문자 목록이 아니라 왕복 검증**이다: 평문 `set k=v` 후보를 만들어 직렬화→파싱했을 때
+        // 원본 이벤트와 정확히 일치할 때만 그 경로를 쓰고, 아니면 fields.v1 JSON 편집 블록으로 보낸다.
+        // (isPlaintextSafe는 대부분의 위험 값을 왕복 없이 즉시 걸러내는 **빠른 1차 거르기**일 뿐 — 최종 게이트 아님.
+        //  JSON 경로는 파서가 개별 필드로 펼쳐 넘기므로 per-field LWW 그대로 — MergeEngine·merge-design 무변경.
         //  설계 `docs/native/photo-capture-design.md` §3. B2=펼침. 덩어리 LWW인 B1은 병합 퇴화라 금지.)
         if f.keys.allSatisfy(isPlaintextSafe) && f.values.allSatisfy(isPlaintextSafe) {
-            // set k=v ... (키 정렬 → 결정적).
-            let sets = f.keys.sorted().map { "\($0)=\(f[$0] ?? "")" }.joined(separator: " ")
-            return "@ \(e.hlc.serialized) | \(e.id) | set \(sets)"
+            let candidate = "@ \(e.hlc.serialized) | \(e.id) | set " +
+                f.keys.sorted().map { "\($0)=\(f[$0] ?? "")" }.joined(separator: " ")   // 키 정렬 → 결정적
+            if plaintextRoundtrips(candidate, to: e) { return candidate }
         }
         return "@ \(e.hlc.serialized) | \(e.id) | edit\n  fields.v1: \(compactJSON(f))"
     }
 
-    /// 이 문자열이 평문 `set k=v` 경로로 **손실 없이 왕복된다고 확신**할 수 있는가.
-    /// 평문 경로는 `@ hlc | id | set k=v k2=v2` **한 줄**이라, 다음이 있으면 깨진다:
-    ///  - 앞뒤 공백: 파서가 `@`-분해 조각을 trim → 잘림
-    ///  - 공백·탭: `set k=v` 조각이 공백으로 쪼개짐
-    ///  - 줄바꿈(`\n`·`\r`): 줄 자체가 나뉨
-    ///  - `|`: `@ ... | ... | verb` 줄이 파싱 때 '|'로 쪼개져 값이 **유실**됨
-    ///    (레거시 id를 해시로 만든 것과 동종 함정 — `MergeEngineTests` "레거시 id `|`" 케이스 참조).
-    /// 하나라도 있으면 "확신 불가" → 호출부가 JSON 편집 블록으로 보낸다.
-    /// 빈 문자열은 `set k=`로 무손실 왕복(파서 `omittingEmptySubsequences:false`) → 안전으로 본다
-    /// (미분류 되돌리기 `set type=`가 이 형태를 쓴다).
+    /// 평문 `set` 후보가 **무손실 왕복**하는지 — 직렬화 판단의 **최종 게이트**(문자 목록이 아님).
+    ///  ① Foundation의 줄 경계(`.newlines`: `\n`·`\r`·U+0085·U+000B·U+000C·U+2028·U+2029)로
+    ///     쪼개지지 않아야 한다. 우리 파서는 `\n`만 나누지만, 다른/미래 리더(`enumerateLines`·`.newlines`)가
+    ///     한 이벤트를 여러 줄로 보면 안 되므로 방어한다(웹 복사 텍스트로 U+2028 등이 실제로 들어올 수 있음).
+    ///  ② 실제 파서로 되읽었을 때 원본 이벤트(id·hlc·fields)와 정확히 일치해야 한다
+    ///     — `|`(줄이 '|'로 쪼개져 유실)·공백 분리·앞뒤 trim 손실을 여기서 잡는다.
+    private static func plaintextRoundtrips(_ candidate: String, to e: Event) -> Bool {
+        if candidate.components(separatedBy: .newlines).count != 1 { return false }   // ①
+        return EventLog.parse(candidate) == [e]                                        // ②
+    }
+
+    /// 평문 `set k=v` 경로가 값을 못 담는 대표 문자를 즉시 걸러내는 **빠른 1차 거르기**(성능용).
+    /// 최종 판단은 `plaintextRoundtrips`가 한다 — 여기서 놓친 값(예: U+2028)도 왕복 검증에서 걸러진다.
+    /// 빈 문자열은 `set k=`로 무손실 왕복이라 통과시킨다(미분류 되돌리기 `set type=`가 이 형태).
     static func isPlaintextSafe(_ s: String) -> Bool {
         if s != s.trimmingCharacters(in: .whitespacesAndNewlines) { return false }  // 앞뒤 공백
         for u in s.unicodeScalars where u == " " || u == "\t" || u == "\n" || u == "\r" || u == "|" {
@@ -57,7 +62,23 @@ public enum EventWriter {
         guard let data = try? JSONSerialization.data(
                 withJSONObject: f, options: [.sortedKeys, .withoutEscapingSlashes]),
               let s = String(data: data, encoding: .utf8) else { return "{}" }
-        return s
+        return escapeLineBreaks(s)
+    }
+
+    /// JSON 문자열 안에 **리터럴로 남은 줄 구분자**를 `\uXXXX` JSON 이스케이프로 바꾼다.
+    /// `\n`·`\r`은 JSONSerialization이 이미 `\n`·`\r`로 이스케이프하지만, U+000B·U+000C·U+0085·
+    /// U+2028·U+2029 등은 **리터럴로 남긴다.** fields.v1은 한 줄이어야 하는데 이것들이 리터럴이면
+    /// 파서 정규식(`.`·`$`)·다른 리더(`.newlines`·`enumerateLines`)가 줄을 쪼개 값이 잘린다.
+    /// 판단 기준은 문자 목록이 아니라 Foundation **`.newlines` 집합** — 유지보수할 목록이 없다.
+    private static func escapeLineBreaks(_ s: String) -> String {
+        let newlines = CharacterSet.newlines
+        var out = ""
+        out.reserveCapacity(s.unicodeScalars.count)
+        for u in s.unicodeScalars {
+            if newlines.contains(u) { out += String(format: "\\u%04x", u.value) }
+            else { out.unicodeScalars.append(u) }
+        }
+        return out
     }
 
     /// 이벤트를 파일 끝에 append. 파일 없으면 생성. (append-only, 원자성은 append 자체로 충분.)
