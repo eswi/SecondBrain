@@ -1,11 +1,13 @@
 import SwiftUI
 import SecondBrainCore
 
-/// **분류 평등 통합 조회**(§7 — Stage D1). 기본층/유연층 구분이 없다: 모든 분류는 `ClassCatalog`(정본)에서
-/// 온다. D1 이전엔 §2 `TypeCatalog`(기본층 6)와 `FlexTypeCatalog`(유연층 주차)를 concat/우선조회로 합쳤으나,
-/// 이제 `ClassCatalog`가 둘을 **한 축의 평등한 목록**으로 담고 여기서 통합 조회한다.
+/// **분류 평등 통합 조회**(§7 — Stage D1, D3-A). 기본층/유연층 구분이 없다: 모든 분류는 한 축에서 온다.
+/// D1 이전엔 §2 `TypeCatalog`(기본층 6)와 `FlexTypeCatalog`(유연층 주차)를 concat/우선조회로 합쳤다.
 ///
-/// §2 `TypeCatalog`(6종 시각 메타)는 **보호자산이라 그대로** 두고, 미분류(nil)·미등록 key **폴백으로만** 참조한다.
+/// 조회 경로가 둘로 갈린다(D3-A):
+/// - **세부정보 표**(쓰는지·제목) → Core `ClassSpecCatalog`(정본).
+/// - **시각 메타** → App `ClassCatalog`(= Core 표 + 색·심볼). §2 `TypeCatalog`는 **보호자산이라 그대로** 두고
+///   미분류(nil)·미등록 key **폴백으로만** 참조한다.
 enum ClassRegistry {
     /// 분류 지정 메뉴·필터에 노출할 전체 분류(표시 순서 = `ClassCatalog` 순: §2 6종 → 주차).
     static var assignable: [TypeMeta] { ClassCatalog.all.map { $0.meta } }
@@ -16,11 +18,9 @@ enum ClassRegistry {
         return TypeCatalog.meta(key)
     }
 
-    /// key → §7 세부정보 정의. 미분류(nil)·미등록 key는 nil.
-    static func def(_ key: String?) -> ClassDef? {
-        guard let key else { return nil }
-        return ClassCatalog.byKey[key]
-    }
+    /// key → §7 세부정보 정의(Core 정본 경유). 미분류(nil)·미등록 key는 **nil** = "정의 없음"
+    /// — 폴백 의미("정의 없으면 전부 씀")는 쓰는 쪽이 정한다(예: `DetailView.timeSection`의 `?? true`).
+    static func def(_ key: String?) -> ClassSpec? { ClassSpecCatalog.spec(key) }
 
     /// (분류, 세부정보) → **제목(=의미)**. §7 (b). 분류가 재정의했으면 그 라벨, 아니면 `Detail.defaultTitle`.
     /// 미분류(nil)·미등록 key는 기본 라벨. (예: due → 할일·미분류 "마감", 약속 "언제", 일정 "일시".)
