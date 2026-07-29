@@ -117,12 +117,13 @@ struct DetailView: View {
     private var rawSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionLabel("원문")
-            TextEditor(text: $raw)
+            // TextEditor 대신 axis:.vertical TextField — 내용 따라 높이가 늘고 **자체 스크롤이 없어**
+            // 바깥 ScrollView가 그대로 스크롤된다(긴 원문 위를 드래그해도 페이지가 넘어감). 여러 줄·줄바꿈 지원.
+            TextField("원문", text: $raw, axis: .vertical)
                 .font(.body)
                 .foregroundStyle(Palette.textPrimary)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 96)
-                .frame(maxWidth: .infinity)
+                .textFieldStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(Palette.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border))
