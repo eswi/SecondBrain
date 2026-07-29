@@ -45,6 +45,9 @@ struct DetailView: View {
     /// 저장하지 않은 수정이 있는데 뒤로가기로 이탈하려 할 때 재확인(조용히 버리지 않음, 결정 1).
     @State private var showDiscardConfirm = false
 
+    /// 원문 편집 포커스. 원문 밖을 누르면 내리고(키보드 숨김), 원문을 다시 누르면 그 위치에 커서·키보드 복귀.
+    @FocusState private var rawFocused: Bool
+
     /// 원본 음성 "다시 듣기" 재생기(성역 카드).
     @StateObject private var audio = AudioPlayer()
 
@@ -79,6 +82,11 @@ struct DetailView: View {
             }
             .padding(16)
             .padding(.bottom, 8)
+            // 원문 밖(카드 여백 등)을 누르면 키보드를 내려 상세 화면을 넓게 본다.
+            // 원문·버튼·메뉴 등 탭을 처리하는 자식은 각자 우선하므로 이 제스처는 빈 영역에서만 발화한다.
+            // (원문을 다시 누르면 TextField가 그 위치에 커서·키보드를 되살린다 — .focused 바인딩.)
+            .contentShape(Rectangle())
+            .onTapGesture { rawFocused = false }
         }
         .background(Palette.bg.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { bottomBar }
@@ -123,6 +131,7 @@ struct DetailView: View {
                 .font(.body)
                 .foregroundStyle(Palette.textPrimary)
                 .textFieldStyle(.plain)
+                .focused($rawFocused)   // 탭하면 포커스·키보드(커서는 탭 위치) / 밖을 누르면 아래에서 해제
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(Palette.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
