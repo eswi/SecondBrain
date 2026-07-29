@@ -126,16 +126,16 @@ struct DetailView: View {
                 sectionLabel("원문")
                 Spacer()
                 if editingRaw {
-                    // 체크 = 원문 편집만 완료(읽기전용 복귀). 커밋 아님. 빈 본문이면 완료 막음(내용 없는 기억 방지).
-                    // [편집]과 일관되게 아이콘=caption 크기 + 오른쪽에 '완료' 글자.
+                    // [수정 완료] = 원문 편집만 완료(읽기전용 복귀). 커밋 아님. 빈 본문이면 완료 막음(내용 없는 기억 방지).
+                    // [수정하기]와 일관되게 아이콘=caption 크기 + 오른쪽에 글자 병기.
                     Button { editingRaw = false; rawFocused = false } label: {
-                        Label("완료", systemImage: "checkmark").font(.caption)
+                        Label("수정 완료", systemImage: "checkmark").font(.caption)
                     }
                     .buttonStyle(.plain).foregroundStyle(Palette.accent)
                     .disabled(rawEmpty)
                 } else {
                     Button { editingRaw = true; rawFocused = true } label: {
-                        Label("편집", systemImage: "pencil").font(.caption)
+                        Label("수정하기", systemImage: "pencil").font(.caption)
                     }
                     .buttonStyle(.plain).foregroundStyle(Palette.accent)
                 }
@@ -410,25 +410,38 @@ struct DetailView: View {
     // 왼편 = 기억 삭제, 오른편 = 편집 세션(취소·저장). 기억하기는 위쪽 관문으로 이동.
 
     private var bottomBar: some View {
-        HStack(spacing: 10) {
-            // 왼편: 삭제하기(tombstone, 보관함서 복구 가능) — 공용 확인 대화상자를 거친다.
-            Button(role: .destructive) { showDeleteConfirm = true } label: {
-                barLabel("삭제하기", "trash")
+        VStack(spacing: 8) {
+            // 저장 안 된 수정이 있음을 뚜렷이 알린다 — [수정 완료] 후에도 읽기전용으로 정돈돼 보여
+            // "저장됨"으로 오해되기 쉬우므로(§2-A). [저장]을 눌러야 하는 상태임을 명시.
+            // (빈 본문이면 저장 자체가 막히고 "본문은 비울 수 없어요"가 대신 뜨므로 여기선 숨긴다.)
+            if dirty && !rawEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill").font(.caption2)
+                    Text("저장하지 않은 수정이 있어요").font(.caption2.weight(.semibold))
+                    Spacer()
+                }
+                .foregroundStyle(Palette.today)
             }
-            .buttonStyle(.bordered).tint(Palette.overdue)
+            HStack(spacing: 10) {
+                // 왼편: 삭제하기(tombstone, 보관함서 복구 가능) — 공용 확인 대화상자를 거친다.
+                Button(role: .destructive) { showDeleteConfirm = true } label: {
+                    barLabel("삭제하기", "trash")
+                }
+                .buttonStyle(.bordered).tint(Palette.overdue)
 
-            Spacer(minLength: 8)   // 간격
+                Spacer(minLength: 8)   // 간격
 
-            // 오른편: 취소 · 저장(=수정 커밋)
-            Button { dismiss() } label: {
-                barLabel("취소", "xmark")
+                // 오른편: 취소 · 저장(=수정 커밋)
+                Button { dismiss() } label: {
+                    barLabel("취소", "xmark")
+                }
+                .buttonStyle(.bordered).tint(Palette.textSecondary)
+                Button { commit() } label: {
+                    barLabel("저장", "square.and.arrow.down")
+                }
+                .buttonStyle(.borderedProminent).tint(Palette.accent)
+                .disabled(!dirty || rawEmpty)   // 본문 전부 지운 상태면 저장 불가(내용 없는 기억 방지)
             }
-            .buttonStyle(.bordered).tint(Palette.textSecondary)
-            Button { commit() } label: {
-                barLabel("저장", "square.and.arrow.down")
-            }
-            .buttonStyle(.borderedProminent).tint(Palette.accent)
-            .disabled(!dirty || rawEmpty)   // 본문 전부 지운 상태면 저장 불가(내용 없는 기억 방지)
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(.ultraThinMaterial)
@@ -459,12 +472,14 @@ struct DetailView: View {
                       onConfirm: { showDeleteConfirm = false; model.delete(item); dismiss() })
     }
 
-    /// 저장 안 한 수정을 두고 뒤로가기 → 재확인. [계속 편집] / [버리기](overdue 톤).
+    /// 저장 안 한 수정을 두고 < 뒤로가기 → 재확인. 두 개만: [나가기](버림) / [계속 수정하기](머무름).
+    /// 저장은 이미 [저장] 버튼이 있으므로 팝업에 넣지 않는다. 편집 중이든 [수정 완료] 뒤든 dirty면 같은 팝업.
+    /// 안전한 쪽([계속 수정하기])을 prominent로 둔다 — 팝업이 잦아도 실수로 버려지지 않게.
     private var discardDialog: some View {
-        ConfirmDialog(title: "저장하지 않은 수정이 있어요.\n버리고 나갈까요?",
-                      cancelTitle: "계속 편집", confirmTitle: "버리기", confirmTint: Palette.overdue,
-                      onCancel: { showDiscardConfirm = false },
-                      onConfirm: { showDiscardConfirm = false; dismiss() })
+        ConfirmDialog(title: "수정 중이에요. 저장하지 않고 나가면 고친 내용이 사라져요",
+                      cancelTitle: "나가기", confirmTitle: "계속 수정하기",
+                      onCancel: { showDiscardConfirm = false; dismiss() },   // 나가기 = 버리고 닫기
+                      onConfirm: { showDiscardConfirm = false })              // 계속 수정하기 = 머무름
     }
 
     /// 하단 바 버튼 라벨 — 줄바꿈 금지 + 좌우 여백으로 폭 확보(확정 글자 깨짐 방지).
