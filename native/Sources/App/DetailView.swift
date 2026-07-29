@@ -73,20 +73,22 @@ struct DetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 rawSection
-                metaSection
-                if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
-                typeSection
-                if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
-                timeSection
-                historyRow
+                // 원문 밖 전체 — 빈 여백이든 버튼·메뉴·날짜·다시듣기든 누르면 키보드를 내린다(원문 편집 종료).
+                // simultaneousGesture라 컨트롤 동작과 **함께** 발화하고(버튼은 정상 동작), rawSection은
+                // 이 그룹 밖이라 원문 탭은 방해받지 않는다(탭하면 그 위치에 커서·키보드 복귀 — .focused 바인딩).
+                VStack(alignment: .leading, spacing: 14) {
+                    metaSection
+                    if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
+                    typeSection
+                    if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
+                    timeSection
+                    historyRow
+                }
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { rawFocused = false })
             }
             .padding(16)
             .padding(.bottom, 8)
-            // 원문 밖(카드 여백 등)을 누르면 키보드를 내려 상세 화면을 넓게 본다.
-            // 원문·버튼·메뉴 등 탭을 처리하는 자식은 각자 우선하므로 이 제스처는 빈 영역에서만 발화한다.
-            // (원문을 다시 누르면 TextField가 그 위치에 커서·키보드를 되살린다 — .focused 바인딩.)
-            .contentShape(Rectangle())
-            .onTapGesture { rawFocused = false }
         }
         .background(Palette.bg.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { bottomBar }
@@ -424,6 +426,8 @@ struct DetailView: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(.ultraThinMaterial)
+        // 하단 바 버튼(삭제·취소·저장)도 원문 밖 — 누르면 키보드 내림(삭제 확인 팝업 전에도 정리).
+        .simultaneousGesture(TapGesture().onEnded { rawFocused = false })
     }
 
     /// 기억하기 재확인 — 공용 대화상자. [취소하기] / [기억하기].
