@@ -1,6 +1,8 @@
 # SecondBrain — 인수인계 노트 (HANDOFF)
 
-> 생성: 2026-07-26 (mac mini). 저장소 전체 훑어 작성. **추측 배제 — 각 항목에 근거 파일 경로·커밋 표기.**
+> **스냅샷: 2026-07-29 (사무실 mac mini) 기준.** (최초 생성 2026-07-26, 저장소 전체 훑어 작성.)
+> 이 문서는 **그 시점의 지도**다 — 날짜보다 뒤의 커밋은 안 들어 있다. 오래됐으면 `git log`·정본 문서를 믿어라.
+> **추측 배제 — 각 항목에 근거 파일 경로·커밋 표기.**
 > 정본 문서는 그대로 두고, 이 문서는 **현재 상태의 지도**다. 상충 시 각 정본(사양서·정책 문서)이 우선.
 > 두 층: 웹 v0(PWA, `app.js`, iCloud `inbox.md` 실사용) · **네이티브 v1**(`native/`, Swift+SwiftUI). 이 노트는 v1 중심.
 > **네이티브 v1 대상 플랫폼 = Mac 앱 + iPhone 앱 둘 다**(iOS 전용 아님). 하나의 코드베이스에서 두 타깃(`SecondBrainApp-iOS`·`SecondBrainApp-macOS`)을 빌드하며, 진입점·뷰를 공유하고 플랫폼 차이는 `#if os()`로 분기한다. 근거: `native/project.yml`(두 타깃, deploymentTarget iOS/macOS 26.0), `native/Sources/App/SecondBrainApp.swift`("iOS·macOS 공유"), **`second-brain-v0-spec.md`**(**저장소 루트**에 위치 — 다른 정본 문서는 `docs/native/`에 있으나 이 사양서만 루트) §0-A("v1 = Mac 앱 + iPhone 앱, 둘로 국한"). iPad·Windows는 나중 확장(설계가 막지 않음).
@@ -103,7 +105,7 @@
 | B3 | **'총 기억' 정의** 재검토 중 (현재 = 살아있는 전체) | 열림 · 낮음 | `memory-philosophy.md` §5 |
 | C1 | 스크롤 위치 기반 접힘/요약 = SwiftUI `List` 제약으로 **폐기**(버그 아님, 제약) | 종결 | `native-v1-state` 메모리 교훈 |
 | C2 | 서명 만료 — **유료 등록이라 ~1년**(현재 2027-02-08, 인증서 기준). Xcode ⌘R 재실행으로 재서명 갱신. **앱 삭제 금지**(기기 id·키체인·알림 권한 소실) | 상시 | `iphone-verify-checklist.md` F·G |
-| **D3한계** | **§7 (a) uses 조정이 "표시만 숨김"** — 정보·아이디어·원칙의 due/resurface를 상세에서 안 보이게 했으나(`d00b8de`), **기존 저장된 값·예약된 알림은 안 건드림**(비파괴적). 그 분류에 옛 due/resurface 값이 있으면 화면엔 없어도 **알림 planner가 여전히 발화**할 수 있음. | 열림 · **중간** (§7 (c)/D3에서 값 무효화·알림 정리 필요). **이거 안 하면 사양서에 "안 씀" 박기 위험** | `ClassDef.swift`(주석 "§7 (c) 몫"); `DetailView.timeSection`; `NotificationScheduler.swift` |
+| **D3한계** | ~~§7 (a) uses 조정이 "표시만 숨김" — 옛 due/resurface 값이 있으면 화면엔 없어도 알림 planner가 여전히 발화~~ → **해결(2026-07-29, `93161db`)**: 게이트가 `ItemSchedule.effectiveDay` 한 곳에 들어가 알림·"지금 챙길 것"이 함께 상속. **값은 안 지운다**(휴면 보존 — 분류 되돌리면 되살아남). 예약 알림 정리는 `reschedule()` 전량 재등록의 부산물. | **종결** | `ClassSpec.swift`(`ClassSpecCatalog.uses`); `ItemSchedule.effectiveDay`; 커밋 `27e8d2d`·`93161db`; `memory-philosophy.md` §7-1 (c) |
 
 **환경 주의(맥미니 고유, 2026-07-25):** ① 최초 `git`/`xcodebuild`가 Xcode 라이선스 미동의로 막힘 → `sudo xcodebuild -license`. ② Xcode 26.6은 iOS SDK 26.5뿐 → 시뮬 런타임 26.5 설치(`xcodebuild -downloadPlatform iOS`) + iPhone 16 Pro(26.5) 시뮬 생성 필요. 근거: `docs/worklog/2026-07-25-macmini.md`.
 
@@ -134,8 +136,8 @@
 
 | 주제 | 내용 | 근거 |
 |------|------|------|
-| **§7 분류–세부정보 모델 구현** | **A~D2 완료**(A 관리화면 제거·B ClassDef 틀·C 주차 마감숨김·D1 FlexTypeCatalog 흡수·(a) 씀 여부·(b) 라벨). §7 **(a) 쓸지·(b) 제목이 화면에서 작동**. **남은 것 = D3(§7 (c) 동작)** — 아래 별행. | `memory-philosophy.md` §7; 커밋 `e118a69`·`c04b999`·`e6cfe96`·`84f6d2f`·`d00b8de`·`8bfb603` |
-| **§7 (c) 동작 = Stage D3 (다음)** | **알림 규칙 + 안 쓰는 분류의 값·알림 정리.** 특히 (a)에서 "표시만 숨긴" 정보·아이디어·원칙 due/resurface의 **값 무효화·예약 알림 취소**(§4 D3한계 해소). 이걸 해야 사양서에 "안 씀"을 안전하게 박음. | `memory-philosophy.md` §7 (c); §4 "D3한계"; `NotificationScheduler.swift` |
+| **§7 분류–세부정보 모델 구현** | **A~D3 완료** — (a) 쓸지·(b) 제목·**(c) 동작(시점 판정)까지 작동**. D3는 A(표를 Core `ClassSpec`로 이동, 동작 변화 0) + B(게이트 + 폴백 한 곳). 코어 테스트 72→**79**, iPhone 실기기 통과. | `memory-philosophy.md` §7-1 (c)+표; 커밋 `e118a69`·`c04b999`·`e6cfe96`·`84f6d2f`·`d00b8de`·`8bfb603`·`27e8d2d`·`93161db` |
+| **§7 (c) 동작 = Stage D3** | **완료(2026-07-29).** 분류가 안 쓰는 칸의 날짜는 시점이 아니다 — **칸별** 판단(주차=마감만 막고 다시 보기는 씀), 정의 없는 분류(미분류·미등록)는 **전부 씀** 폴백, resurface > due, **값은 안 지움**(휴면 보존). 화면·알림이 같은 함수(`ClassSpecCatalog.uses`)를 본다. **남은 §7 미결 = (d) 누가 값 정하나 · 개수(고정/무제한) · 미디어 확장 · 해시태그.** | `memory-philosophy.md` §7-1 (c)·7-2; `ItemSchedule.effectiveDay`; 커밋 `93161db` |
 | **주차 resurface "기억마다 다름" = §7 (d) 위임** | 지금 주차 resurface는 분류 차원 "씀" 고정. "기억마다 쓸지 다름"은 §7 (d) **세 상태(분류 고정/안 씀/기억에게 위임)** = 새 메커니즘 → **대기**(D3 이후 또는 별도). | `memory-philosophy.md` §7 (d); 2026-07-28 세션 결정 |
 | **O4 유연층 자동분류** | 지금 수동뿐 = "안 하기로 한 것 아니라 아직 안 한 것". 유연층 쌓이고 "분류마다 자동분류 규칙" 서면 편입. | `classification-redesign-open-questions.md` O4; 메모리 [[flex-autoclassify-deferred]] |
 | **해시태그 설계** | 분류 안의 가벼운 세분(저장·표시·검색). 분류 폭발 대신. | `memory-philosophy.md` §7; open-questions §7-2 |
@@ -155,9 +157,9 @@
 
 | 결정 | 현재 어디에 있나 | 사양서 반영 | 근거 |
 |------|----------------|-----------|------|
-| **§7 분류–세부정보 모델** (분류=코드 고정, 그릇+분류별 정의, 모든 분류 평등, 해시태그) | `memory-philosophy.md` §7; **코드 = Stage A~D2 구현됨**(`ClassDef.swift` 등) | ❌ 미반영. **A~D2 구현됐어도 D3(§7 (c) 값·알림 정리)까지 굳은 뒤 반영** — 특히 정보·아이디어·원칙 "안 씀"은 D3 전엔 표시만이라 사양에 박기 위험(§4 D3한계). | `memory-philosophy.md` §7; §4 "D3한계"; `docs/worklog/2026-07-28-macmini.md` |
-| **분류 2층→평등 재구성 / 주차위치(유연층 흡수)** | open-questions D1(→§7 포인터); **D1에서 `ClassCatalog`로 흡수**(`FlexTypeCatalog` 삭제) | ❌ 사양서 §2는 여전히 고정 6종만 | open-questions D1; 커밋 `84f6d2f`; `second-brain-v0-spec.md` §2 |
-| **필터 동적화**(실재 분류만·유연층 포함) | 구현됨 `f79e69a` | ❌ 사양서 §2 부근 L176은 고정 필터 전제 서술 | `second-brain-v0-spec.md`(L176 부근) |
+| **§7 분류–세부정보 모델** (분류=코드 고정, 그릇+분류별 정의, 모든 분류 평등, 해시태그) | `memory-philosophy.md` §7; **코드 = Stage A~D3 구현됨** | ✅ **반영됨(2026-07-29, `aa13b82`)** — 사양서 **§2-A 신설**. §2 표(§3 프롬프트와 짝, 보호자산)는 그대로 두고 §7이 정본임을 명시. D3까지 굳었으므로 "정보·아이디어·원칙은 시간 안 씀"도 안전하게 박았다. | `second-brain-v0-spec.md` §2-A; `memory-philosophy.md` §7 |
+| **분류 2층→평등 재구성 / 주차위치(유연층 흡수)** | D1에서 `ClassCatalog`로 흡수(`FlexTypeCatalog` 삭제) | ✅ **반영됨** — §2-A에 "주차 위치가 6종과 나란한 7번째" 명시(§2 표 자체는 무변경). | open-questions D1; 커밋 `84f6d2f`·`aa13b82` |
+| **필터 동적화**(실재 분류만) | 구현됨 `f79e69a` | ✅ **반영됨** — 사양서 §4 "종류 필터는 동적이다" 단락(`aa13b82`). | `second-brain-v0-spec.md` §4 |
 | **유연층 자동분류 상태(O4)** | open-questions O4 | ❌(개념 문서에만) | open-questions O4 |
 | **참고 — 이미 반영됨** | 사진·카메라·성역·EXIF 프라이버시 | ✅ 반영 완료 | `second-brain-v0-spec.md` "네이티브 v1 확정" 소절(커밋 `db83c9a`) |
 
