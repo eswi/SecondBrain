@@ -2,7 +2,7 @@ import XCTest
 @testable import SecondBrainCore
 
 /// §7 (c) Stage D3-B — **분류 게이트**: 그 분류가 안 쓰는 칸의 날짜는 시점이 아니다.
-/// 게이트는 `ItemSchedule.effectiveDay` 한 곳에 있고, 소비자(알림·"곧 닥칠 것")가 상속한다.
+/// 게이트는 `ItemSchedule.publishDay` 한 곳에 있고, 소비자(알림·"곧 닥칠 것")가 상속한다.
 /// 칸별 판단이 핵심: 주차는 다시 보기는 쓰고 **마감만** 안 쓴다.
 final class ClassGateTests: XCTestCase {
 
@@ -23,20 +23,20 @@ final class ClassGateTests: XCTestCase {
 
     /// 1. 아이디어는 마감을 안 쓴다 → 옛 실날짜가 남아 있어도 시점 없음.
     func testGate_idea_dueRealDate_isNoTime() {
-        XCTAssertNil(ItemSchedule.effectiveDay(item("I", type: "idea", due: "2026-07-20")))
-        XCTAssertNil(ItemSchedule.effectiveDay(item("I2", type: "idea", resurface: "2026-07-20")))
-        XCTAssertNil(ItemSchedule.effectiveDay(item("I3", type: "info", due: "2026-07-20")))
-        XCTAssertNil(ItemSchedule.effectiveDay(item("I4", type: "principle", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("I", type: "idea", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("I2", type: "idea", resurface: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("I3", type: "info", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("I4", type: "principle", due: "2026-07-20")))
     }
 
     /// 2. 할일은 마감을 쓴다 → 그대로 그 날짜(회귀 가드).
     func testGate_infoAction_dueRealDate_kept() {
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("A", type: "info-action", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("A", type: "info-action", due: "2026-07-20")), "2026-07-20")
         // resurface 우선순위도 그대로
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("A2", type: "info-action",
+        XCTAssertEqual(ItemSchedule.publishDay(item("A2", type: "info-action",
                                                       due: "2026-07-30", resurface: "2026-07-18")), "2026-07-18")
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("A3", type: "promise", due: "2026-07-20")), "2026-07-20")
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("A4", type: "event", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("A3", type: "promise", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("A4", type: "event", due: "2026-07-20")), "2026-07-20")
     }
 
     // MARK: 정의 없는 분류 = 전부 씀 (폴백은 ClassSpecCatalog.uses 한 곳)
@@ -46,16 +46,16 @@ final class ClassGateTests: XCTestCase {
         XCTAssertTrue(ClassSpecCatalog.uses(nil, .due))
         XCTAssertTrue(ClassSpecCatalog.uses(nil, .resurface))
         XCTAssertTrue(ClassSpecCatalog.uses("", .due))          // 미분류 되돌리기가 남기는 빈 값
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("U", due: "2026-07-20")), "2026-07-20")
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("U2", type: "", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("U", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("U2", type: "", due: "2026-07-20")), "2026-07-20")
     }
 
     /// 4. 미등록 key(`discard`·오타·미래의 새 값)도 전부 씀 — 표에 없다고 날짜를 지우지 않는다.
     func testFallback_unregisteredKey_usesEverything() {
         XCTAssertTrue(ClassSpecCatalog.uses("discard", .due))
         XCTAssertTrue(ClassSpecCatalog.uses("주차", .due))       // key는 "parking" — 한글 값은 미등록
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("D", type: "discard", due: "2026-07-20")), "2026-07-20")
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("D2", type: "주차", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("D", type: "discard", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("D2", type: "주차", due: "2026-07-20")), "2026-07-20")
     }
 
     // MARK: 칸별 판단 (주차 = 마감만 안 씀)
@@ -63,15 +63,15 @@ final class ClassGateTests: XCTestCase {
     /// 5. 주차는 마감을 안 쓴다 → 마감 실날짜만 있으면 시점 없음.
     func testGate_parking_dueRealDate_isNoTime() {
         XCTAssertFalse(ClassSpecCatalog.uses("parking", .due))
-        XCTAssertNil(ItemSchedule.effectiveDay(item("P", type: "parking", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("P", type: "parking", due: "2026-07-20")))
     }
 
     /// 6. 주차는 다시 보기는 쓴다 → 그 날짜가 살아야 한다("시간 안 쓰는 분류면 통째로 nil"이 아님).
     func testGate_parking_resurfaceRealDate_kept() {
         XCTAssertTrue(ClassSpecCatalog.uses("parking", .resurface))
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("P2", type: "parking", resurface: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("P2", type: "parking", resurface: "2026-07-20")), "2026-07-20")
         // 마감은 막고 다시 보기만 통과 (둘 다 실날짜여도 due로 새지 않는다)
-        XCTAssertEqual(ItemSchedule.effectiveDay(item("P3", type: "parking",
+        XCTAssertEqual(ItemSchedule.publishDay(item("P3", type: "parking",
                                                       due: "2026-07-30", resurface: "2026-07-18")), "2026-07-18")
     }
 

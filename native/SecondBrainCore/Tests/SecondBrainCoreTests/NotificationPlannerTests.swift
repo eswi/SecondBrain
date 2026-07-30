@@ -50,4 +50,16 @@ final class NotificationPlannerTests: XCTestCase {
                                             now: now, calendar: cal, hour: 9)
         XCTAssertTrue(plan.isEmpty)
     }
+
+    /// 알림은 **게시 시작일**(publishDay = 미리 알림 우선)에 울린다 — 역할 분리(Stage 1) 후에도 불변.
+    /// 마감을 별도 기준으로 쓰는 건 배지·정렬뿐, 알림 시점은 그대로여야 한다(동작 변화 0).
+    func testFiresOnPublishDay_notDeadline_unchanged() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 16, hour: 0))!
+        // 마감 07-30, 미리 알림 07-18 → 알림은 마감이 아니라 미리 알림(07-18)에 울려야 한다.
+        let plan = NotificationPlanner.plan(items: [item("A", due: "2026-07-30", resurface: "2026-07-18")],
+                                            now: now, calendar: cal, hour: 9)
+        let fire = cal.date(from: DateComponents(year: 2026, month: 7, day: 18, hour: 9))!
+        XCTAssertEqual(plan.map { $0.fireDate }, [fire])
+    }
 }

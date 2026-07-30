@@ -348,7 +348,7 @@ struct UpcomingCard: View {
                         }
                     }
                     Spacer(minLength: 4)
-                    DDayBadge(dday: entry.dday)
+                    if let dday = entry.dday { DDayBadge(dday: dday) }   // 마감 있을 때만 D-day 배지
                 }
                 .contentShape(Rectangle())
             }
@@ -356,14 +356,15 @@ struct UpcomingCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .areaStyle(tint: ddayTint, strong: entry.dday.bucket != .future)
+        // 색조·강조도 마감(dday) 기준. 마감 없는 항목(미리 알림만)은 무채색·약한 톤.
+        .areaStyle(tint: ddayTint, strong: (entry.dday?.bucket ?? .future) != .future)
     }
 
     private var ddayTint: Color {
-        switch entry.dday.bucket {
+        switch entry.dday?.bucket {
         case .overdue: return Palette.overdue
         case .today:   return Palette.today
-        case .future:  return Palette.neutral
+        case .future, nil: return Palette.neutral
         }
     }
 }
