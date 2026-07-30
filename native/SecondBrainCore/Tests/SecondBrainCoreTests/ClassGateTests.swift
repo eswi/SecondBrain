@@ -75,6 +75,22 @@ final class ClassGateTests: XCTestCase {
                                                       due: "2026-07-30", resurface: "2026-07-18")), "2026-07-18")
     }
 
+    // MARK: 캡션·목록 게이트 (검색·보관함 날짜 노출 — deadlineDay / gatedResurface)
+
+    /// 캡션이 쓰는 두 게이트 함수: 안 쓰는 칸의 날짜는 노출 대상에서 빠진다(검색·보관함 캡션 회귀 가드).
+    func testCaptionGate_dropsUnusedFields() {
+        // 아이디어(둘 다 안 씀) — 실날짜가 남아 있어도 캡션에 안 나온다.
+        XCTAssertNil(ItemSchedule.deadlineDay(item("I", type: "idea", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.gatedResurface(item("I2", type: "idea", resurface: "2026-07-20")))
+        // 주차 — 마감은 막고 다시 보기는 통과(칸별).
+        XCTAssertNil(ItemSchedule.deadlineDay(item("P", type: "parking", due: "2026-07-20")))
+        XCTAssertEqual(ItemSchedule.gatedResurface(item("P2", type: "parking", resurface: "2026-07-20")), "2026-07-20")
+        // 할일·미분류 — 둘 다 노출.
+        XCTAssertEqual(ItemSchedule.deadlineDay(item("A", type: "info-action", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.gatedResurface(item("A2", type: "info-action", resurface: "2026-07-18")), "2026-07-18")
+        XCTAssertEqual(ItemSchedule.deadlineDay(item("U", due: "2026-07-20")), "2026-07-20")   // 미분류 폴백
+    }
+
     // MARK: 소비자 상속 — 게이트된 항목은 '사라지는' 게 아니라 시점 없는 쪽으로 옮겨간다
 
     /// 게이트 걸린 아이디어는 "곧 닥칠 것"에서 빠지되 **"최근 들어온 것"에 그대로 있다**(유실이면 버그).

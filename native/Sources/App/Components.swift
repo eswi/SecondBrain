@@ -90,8 +90,10 @@ func itemCaption(_ it: ResolvedItem) -> String {
     var parts: [String] = []
     let dt = "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces)
     if !dt.isEmpty { parts.append(dt) }
-    if let due = it.due, ItemSchedule.parseDay(due) != nil { parts.append("~\(due)") }
-    if let rs = it.resurface, ItemSchedule.parseDay(rs) != nil { parts.append("↻\(rs)") }
+    // §7 분류 게이트: 그 분류가 쓰는 칸의 날짜만 노출한다(안 쓰는 칸의 옛 날짜는 안 보임).
+    // 상세 "시간 설정"·"지금 챙길 것"과 같은 게이트를 타 — 보이는 곳마다 어긋나지 않게.
+    if let due = ItemSchedule.deadlineDay(it) { parts.append("~\(due)") }
+    if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(rs)") }
     return parts.joined(separator: " · ")
 }
 

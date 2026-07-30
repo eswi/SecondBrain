@@ -56,6 +56,14 @@ public enum ItemSchedule {
         return false
     }
 
+    /// 분류 게이트 통과 + 실제 날짜인 **미리 알림(resurface)만**. 아니면 nil. `deadlineDay`(마감)의 짝.
+    /// 캡션·목록이 "이 분류가 쓰는 칸의 날짜"만 노출하도록 — 화면(상세 "시간 설정")과 같은 게이트를 탄다.
+    public static func gatedResurface(_ it: ResolvedItem) -> String? {
+        if ClassSpecCatalog.uses(it.type, .resurface),
+           let r = it.resurface, parseDay(r) != nil { return r }
+        return nil
+    }
+
     /// "YYYY-MM-DD" → 그 날 자정 Date. 형식 안 맞으면 nil.
     public static func parseDay(_ s: String, calendar: Calendar = .current) -> Date? {
         let p = s.split(separator: "-")
