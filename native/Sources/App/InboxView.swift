@@ -348,7 +348,8 @@ struct UpcomingCard: View {
                             .font(.body).foregroundStyle(Palette.textPrimary).lineLimit(3)
                         HStack(spacing: 6) {
                             SourceBadge(source: entry.item.source)
-                            Text(itemCaption(entry.item)).font(.caption).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                            // 캡션 색 = 원문과 같은 textPrimary(밝게). 크기(.caption)로 이미 비중을 죽이므로 색만 올린다.
+                            Text(itemCaption(entry.item)).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 4)
