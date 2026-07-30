@@ -62,4 +62,58 @@ public enum ItemSchedule {
         guard p.count == 3, let y = Int(p[0]), let m = Int(p[1]), let d = Int(p[2]) else { return nil }
         return calendar.date(from: DateComponents(year: y, month: m, day: d))
     }
+
+    /// Date → "YYYY-MM-DD"(로케일 무관). parseDay의 역.
+    public static func dayString(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    // MARK: 규칙 1 — 미리 알림은 마감보다 최소 하루 빠르게 (2026-07-30)
+    // 규칙은 여기 Core 한 곳에 두고 세 곳(날짜 선택·자동 분류·미루기)이 이걸 쓴다. 복사 금지.
+
+    /// 미리 알림의 **상한**(마지막으로 허용되는 날 = 마감 − 1일). 없으면(제약 없음) nil.
+    /// - 마감이 **미래**일 때만 적용. 마감이 오늘/과거면 제약 없음(지난 것을 미루는 건 필요한 동작).
+    /// - 마감이 없으면 제약 없음.
+    public static func resurfaceUpperBound(due: String?, now: Date, calendar: Calendar = .current) -> Date? {
+        guard let due, let dd = parseDay(due, calendar: calendar) else { return nil }   // 마감 없음
+        let startDue = calendar.startOfDay(for: dd)
+        guard startDue > calendar.startOfDay(for: now) else { return nil }               // 마감 오늘/과거
+        return calendar.date(byAdding: .day, value: -1, to: startDue)                    // 마감 − 1일
+    }
+
+    /// 규칙 1 위반 여부 — 미리 알림이 상한(마감−1일)보다 늦은가(= 마감과 같거나 늦은가).
+    /// 상한이 없으면(마감 오늘/과거·없음) 항상 false. 미리 알림이 없어도 false.
+    public static func violatesRule1(resurface: String?, due: String?, now: Date, calendar: Calendar = .current) -> Bool {
+        guard let ub = resurfaceUpperBound(due: due, now: now, calendar: calendar) else { return false }
+        guard let resurface, let rd = parseDay(resurface, calendar: calendar) else { return false }
+        return calendar.startOfDay(for: rd) > ub
+    }
+
+    /// 미루기(+7일)의 결과 — 규칙 1을 지키며 결정한다. **위반 상태로 저장하는 경로는 없다.**
+    public enum DeferOutcome: Equatable {
+        /// 미룸 — `to`(YYYY-MM-DD)로 저장. `capped`=true면 상한(마감−1일)에 걸려 당겨졌다는 뜻(알린다).
+        case deferred(to: String, capped: Bool)
+        /// 못 미룸 — 마감 하루 전(`cap`, YYYY-MM-DD)이 오늘이거나 지나 미룰 여지가 없다(알린다).
+        case blocked(cap: String)
+    }
+
+    /// "+7일 미루기"를 규칙 1 안에서 계산한다:
+    /// - 마감 없음/지남 → 오늘+7일 그대로(`capped:false`).
+    /// - 마감 하루 전이 아직 미래면 → 오늘+7일이 그 상한을 넘으면 상한까지 당겨서(`capped:true`), 안 넘으면 그대로.
+    /// - 마감 하루 전이 오늘이거나 지났으면 → `blocked`(미루지 않는다).
+    public static func deferSevenDays(due: String?, now: Date, calendar: Calendar = .current) -> DeferOutcome {
+        let today = calendar.startOfDay(for: now)
+        let target = calendar.date(byAdding: .day, value: 7, to: today) ?? today
+        guard let ub = resurfaceUpperBound(due: due, now: now, calendar: calendar) else {
+            return .deferred(to: dayString(target, calendar: calendar), capped: false)   // 마감 없음/지남
+        }
+        if ub <= today {                                                                 // 마감 하루 전 = 오늘/과거
+            return .blocked(cap: dayString(ub, calendar: calendar))
+        }
+        if target > ub {                                                                 // 상한 넘음 → 당겨서
+            return .deferred(to: dayString(ub, calendar: calendar), capped: true)
+        }
+        return .deferred(to: dayString(target, calendar: calendar), capped: false)       // 상한 안 → 그대로
+    }
 }

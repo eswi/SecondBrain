@@ -48,11 +48,16 @@ struct LivingView: View {
                         }
                         .swipeActions(edge: .leading) {
                             Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
-                            Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
+                            // 미루기는 미리 알림을 쓰는 분류에서만(정보·아이디어는 뺀다 — §7(a)). 완료는 남는다.
+                            if ClassSpecCatalog.uses(item.type, .resurface) {
+                                Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
+                            }
                         }
                         .contextMenu {
                             Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
-                            Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
+                            if ClassSpecCatalog.uses(item.type, .resurface) {
+                                Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
+                            }
                             Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
                         }
                 }

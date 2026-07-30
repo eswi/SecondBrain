@@ -44,6 +44,8 @@ struct DetailView: View {
     @State private var showDeleteConfirm = false
     /// 저장하지 않은 수정이 있는데 뒤로가기로 이탈하려 할 때 재확인(조용히 버리지 않음, 결정 1).
     @State private var showDiscardConfirm = false
+    /// 규칙 1 안내(단일 버튼 정보 팝업) — +7일 미루기 상한/차단, 저장 시 위반 차단에 공용으로 쓴다.
+    @State private var noticeDialog: String?
 
     /// 원문 편집 포커스. 원문 밖을 누르면 내리고(키보드 숨김), 원문을 다시 누르면 그 위치에 커서·키보드 복귀.
     @FocusState private var rawFocused: Bool
@@ -109,10 +111,12 @@ struct DetailView: View {
         .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
         .overlay { if showDeleteConfirm { deleteDialog } }
         .overlay { if showDiscardConfirm { discardDialog } }
+        .overlay { if let msg = noticeDialog { noticeDialogView(msg) } }
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
         .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
         .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)
         .animation(.easeInOut(duration: 0.15), value: showDiscardConfirm)
+        .animation(.easeInOut(duration: 0.15), value: noticeDialog)
     }
 
     /// 커스텀 뒤로가기: 저장 안 한 수정이 있으면 확인, 없으면 즉시 닫기.
@@ -333,7 +337,12 @@ struct DetailView: View {
                     sectionLabel("시간 설정")
                     if usesDue { timeRow(ClassRegistry.title(normalizedType, .due), value: $due, showDefer: false) }
                     if usesDue && usesResurface { Divider().overlay(Palette.border) }
-                    if usesResurface { timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface, showDefer: true) }
+                    if usesResurface {
+                        // 규칙 1: 미리 알림은 마감 하루 전까지만. DatePicker 범위를 상한으로 제한(가능한 만큼).
+                        let bound = ItemSchedule.resurfaceUpperBound(due: due, now: Date())
+                        timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface,
+                                showDefer: true, upperBound: bound)
+                    }
                 }
                 .padding(14).card()
             }
@@ -341,7 +350,8 @@ struct DetailView: View {
     }
 
     @ViewBuilder
-    private func timeRow(_ title: String, value: Binding<String?>, showDefer: Bool) -> some View {
+    private func timeRow(_ title: String, value: Binding<String?>, showDefer: Bool,
+                        upperBound: Date? = nil) -> some View {
         let hasDate = Self.isRealDate(value.wrappedValue)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -356,18 +366,39 @@ struct DetailView: View {
                 }
             }
             if hasDate {
-                DatePicker("", selection: dateBinding(value), displayedComponents: .date)
-                    .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
+                // 규칙 1: 상한이 있으면 그 날까지만 고를 수 있게 범위 제한(미리 알림 ≤ 마감 − 1일).
+                // 상한이 지금 값보다 과거여도(마감을 앞으로 당긴 경우) 저장 시 검증이 최종 방어선이다.
+                if let ub = upperBound {
+                    DatePicker("", selection: dateBinding(value), in: ...ub, displayedComponents: .date)
+                        .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
+                } else {
+                    DatePicker("", selection: dateBinding(value), displayedComponents: .date)
+                        .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
+                }
             } else {
                 Text("없음")   // 시점 없음. (레거시 "weekly" 값도 여기로 — 반복 기능은 없었다: 날짜 없음의 동의어)
                     .font(.caption).foregroundStyle(Palette.textTertiary)
             }
             if showDefer {
-                Button { value.wrappedValue = Self.daysFromNow(7) } label: {
+                Button { deferResurface(value) } label: {
                     Label("+7일 미루기", systemImage: "clock")
                 }
                 .font(.caption).buttonStyle(.plain).foregroundStyle(Palette.accent)
             }
+        }
+    }
+
+    /// +7일 미루기(상세 draft) — 규칙 1을 지켜 미리 알림 draft를 정한다. 위반 상태로 세팅하지 않는다.
+    /// 상한에 걸려 당겨졌거나 마감 임박이라 못 미루면 안내 팝업으로 알린다("알린다").
+    private func deferResurface(_ value: Binding<String?>) {
+        switch ItemSchedule.deferSevenDays(due: due, now: Date()) {
+        case .deferred(let day, let capped):
+            value.wrappedValue = day
+            if capped {
+                noticeDialog = "마감이 가까워 미리 알림을 마감 하루 전(\(InboxModel.korShort(day)))으로 맞췄어요"
+            }
+        case .blocked(let cap):
+            noticeDialog = "마감이 임박해(하루 전 \(InboxModel.korShort(cap))) 더 미룰 수 없어요"
         }
     }
 
@@ -460,6 +491,14 @@ struct DetailView: View {
                       onConfirm: { showDeleteConfirm = false; model.delete(item); dismiss() })
     }
 
+    /// 규칙 1 안내 — 단일 버튼 정보 팝업(+7일 상한/차단, 저장 위반 차단 공용). 확인하면 닫기만(편집 유지).
+    private func noticeDialogView(_ msg: String) -> some View {
+        StandardDialog(title: msg) {
+            DialogButton(title: "확인", prominent: true) { noticeDialog = nil }
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     /// 저장 안 한 수정을 두고 < 뒤로가기 → 재확인. 두 개만: [나가기](버림) / [계속 수정하기](머무름).
     /// 저장은 이미 [저장] 버튼이 있으므로 팝업에 넣지 않는다. 편집 중이든 [수정 완료] 뒤든 dirty면 같은 팝업.
     /// 안전한 쪽([계속 수정하기])을 prominent로 둔다 — 팝업이 잦아도 실수로 버려지지 않게.
@@ -481,6 +520,14 @@ struct DetailView: View {
     // MARK: 행동 구현
 
     private func commit() {
+        // 규칙 1 최종 방어선: 미리 알림이 마감 하루 전보다 늦으면(마감 미래 기준) 저장을 막고 알린다.
+        // DatePicker 범위 제한을 우회했거나 마감을 나중에 앞으로 당겨 역전된 경우를 여기서 잡는다.
+        if ItemSchedule.violatesRule1(resurface: resurface, due: due, now: Date()) {
+            let ub = ItemSchedule.resurfaceUpperBound(due: due, now: Date())
+            let cap = ub.map { InboxModel.korShort(ItemSchedule.dayString($0)) } ?? ""
+            noticeDialog = "미리 알림은 마감 하루 전(\(cap))까지만 설정할 수 있어요"
+            return
+        }
         // 미기억 항목을 원칙으로 지정한 채 저장하면 → 기억하기로 자동 결정(원칙은 살아있는 기억).
         // 먼저 안내 팝업을 띄우고, 확인 시 저장 + 자동 기억하기.
         if !isRemembered && normalizedType == "principle" {
@@ -524,11 +571,6 @@ struct DetailView: View {
     static func isRealDate(_ s: String?) -> Bool {
         // 실제 날짜(YYYY-MM-DD)만 "시점 있음". none·빈값·깨진 값·레거시 "weekly"는 전부 false.
         ItemSchedule.parseDay(s ?? "") != nil
-    }
-
-    private static func daysFromNow(_ d: Int) -> String {
-        let dt = Calendar.current.date(byAdding: .day, value: d, to: Date()) ?? Date()
-        return fmt.string(from: dt)
     }
 
     static let fmt: DateFormatter = {

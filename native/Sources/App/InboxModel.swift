@@ -220,7 +220,32 @@ final class InboxModel: ObservableObject {
 
     func delete(_ item: ResolvedItem)   { append(.delete(id: item.id, hlc: tick())) }
     func markDone(_ item: ResolvedItem) { append(.edit(id: item.id, hlc: tick(), ["status": "done"])) }
-    func defer7(_ item: ResolvedItem)   { append(.edit(id: item.id, hlc: tick(), ["resurface": isoDate(daysFromNow: 7)])) }
+
+    /// 미루기(+7일) — 규칙 1(미리 알림 ≤ 마감 − 1일)을 지키며 미룬다. 위반 상태로 저장하지 않는다.
+    /// - 마감이 가까우면 마감 하루 전까지 당겨서 미루고 알린다. 마감이 임박(하루 전이 오늘/과거)이면 미루지 않고 알린다.
+    /// - 미리 알림을 안 쓰는 분류(정보·아이디어·원칙)에선 미루기가 무의미 → UI에서 액션을 숨겼지만(1차 방어),
+    ///   여기서도 조용히 막는다(휴면 값이 써지지 않게). 근거: §7(a) — 못 쓰는 칸은 회색으로 두지 않고 없앤다.
+    func defer7(_ item: ResolvedItem) {
+        guard ClassSpecCatalog.uses(item.type, .resurface) else { return }   // 안전망(액션 숨김이 1차)
+        switch ItemSchedule.deferSevenDays(due: item.due, now: Date()) {
+        case .deferred(let day, let capped):
+            append(.edit(id: item.id, hlc: tick(), ["resurface": day]))
+            if capped {
+                autoToast = ClassifyToast(kind: .success,
+                    text: "마감이 가까워 미리 알림을 마감 하루 전(\(Self.korShort(day)))으로 맞췄어요")
+            }
+        case .blocked(let cap):
+            autoToast = ClassifyToast(kind: .failure,
+                text: "마감이 임박해(하루 전 \(Self.korShort(cap))) 더 미룰 수 없어요")
+        }
+    }
+
+    /// "YYYY-MM-DD" → "M월 d일"(안내 문구용). 파싱 실패면 원문 그대로.
+    static func korShort(_ ymd: String) -> String {
+        let p = ymd.split(separator: "-")
+        guard p.count == 3, let m = Int(p[1]), let d = Int(p[2]) else { return ymd }
+        return "\(m)월 \(d)일"
+    }
 
     /// 분류(종류) 변경. 레거시(legacy: id) 항목에서도 같은 경로(=set type= 이벤트)로 동작.
     /// **override는 확정이 아니다**(edit-policy §2 귀결) — 여긴 confirm을 안 건다.
@@ -338,7 +363,12 @@ final class InboxModel: ObservableObject {
         var f: [String: String] = ["type": type]
         if ItemSchedule.parseDay(c.due) != nil {       // 실제 날짜만 시점으로
             f["due"] = c.due
-            if ItemSchedule.parseDay(c.resurface) != nil { f["resurface"] = c.resurface }
+            // 규칙 1: 미리 알림이 마감과 같거나 늦으면(마감 미래 기준) 미리 알림을 쓰지 않는다.
+            // 프롬프트 지시(§3)만으로는 새던 위반값을 코드가 최종적으로 막는다.
+            if ItemSchedule.parseDay(c.resurface) != nil,
+               !ItemSchedule.violatesRule1(resurface: c.resurface, due: c.due, now: Date()) {
+                f["resurface"] = c.resurface
+            }
         }
         let q = c.question.trimmingCharacters(in: .whitespacesAndNewlines)
         if !q.isEmpty { f["question"] = q }            // 공백 있어도 편집 블록이 담음(Stage 1)
@@ -404,10 +434,4 @@ final class InboxModel: ObservableObject {
     }
 
     private func nowMillis() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
-
-    private func isoDate(daysFromNow d: Int) -> String {
-        let dt = Calendar.current.date(byAdding: .day, value: d, to: Date()) ?? Date()
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: dt)
-    }
 }

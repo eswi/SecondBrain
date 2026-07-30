@@ -161,9 +161,13 @@ struct InboxView: View {
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
     /// 새 기억(미확정) 컨텍스트: 확정을 맨 앞에.
+    /// 미루기는 미리 알림을 쓰는 분류에서만 — 정보·아이디어는 미리 알림을 안 써 미루기가 무의미하므로 뺀다
+    /// (§7(a): 못 쓰는 칸은 회색으로 두지 않고 없앤다). 그래도 기억하기·완료·삭제가 남아 메뉴가 비지 않는다.
     @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
         Button { model.confirm(item) } label: { Label("기억하기 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
-        Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
+        if ClassSpecCatalog.uses(item.type, .resurface) {
+            Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
+        }
         Button { model.markDone(item) } label: { Label("완료", systemImage: "checkmark") }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }

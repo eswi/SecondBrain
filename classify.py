@@ -49,7 +49,8 @@ SYSTEM_PROMPT = """다음은 사용자의 받은함(inbox)의 미가공 수집 �
 - 시점(due) 추출을 적극적으로 하라. 상대 표현은 반드시 '오늘 날짜' 기준 구체 날짜(YYYY-MM-DD)로 환산한다:
   "오늘"=오늘, "내일"=오늘+1, "모레"=오늘+2, "이번 주"=이번 주 일요일, "다음 주"=다음 주 일요일,
   "이번 달 말"=이달 마지막 날, "N일까지/N월 N일"=그 날짜. 연도가 없으면 오늘 기준 가장 가까운 미래로 잡는다.
-- due가 잡히면 resurface는 그 며칠 전(promise/event는 2~3일 전, 여유가 없으면 due 당일)으로 둬라.
+- due가 잡히면 resurface는 그 며칠 전(promise/event는 2~3일 전, 여유가 없으면 due 하루 전)으로 둬라.
+  단 resurface는 **마감보다 최소 하루 빨라야 한다(규칙 1)** — 마감 당일이 될 만큼 여유가 없으면 resurface는 "none"으로 둬라.
 - 명시적·추론 가능한 시점이 전혀 없으면 due는 "none". 시점은 확정이 아니라 추정이며, 앱이 "~까지"로 표시하고 사람이 확인한다.
 - 하루를 시작할 때의 다짐·생활 원칙 같은 반복 인지용 문장은 type을 principle 로 하라(원칙).
 - 원문은 절대 바꾸지 마라. 너는 분류 결과(JSON)만 돌려준다. 원문 텍스트는 반환하지 않는다.
@@ -139,11 +140,30 @@ def parse_blocks(lines):
     return blocks
 
 
+def _parse_day(s):
+    try:
+        return datetime.strptime((s or "").strip(), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def resurface_after_rule1(due, resurface, today):
+    """규칙 1(미리 알림 ≤ 마감 − 1일) 코드 방어 — 프롬프트 지시만으로는 새던 위반값을 최종적으로 막는다.
+    마감이 **미래**이고 미리 알림이 마감과 같거나 늦으면 → 미리 알림을 쓰지 않는다("none").
+    마감이 오늘/과거거나 없으면 제약 없음(지난 것을 미루는 건 필요한 동작)."""
+    d, r, t = _parse_day(due), _parse_day(resurface), _parse_day(today)
+    if d and r and t and d > t and r >= d:
+        return "none"
+    return resurface
+
+
 def field_lines(c):
+    today = datetime.now().strftime("%Y-%m-%d")
+    resurface = resurface_after_rule1(c.get("due"), c.get("resurface"), today)
     out = [
         f"  type: {c['type']}",
         f"  due: {(c.get('due') or 'none').strip() or 'none'}",
-        f"  resurface: {(c.get('resurface') or 'none').strip() or 'none'}",
+        f"  resurface: {(resurface or 'none').strip() or 'none'}",
         f"  status: {(c.get('status') or 'open').strip() or 'open'}",
     ]
     q = (c.get("question") or "").strip()
