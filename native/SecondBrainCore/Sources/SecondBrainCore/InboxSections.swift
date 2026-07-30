@@ -23,7 +23,7 @@ public struct InboxSections: Sendable, Equatable {
 
 public enum InboxSectionizer {
     /// 항목을 "곧 닥칠 것"(시점 있음)과 "최근 들어온 것"(시점 없음)으로 나눈다.
-    /// - **멤버십**: `publishDay`(게시 시작일)가 있으면 곧 닥칠 것. (게시 게이트는 Stage 2에서 얹는다.)
+    /// - **멤버십**: `isPublished`(게시 게이트, Stage 2) — 미리 알림이 미래면 도래 전까지 게시 안 함.
     /// - **정렬**: `deadlineDay`(마감) 우선, 없으면 `publishDay`로 D-day 오름차순(지남 → 오늘 → 임박) + id tiebreak.
     /// - **배지**: `deadlineDay` 기준. 마감 없는 항목(미리 알림만)은 `dday=nil` → 배지 안 뜬다.
     /// recent는 입력 순서 유지(MergeEngine이 이미 캡처 최신순으로 정렬해 줌).
@@ -31,7 +31,8 @@ public enum InboxSectionizer {
         var scored: [(entry: UpcomingEntry, order: Int)] = []
         var recent: [ResolvedItem] = []
         for it in items {
-            guard let pub = ItemSchedule.publishDay(it) else { recent.append(it); continue }
+            guard ItemSchedule.isPublished(it, now: now, calendar: calendar),
+                  let pub = ItemSchedule.publishDay(it) else { recent.append(it); continue }
             let deadline = ItemSchedule.deadlineDay(it)
             let sortDay = deadline ?? pub
             guard let order = DDayCalc.compute(day: sortDay, now: now, calendar: calendar) else {

@@ -35,6 +35,27 @@ public enum ItemSchedule {
         return nil
     }
 
+    /// **게시 게이트** — 이 항목을 지금 '지금 챙길 것'에 게시할지(Stage 2). 미리 알림 = 게시 시작 게이트.
+    /// 순서대로 판정한다:
+    /// 1. 분류가 미리 알림을 쓰고 유효 날짜가 있으면 → 그 날짜가 **오늘이거나 지났을 때만** 게시.
+    ///    미래면 게시 안 함(미리 알림 = 옵트인 지연 장치 — 도래 전에는 묻어 둔다).
+    /// 2. 아니고 분류가 마감을 쓰고 유효 날짜가 있으면 → 게시(**먼 미래여도** — 마감만 있는 항목의
+    ///    현재 동작을 바꾸지 않는다. 미리 알림을 안 걸었으면 지연도 없다).
+    /// 3. 그 외 → 게시 안 함.
+    ///
+    /// **게시 안 된 항목은 사라지지 않는다** — 시점 없는 쪽 목록으로 옮겨가고 총 개수는 보존된다(§7(c)).
+    public static func isPublished(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
+        if ClassSpecCatalog.uses(it.type, .resurface),
+           let r = it.resurface, let rd = parseDay(r, calendar: calendar) {
+            return calendar.startOfDay(for: rd) <= calendar.startOfDay(for: now)   // 오늘/과거만 게시
+        }
+        if ClassSpecCatalog.uses(it.type, .due),
+           let d = it.due, parseDay(d, calendar: calendar) != nil {
+            return true   // 마감만 — 먼 미래여도 게시(현재 동작 보존)
+        }
+        return false
+    }
+
     /// "YYYY-MM-DD" → 그 날 자정 Date. 형식 안 맞으면 nil.
     public static func parseDay(_ s: String, calendar: Calendar = .current) -> Date? {
         let p = s.split(separator: "-")

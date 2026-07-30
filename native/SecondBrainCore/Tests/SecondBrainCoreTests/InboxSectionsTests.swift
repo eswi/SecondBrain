@@ -92,36 +92,86 @@ final class InboxSectionsTests: XCTestCase {
 
     // MARK: 역할 분리 — 배지는 마감 기준, 정렬은 마감→게시 폴백 (Stage 1)
 
-    /// 마감+미리 알림 둘 다 → **배지는 마감 기준**(며칠 남음은 due로 잰다), 정렬 기준일도 마감.
+    /// 마감+미리 알림 둘 다(미리 알림 도래) → **배지는 마감 기준**(며칠 남음은 due로 잰다), 정렬 기준일도 마감.
     func testSplit_badgeUsesDeadline_whenBothPresent() {
         let cal = utc
-        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 18, hour: 0))!
-        // 마감 07-25(D-7), 미리 알림 07-20(게시 시작). 배지는 마감(D-7)이어야 한다.
-        let it = item("X", due: "2026-07-25", resurface: "2026-07-20")
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 22, hour: 0))!
+        // 미리 알림 07-20(이미 도래 → 게시됨), 마감 07-30(D-8). 배지는 마감(D-8)이어야 한다.
+        let it = item("X", due: "2026-07-30", resurface: "2026-07-20")
         let s = InboxSectionizer.split([it], now: now, calendar: cal)
         XCTAssertEqual(s.upcoming.count, 1)
-        XCTAssertEqual(s.upcoming[0].day, "2026-07-25")               // 정렬·표시 기준 = 마감
-        XCTAssertEqual(s.upcoming[0].dday, DDay(bucket: .future, days: 7))  // 배지 = 마감 기준 D-7
+        XCTAssertEqual(s.upcoming[0].day, "2026-07-30")               // 정렬·표시 기준 = 마감
+        XCTAssertEqual(s.upcoming[0].dday, DDay(bucket: .future, days: 8))  // 배지 = 마감 기준 D-8
     }
 
-    /// 마감 지남 + 미리 알림 미래 → 배지는 마감 기준 D+N(지남). (게시 여부는 Stage 2 관할 — 여기선 배지만)
-    func testSplit_overdueDeadline_futureResurface_badgeIsOverdue() {
+    /// 마감 지남 + 미리 알림 미래 → **게시는 미리 알림까지 안 됨**(recent로), 하지만 마감 기준 배지는 D+N(지남).
+    /// 게시 여부(Stage 2 게이트)와 배지 계산(Stage 1 마감 기준)이 각각 옳게 동작하는지 함께 고정.
+    func testSplit_overdueDeadline_futureResurface_gatedOut_butDeadlineOverdue() {
         let cal = utc
         let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 0))!
-        let it = item("Y", due: "2026-07-25", resurface: "2026-08-05")   // 마감은 5일 지남
+        let it = item("Y", due: "2026-07-25", resurface: "2026-08-05")   // 마감 5일 지남, 미리 알림 미래
         let s = InboxSectionizer.split([it], now: now, calendar: cal)
-        XCTAssertEqual(s.upcoming.count, 1)
-        XCTAssertEqual(s.upcoming[0].dday, DDay(bucket: .overdue, days: -5))  // D+5(지남)
+        XCTAssertTrue(s.upcoming.isEmpty)                    // 미리 알림 미도래 → 게시 안 됨
+        XCTAssertEqual(s.recent.map { $0.id }, ["Y"])        // 유실 아님 — 시점 없는 쪽으로
+        // 배지가 만약 떴다면 마감 기준 D+5(지남)이었을 것 — deadlineDay로 확인
+        XCTAssertEqual(ItemSchedule.deadlineDay(it), "2026-07-25")
+        XCTAssertEqual(DDayCalc.compute(day: "2026-07-25", now: now, calendar: cal),
+                       DDay(bucket: .overdue, days: -5))
     }
 
-    /// 미리 알림만(마감 없음) → 곧 닥칠 것에 뜨되 **배지 없음**(dday nil). 어제까지는 미리 알림 날짜로 배지가 붙었다.
-    func testSplit_resurfaceOnly_noBadge() {
+    /// 미리 알림만(마감 없음)이 **도래한** 경우 → 곧 닥칠 것에 뜨되 **배지 없음**(dday nil).
+    /// 어제까지는 미리 알림 날짜로 배지가 붙었다.
+    func testSplit_resurfaceOnly_arrived_noBadge() {
         let cal = utc
-        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 17, hour: 0))!
-        let it = item("Z", resurface: "2026-07-20")
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 22, hour: 0))!
+        let it = item("Z", resurface: "2026-07-20")   // 이미 도래
         let s = InboxSectionizer.split([it], now: now, calendar: cal)
         XCTAssertEqual(s.upcoming.map { $0.item.id }, ["Z"])   // 곧 닥칠 것엔 있고
         XCTAssertNil(s.upcoming.first?.dday)                    // 배지는 없다
+    }
+
+    // MARK: 게시 게이트 (Stage 2) — 미리 알림 도래 전에는 게시하지 않기
+
+    /// 미리 알림이 **미래** → 게시 안 됨, 시점 없는 쪽으로 이동, 총 개수 보존. (ClassGateTests 7번과 같은 층)
+    func testGate_futureResurface_notPublished_countPreserved() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 0))!
+        let future = item("F", resurface: "2026-08-06")     // 미도래
+        let arrived = item("A", resurface: "2026-07-28")    // 도래
+        let s = InboxSectionizer.split([future, arrived], now: now, calendar: cal)
+        XCTAssertEqual(s.upcoming.map { $0.item.id }, ["A"])   // 도래한 것만 게시
+        XCTAssertEqual(s.recent.map { $0.id }, ["F"])          // 미도래는 시점 없는 쪽으로(유실 아님)
+        XCTAssertEqual(s.upcoming.count + s.recent.count, 2)   // 총 개수 보존
+    }
+
+    /// 미리 알림이 **오늘/과거** → 게시됨.
+    func testGate_todayOrPastResurface_published() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 12))!
+        let today = item("T", resurface: "2026-07-30")   // 오늘(늦은 시각이어도)
+        let past  = item("P", resurface: "2026-07-25")   // 지남
+        let s = InboxSectionizer.split([today, past], now: now, calendar: cal)
+        XCTAssertEqual(Set(s.upcoming.map { $0.item.id }), ["T", "P"])
+        XCTAssertTrue(s.recent.isEmpty)
+    }
+
+    /// 마감만 있고 **먼 미래** → 게시됨(현재 동작 보존 회귀 방지 — 마감은 미리 알림 게이트를 안 탄다).
+    func testGate_dueOnlyFarFuture_published() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 0))!
+        let it = item("D", due: "2026-12-31")   // 먼 미래 마감, 미리 알림 없음
+        let s = InboxSectionizer.split([it], now: now, calendar: cal)
+        XCTAssertEqual(s.upcoming.map { $0.item.id }, ["D"])
+    }
+
+    /// 미리 알림 미래 + 마감 있음 → 게시 안 됨(1번이 2번보다 앞선다 — 미리 알림이 게이트).
+    func testGate_futureResurface_overridesDue() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 0))!
+        let it = item("Pr", due: "2026-08-10", resurface: "2026-08-06")   // 약속류(둘 다 씀·미분류 폴백)
+        let s = InboxSectionizer.split([it], now: now, calendar: cal)
+        XCTAssertTrue(s.upcoming.isEmpty)
+        XCTAssertEqual(s.recent.map { $0.id }, ["Pr"])
     }
 
     func testSplit_allRecentWhenNoDates() {
