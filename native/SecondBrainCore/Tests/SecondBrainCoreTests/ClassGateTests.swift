@@ -91,6 +91,25 @@ final class ClassGateTests: XCTestCase {
         XCTAssertEqual(ItemSchedule.deadlineDay(item("U", due: "2026-07-20")), "2026-07-20")   // 미분류 폴백
     }
 
+    // MARK: 게시 게이트도 분류 게이트를 상속한다 (칸별 — 게이트 판정 함수 레벨)
+
+    /// 게시 게이트(`isPublished`)는 분류 게이트를 **상속**한다 — 안 쓰는 칸의 날짜로는 게시되지 않는다.
+    /// 위 테스트들은 `publishDay` 레벨이라 판정 함수가 원본 필드를 직접 보게 바뀌면 상속이 조용히 끊길 수 있다.
+    /// 칸별이 핵심: 주차는 **마감만** 안 쓰므로 다시 보기로는 게시된다("시간 안 쓰는 분류면 통째로 막힘"이 아님).
+    func testGate_isPublishedInheritsClassGate() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 10))!
+        // 주차 — 마감은 안 쓴다 → 마감만으론 게시 안 됨.
+        XCTAssertFalse(ItemSchedule.isPublished(item("P", type: "parking", due: "2026-08-31"),
+                                                now: now, calendar: cal))
+        // 주차 — 다시 보기는 쓴다 → 도래한 다시 보기로는 게시됨.
+        XCTAssertTrue(ItemSchedule.isPublished(item("P2", type: "parking", resurface: "2026-07-29"),
+                                               now: now, calendar: cal))
+        // 아이디어 — 둘 다 안 쓴다 → 미래 마감이 있어도 게시 안 됨.
+        XCTAssertFalse(ItemSchedule.isPublished(item("I2", type: "idea", due: "2026-08-31"),
+                                                now: now, calendar: cal))
+    }
+
     // MARK: 소비자 상속 — 게이트된 항목은 '사라지는' 게 아니라 시점 없는 쪽으로 옮겨간다
 
     /// 게이트 걸린 아이디어는 "곧 닥칠 것"에서 빠지되 **"최근 들어온 것"에 그대로 있다**(유실이면 버그).

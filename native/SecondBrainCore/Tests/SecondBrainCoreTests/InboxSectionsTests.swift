@@ -147,7 +147,8 @@ final class InboxSectionsTests: XCTestCase {
     /// 미리 알림이 **오늘/과거** → 게시됨.
     func testGate_todayOrPastResurface_published() {
         let cal = utc
-        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 12))!
+        // 하루 경계는 자정 기준 — 오늘 **23:59**여도 "오늘"인 미리 알림은 게시된다(주석이 실제 시각과 맞아야 한다).
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 23, minute: 59))!
         let today = item("T", resurface: "2026-07-30")   // 오늘(늦은 시각이어도)
         let past  = item("P", resurface: "2026-07-25")   // 지남
         let s = InboxSectionizer.split([today, past], now: now, calendar: cal)
@@ -172,6 +173,71 @@ final class InboxSectionsTests: XCTestCase {
         let s = InboxSectionizer.split([it], now: now, calendar: cal)
         XCTAssertTrue(s.upcoming.isEmpty)
         XCTAssertEqual(s.recent.map { $0.id }, ["Pr"])
+    }
+
+    // MARK: 게시 게이트 — 함수 직접 (위 게이트 테스트는 전부 split 경유였다)
+
+    /// `ItemSchedule.isPublished`를 **직접** 고정한다. 위의 게이트 테스트들은 `InboxSectionizer.split`을 거치므로
+    /// 게이트가 깨져도 정렬·섹션 쪽 코드가 우연히 가려줄 수 있다. 판정 함수 자체의 계약을 한 자리에 못박는다.
+    /// 계약: ① 미리 알림이 유효한 날짜면 오늘/과거만 게시 ② 아니면 마감이 유효하면 게시 ③ 그 외 안 함.
+    func testIsPublished_directContract() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 10))!
+
+        // ① 미리 알림 우선 — 미래면 마감이 (심지어 이미 지났어도) 있어도 게시 안 함. 실데이터 「T 우주」 조합.
+        XCTAssertFalse(ItemSchedule.isPublished(item("A", resurface: "2026-08-06"), now: now, calendar: cal))
+        XCTAssertFalse(ItemSchedule.isPublished(item("T", due: "2026-07-26", resurface: "2026-08-06"),
+                                                now: now, calendar: cal))
+        XCTAssertTrue(ItemSchedule.isPublished(item("B", resurface: "2026-07-30"), now: now, calendar: cal))  // 오늘
+        XCTAssertTrue(ItemSchedule.isPublished(item("C", resurface: "2026-07-29"), now: now, calendar: cal))  // 과거
+
+        // ② 마감만 있으면 먼 미래여도 게시 — 미리 알림은 **옵트인 지연 장치**이므로 안 넣은 항목 동작은 불변이어야 한다.
+        XCTAssertTrue(ItemSchedule.isPublished(item("E", due: "2027-12-31"), now: now, calendar: cal))
+        XCTAssertTrue(ItemSchedule.isPublished(item("F", due: "2026-07-01"), now: now, calendar: cal))  // 지난 마감도
+
+        // ③ 날짜가 없으면 게시 안 함.
+        XCTAssertFalse(ItemSchedule.isPublished(item("I"), now: now, calendar: cal))
+        XCTAssertFalse(ItemSchedule.isPublished(item("J", due: "none", resurface: "none"), now: now, calendar: cal))
+    }
+
+    /// 자정 경계 — 오늘 **23:59**에도 오늘자 미리 알림은 게시된다(판정은 시각이 아니라 날 단위).
+    func testIsPublished_resurfaceToday_lateInDay() {
+        let cal = utc
+        let late = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 23, minute: 59))!
+        XCTAssertTrue(ItemSchedule.isPublished(item("D", resurface: "2026-07-30"), now: late, calendar: cal))
+    }
+
+    /// 게이트 레벨에서도 `"none"`·`"weekly"`는 날짜가 아니다 → 미리 알림 칸이 빈 것과 같고, 마감으로 판정한다.
+    /// (`publishDay` 레벨 동치는 위에서 봤지만, 게이트가 "weekly가 아니면 날짜"로 오인하면 미래 마감이 막힌다.)
+    func testIsPublished_noneOrWeeklyResurface_judgedByDue() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 10))!
+        XCTAssertTrue(ItemSchedule.isPublished(item("G", due: "2026-08-31", resurface: "none"),
+                                               now: now, calendar: cal))
+        XCTAssertTrue(ItemSchedule.isPublished(item("H", due: "2026-08-31", resurface: "weekly"),
+                                               now: now, calendar: cal))
+    }
+
+    // MARK: 값은 안 지우고 효과만 막는다 — 휴면 후 날이 오면 저절로 게시
+
+    /// **이 규칙의 유일한 그물.** 게시 게이트는 항목을 지우거나 날짜를 비우는 게 아니라 *효과만* 막는다:
+    /// ① 게시 안 된 항목의 `due`·`resurface` **값이 그대로 남아 있고**(휴면)
+    /// ② 미리 알림 날이 오면 **저절로 게시**되며 ③ 그때 배지는 여전히 **마감 기준**이다.
+    /// 값을 지우는 구현으로 바뀌면 ①이, 게이트가 한 번 막고 안 풀면 ②가 여기서 깨진다.
+    func testNotLost_valuesKept_publishesWhenDayArrives() {
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 10))!
+        let it = item("X", due: "2026-08-31", resurface: "2026-08-10")   // 미리 알림 미래 → 미도래
+
+        let before = InboxSectionizer.split([it], now: now, calendar: cal)
+        XCTAssertTrue(before.upcoming.isEmpty)                            // 아직 안 뜬다
+        XCTAssertEqual(before.recent.first?.due, "2026-08-31")            // 값 보존 — 마감
+        XCTAssertEqual(before.recent.first?.resurface, "2026-08-10")      // 값 보존 — 미리 알림
+
+        let arrival = cal.date(from: DateComponents(year: 2026, month: 8, day: 10, hour: 0))!
+        let after = InboxSectionizer.split([it], now: arrival, calendar: cal)
+        XCTAssertEqual(after.upcoming.map { $0.item.id }, ["X"])          // 그 날 저절로 게시
+        XCTAssertEqual(after.upcoming[0].dday, DDay(bucket: .future, days: 21))  // 배지는 여전히 마감 기준
     }
 
     func testSplit_allRecentWhenNoDates() {
