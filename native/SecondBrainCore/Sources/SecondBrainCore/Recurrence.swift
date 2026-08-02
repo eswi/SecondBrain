@@ -36,6 +36,41 @@ public enum Recurrence {
     public static let unitKey = "recur"
     public static let autoKey = "recurAuto"
     public static let pausedKey = "recurPaused"
+    public static let lastDoneKey = "lastDone"   // 마지막 완료 시점(시각 표준형 T)
+
+    /// 마지막 완료 시점(없거나 못 읽으면 nil). 형식 = 시각 표준형 "YYYY-MM-DD'T'HH:mm".
+    public static func lastDone(_ it: ResolvedItem, calendar: Calendar = .current) -> Date? {
+        it.fields[lastDoneKey].flatMap { ItemSchedule.parseDay($0, calendar: calendar) }
+    }
+
+    /// **오늘 이미 완료했나 (Stage 3 최소판)** — 마지막 완료 시점의 날이 오늘이면 true.
+    /// "오늘 약 먹었나"에 답한다(매일 약). 주기별 정확한 회차 창(매주·매년)은 Stage 4.
+    public static func doneToday(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
+        guard let d = lastDone(it, calendar: calendar) else { return false }
+        return calendar.isDate(d, inSameDayAs: now)
+    }
+
+    /// **완료 버튼이 낼 이벤트 필드 — 분류로 분기(§5, Stage 3의 핵심).**
+    /// - 되풀이 → **마지막 완료 시점만 기록**(status 안 건드림 → 항목이 살아있음, 안 사라짐).
+    /// - 그 외 → **status=done**(영구 종료·보관함행 — 기존 동작 그대로).
+    public static func completionChanges(for it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String] {
+        if it.type == "recurrence" {
+            return [lastDoneKey: ItemSchedule.dayTimeString(now, calendar: calendar)]
+        }
+        return ["status": "done"]
+    }
+
+    /// **완료 취소용 — 직전 완료 시점.** 이벤트 이력에서 lastDone 값들 중 **두 번째 최신**(=방금 것 이전).
+    /// 되돌리면 놓침 계산의 streak가 보존된다(오늘 것만 무르고 어제까지는 남김). 없으면 nil(→ 비움).
+    public static func priorLastDone(in events: [Event], id: String) -> String? {
+        let vals = events
+            .filter { $0.id == id && $0.fields[lastDoneKey] != nil }
+            .sorted { $0.hlc < $1.hlc }
+            .map { $0.fields[lastDoneKey]! }
+        guard vals.count >= 2 else { return nil }
+        let prior = vals[vals.count - 2]
+        return prior.isEmpty ? nil : prior
+    }
 
     /// 반복 주기(설정 안 됐거나 모르는 값이면 nil).
     public static func unit(_ it: ResolvedItem) -> Unit? {

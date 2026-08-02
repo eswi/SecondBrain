@@ -37,6 +37,8 @@ struct DetailView: View {
     @State private var recurUnit: String?
     @State private var recurAuto: String
     @State private var recurPaused: Bool
+    /// 오늘 완료 상태(로컬 — 즉시 반영, isRemembered와 같은 이유로 stale item 대신 로컬로 든다). Stage 3.
+    @State private var doneTodayLocal: Bool
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -68,6 +70,7 @@ struct DetailView: View {
         _recurUnit = State(initialValue: Recurrence.unit(item)?.rawValue)
         _recurAuto = State(initialValue: Recurrence.autoComplete(item).rawValue)
         _recurPaused = State(initialValue: Recurrence.isPaused(item))
+        _doneTodayLocal = State(initialValue: Recurrence.doneToday(item, now: Date()))
     }
 
     private var changes: [String: String] {
@@ -455,6 +458,8 @@ struct DetailView: View {
         if normalizedType == "recurrence" {
             VStack(alignment: .leading, spacing: 12) {
                 sectionLabel("반복 설정")
+                completionRow          // "오늘 약 먹었나" — 이번 회차 완료·취소
+                Divider().overlay(Palette.border)
                 menuRow("반복 주기", value: Recurrence.Unit(rawValue: recurUnit ?? "")?.korean ?? "없음") {
                     ForEach(Recurrence.Unit.allCases, id: \.self) { u in
                         Button(u.korean) { recurUnit = u.rawValue }
@@ -475,6 +480,28 @@ struct DetailView: View {
                 }
             }
             .padding(14).card()
+        }
+    }
+
+    /// 이번 회차 완료 — 되풀이 완료는 "이번 것 했다"(항목 안 사라짐). 오늘 했으면 상태 표시 + 취소.
+    /// 문구가 기존 "완료"(끝났다)와 다르다: 되풀이는 "이번 것 했어요".
+    @ViewBuilder
+    private var completionRow: some View {
+        if doneTodayLocal {
+            HStack {
+                Label("오늘 완료됨", systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.semibold)).foregroundStyle(Palette.accent)
+                Spacer()
+                Button("취소") { model.undoRecurComplete(item); doneTodayLocal = false }
+                    .font(.caption).tint(Palette.overdue)
+            }
+        } else {
+            Button { model.markDone(item); doneTodayLocal = true } label: {
+                Label("이번 것 했어요", systemImage: "checkmark.circle")
+                    .font(.callout.weight(.semibold)).frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent).tint(Palette.accent)
         }
     }
 
@@ -576,10 +603,13 @@ struct DetailView: View {
     /// [삭제하기] 재확인 — 공용 대화상자. [취소] / [삭제](overdue 톤). 확인 시 삭제 후 화면 닫기.
     /// 삭제 로직 자체는 무변경(tombstone → 보관된 기억, 복구 가능). 확인 단계만 앞에 둔다.
     private var deleteDialog: some View {
-        ConfirmDialog(title: "정말로 삭제하시겠습니까?",
-                      confirmTitle: "삭제", confirmTint: Palette.overdue,
-                      onCancel: { showDeleteConfirm = false },
-                      onConfirm: { showDeleteConfirm = false; model.delete(item); dismiss() })
+        // 되풀이는 "그만두기 = 삭제"임을 명확히(잠시 멈춤은 꺼두기, §5). 헷갈리지 않게 문구로 가른다.
+        let isRecur = normalizedType == "recurrence"
+        return ConfirmDialog(
+            title: isRecur ? "되풀이를 그만둘까요? 기록도 함께 삭제돼요" : "정말로 삭제하시겠습니까?",
+            confirmTitle: isRecur ? "그만두기" : "삭제", confirmTint: Palette.overdue,
+            onCancel: { showDeleteConfirm = false },
+            onConfirm: { showDeleteConfirm = false; model.delete(item); dismiss() })
     }
 
     /// 규칙 1 안내 — 단일 버튼 정보 팝업(+7일 상한/차단, 저장 위반 차단 공용). 확인하면 닫기만(편집 유지).

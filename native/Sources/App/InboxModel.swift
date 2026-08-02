@@ -219,7 +219,16 @@ final class InboxModel: ObservableObject {
     // MARK: 항목 행동 → 이벤트 append
 
     func delete(_ item: ResolvedItem)   { append(.delete(id: item.id, hlc: tick())) }
-    func markDone(_ item: ResolvedItem) { append(.edit(id: item.id, hlc: tick(), ["status": "done"])) }
+    /// 완료 — **분류로 분기**(Stage 3). 되풀이=마지막 완료 시점만(항목 살아있음) / 그 외=status=done(보관함행).
+    func markDone(_ item: ResolvedItem) {
+        append(.edit(id: item.id, hlc: tick(), Recurrence.completionChanges(for: item, now: Date())))
+    }
+
+    /// 되풀이 완료 취소 — 오늘 완료를 무르고 **직전 완료 시점으로 되돌린다**(streak 보존). 없으면 비움.
+    func undoRecurComplete(_ item: ResolvedItem) {
+        let prior = Recurrence.priorLastDone(in: allEvents, id: item.id) ?? ""
+        append(.edit(id: item.id, hlc: tick(), [Recurrence.lastDoneKey: prior]))
+    }
 
     /// 미루기(+7일) — 규칙 1(미리 알림 ≤ 마감 − 1일)을 지키며 미룬다. 위반 상태로 저장하지 않는다.
     /// - 마감이 가까우면 마감 하루 전까지 당겨서 미루고 알린다. 마감이 임박(하루 전이 오늘/과거)이면 미루지 않고 알린다.
