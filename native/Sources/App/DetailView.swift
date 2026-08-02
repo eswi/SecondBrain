@@ -375,6 +375,16 @@ struct DetailView: View {
                     DatePicker("", selection: dateBinding(value), displayedComponents: .date)
                         .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
                 }
+                // 시각(선택) — OFF면 날짜만, ON이면 시·분 지정(§6-B: 시각 안 넣을 자유). 규칙1은 날짜 단위라 여기 상한 없음.
+                HStack(spacing: 8) {
+                    Text("시각").font(.caption).foregroundStyle(Palette.textSecondary)
+                    Toggle("", isOn: timeEnabledBinding(value)).labelsHidden().tint(Palette.accent)
+                    Spacer()
+                    if ItemSchedule.timeOfDay(value.wrappedValue ?? "") != nil {
+                        DatePicker("", selection: timeBinding(value), displayedComponents: .hourAndMinute)
+                            .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
+                    }
+                }
             } else {
                 Text("없음")   // 시점 없음. (레거시 "weekly" 값도 여기로 — 반복 기능은 없었다: 날짜 없음의 동의어)
                     .font(.caption).foregroundStyle(Palette.textTertiary)
@@ -393,7 +403,7 @@ struct DetailView: View {
     private func deferResurface(_ value: Binding<String?>) {
         switch ItemSchedule.deferSevenDays(due: due, now: Date()) {
         case .deferred(let day, let capped):
-            value.wrappedValue = day
+            value.wrappedValue = ItemSchedule.withTimeOfDay(day, from: value.wrappedValue)   // 원래 시각 보존(§6-B)
             if capped {
                 noticeDialog = "마감이 가까워 미리 알림을 마감 하루 전(\(InboxModel.korShort(day)))으로 맞췄어요"
             }
@@ -560,11 +570,35 @@ struct DetailView: View {
         Text(s).font(.caption.weight(.semibold)).foregroundStyle(Palette.textSecondary)
     }
 
-    /// String?("YYYY-MM-DD") ↔ Date 브릿지(DatePicker용).
+    /// String?("YYYY-MM-DD" 또는 "…THH:mm") ↔ Date 브릿지(날짜 피커용).
+    /// 날짜를 바꿔도 **원래 시각은 보존**한다(§6-B — withTimeOfDay).
     private func dateBinding(_ b: Binding<String?>) -> Binding<Date> {
         Binding(
             get: { ItemSchedule.parseDay(b.wrappedValue ?? "") ?? Date() },
-            set: { b.wrappedValue = Self.fmt.string(from: $0) }
+            set: { b.wrappedValue = ItemSchedule.withTimeOfDay(Self.fmt.string(from: $0), from: b.wrappedValue) }
+        )
+    }
+
+    /// "시각" 토글 — OFF면 날짜만(시각 안 넣을 자유, §6-B), ON이면 기본 09:00을 붙여 시·분 지정을 연다.
+    private func timeEnabledBinding(_ b: Binding<String?>) -> Binding<Bool> {
+        Binding(
+            get: { ItemSchedule.timeOfDay(b.wrappedValue ?? "") != nil },
+            set: { on in
+                let base = Self.fmt.string(from: ItemSchedule.parseDay(b.wrappedValue ?? "") ?? Date())
+                b.wrappedValue = on ? "\(base)T09:00" : base
+            }
+        )
+    }
+
+    /// 시·분 피커 브릿지 — 날짜부는 유지하고 시각만 바꾼다. 쓰기 표준형 `T`.
+    private func timeBinding(_ b: Binding<String?>) -> Binding<Date> {
+        Binding(
+            get: { ItemSchedule.parseDay(b.wrappedValue ?? "") ?? Date() },
+            set: { picked in
+                let t = Calendar.current.dateComponents([.hour, .minute], from: picked)
+                let base = Self.fmt.string(from: ItemSchedule.parseDay(b.wrappedValue ?? "") ?? picked)
+                b.wrappedValue = String(format: "%@T%02d:%02d", base, t.hour ?? 0, t.minute ?? 0)
+            }
         )
     }
 

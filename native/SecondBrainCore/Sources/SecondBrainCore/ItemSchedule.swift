@@ -108,6 +108,33 @@ public enum ItemSchedule {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
+    /// Date → **쓰기 표준형** "YYYY-MM-DD'T'HH:mm"(§6-B — 쓰기는 항상 `T`). 시각 포함 저장용.
+    public static func dayTimeString(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return String(format: "%04d-%02d-%02dT%02d:%02d",
+                      c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0)
+    }
+
+    /// `s`의 **날짜부**에, `source`에 시각이 있으면 그 시각을 붙여 돌려준다(없으면 날짜만).
+    /// 미루기·날짜 변경이 **원래 시각을 보존**하도록 쓴다(§6-B: 약 아침 8시 → 미뤄도 8시).
+    public static func withTimeOfDay(_ s: String, from source: String?) -> String {
+        let (datePart, _) = splitDateTime(s)
+        guard let source, let t = timeOfDay(source) else { return datePart }
+        return String(format: "%@T%02d:%02d", datePart, t.hour, t.minute)
+    }
+
+    /// **하루 안 보조 표시** — 값에 시각이 있고 그 날짜가 **오늘**일 때만, 남은/지난 시간을 사람이 읽는 문구로.
+    /// D-day(날 단위)를 보완한다(§6-B: "오늘/지남만 19:00 · N시간 남음"). 오늘 아니거나 시각 없으면 nil.
+    public static func withinDayCaption(_ value: String, now: Date, calendar: Calendar = .current) -> String? {
+        guard timeOfDay(value) != nil, let target = parseDay(value, calendar: calendar) else { return nil }
+        guard calendar.isDate(target, inSameDayAs: now) else { return nil }   // 오늘만(다른 날은 D±n 배지가 담당)
+        let secs = target.timeIntervalSince(now)
+        if secs <= 0 { return "지남" }
+        let mins = Int(secs / 60)
+        if mins < 60 { return mins <= 1 ? "곧" : "\(mins)분 남음" }
+        return "\(mins / 60)시간 남음"
+    }
+
     // MARK: 규칙 1 — 미리 알림은 마감보다 최소 하루 빠르게 (2026-07-30)
     // 규칙은 여기 Core 한 곳에 두고 세 곳(날짜 선택·자동 분류·미루기)이 이걸 쓴다. 복사 금지.
 

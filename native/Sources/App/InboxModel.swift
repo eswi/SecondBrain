@@ -229,7 +229,8 @@ final class InboxModel: ObservableObject {
         guard ClassSpecCatalog.uses(item.type, .resurface) else { return }   // 안전망(액션 숨김이 1차)
         switch ItemSchedule.deferSevenDays(due: item.due, now: Date()) {
         case .deferred(let day, let capped):
-            append(.edit(id: item.id, hlc: tick(), ["resurface": day]))
+            // 미루기는 날짜만 새로 정하고, 원래 미리 알림의 **시각은 보존**한다(§6-B). 시각 없던 값은 날짜만.
+            append(.edit(id: item.id, hlc: tick(), ["resurface": ItemSchedule.withTimeOfDay(day, from: item.resurface)]))
             if capped {
                 autoToast = ClassifyToast(kind: .success,
                     text: "마감이 가까워 미리 알림을 마감 하루 전(\(Self.korShort(day)))으로 맞췄어요")
@@ -240,9 +241,10 @@ final class InboxModel: ObservableObject {
         }
     }
 
-    /// "YYYY-MM-DD" → "M월 d일"(안내 문구용). 파싱 실패면 원문 그대로.
+    /// "YYYY-MM-DD"(또는 시각 붙은 "…THH:mm") → "M월 d일"(안내 문구용). 파싱 실패면 원문 그대로.
     static func korShort(_ ymd: String) -> String {
-        let p = ymd.split(separator: "-")
+        let datePart = ymd.split(whereSeparator: { $0 == "T" || $0 == " " }).first.map(String.init) ?? ymd
+        let p = datePart.split(separator: "-")
         guard p.count == 3, let m = Int(p[1]), let d = Int(p[2]) else { return ymd }
         return "\(m)월 \(d)일"
     }

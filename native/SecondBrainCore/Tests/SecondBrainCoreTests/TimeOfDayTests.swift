@@ -130,4 +130,45 @@ final class TimeOfDayTests: XCTestCase {
         // publishDay = resurface(08-01)이 과거라 알림 없음(미래만) — 기존 동작 그대로
         XCTAssertTrue(plan.isEmpty)
     }
+
+    // MARK: Stage 2 — 직렬화·시각 보존·보조 캡션
+
+    private func at(_ h: Int, _ min: Int = 0) -> Date {
+        utc.date(from: DateComponents(year: 2026, month: 8, day: 2, hour: h, minute: min))!
+    }
+
+    func testDayTimeString_roundTrip() {
+        let cal = utc
+        let d = cal.date(from: DateComponents(year: 2026, month: 8, day: 5, hour: 19, minute: 30))!
+        XCTAssertEqual(ItemSchedule.dayTimeString(d, calendar: cal), "2026-08-05T19:30")
+        XCTAssertEqual(ItemSchedule.parseDay("2026-08-05T19:30", calendar: cal), d)   // 왕복(분 정밀)
+    }
+
+    func testWithTimeOfDay_preservesAndStripsAppropriately() {
+        // 시각 있는 원본 → 새 날짜에 그 시각 유지
+        XCTAssertEqual(ItemSchedule.withTimeOfDay("2026-08-12", from: "2026-08-05T08:00"), "2026-08-12T08:00")
+        // 시각 없는 원본 → 날짜만
+        XCTAssertEqual(ItemSchedule.withTimeOfDay("2026-08-12", from: "2026-08-05"), "2026-08-12")
+        // 대상에 시각이 붙어 있어도 날짜부만 base로
+        XCTAssertEqual(ItemSchedule.withTimeOfDay("2026-08-12T23:59", from: "2026-08-05T08:00"), "2026-08-12T08:00")
+        XCTAssertNil(ItemSchedule.withTimeOfDay("2026-08-12", from: nil).firstIndex(of: "T"))  // nil 원본 → 날짜만
+    }
+
+    func testDefer_preservesTimeOfDay() {
+        // 마감 없음 → 오늘(08-02)+7 = 08-09, 원래 미리 알림 시각 08:00 보존
+        guard case let .deferred(day, _) = ItemSchedule.deferSevenDays(due: nil, now: today(), calendar: utc) else {
+            return XCTFail("deferred 예상")
+        }
+        let kept = ItemSchedule.withTimeOfDay(day, from: "2026-07-01T08:00")
+        XCTAssertEqual(kept, "2026-08-09T08:00")
+        XCTAssertEqual(ItemSchedule.timeOfDay(kept)?.hour, 8)
+    }
+
+    func testWithinDayCaption_todayWithTime() {
+        let cal = utc
+        XCTAssertEqual(ItemSchedule.withinDayCaption("2026-08-02T19:00", now: at(16), calendar: cal), "3시간 남음")
+        XCTAssertEqual(ItemSchedule.withinDayCaption("2026-08-02T19:00", now: at(20), calendar: cal), "지남")
+        XCTAssertNil(ItemSchedule.withinDayCaption("2026-08-03T19:00", now: at(16), calendar: cal))   // 다른 날 → nil
+        XCTAssertNil(ItemSchedule.withinDayCaption("2026-08-02", now: at(16), calendar: cal))         // 시각 없음 → nil
+    }
 }

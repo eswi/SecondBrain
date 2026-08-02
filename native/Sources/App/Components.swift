@@ -92,10 +92,13 @@ func itemCaption(_ it: ResolvedItem) -> String {
     if !dt.isEmpty { parts.append(dt) }
     // §7 분류 게이트: 그 분류가 쓰는 칸의 날짜만 노출한다(안 쓰는 칸의 옛 날짜는 안 보임).
     // 상세 "시간 설정"·"지금 챙길 것"과 같은 게이트를 타 — 보이는 곳마다 어긋나지 않게.
-    if let due = ItemSchedule.deadlineDay(it) { parts.append("~\(due)") }
-    if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(rs)") }
+    if let due = ItemSchedule.deadlineDay(it) { parts.append("~\(displayDateTime(due))") }
+    if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(displayDateTime(rs))") }
     return parts.joined(separator: " · ")
 }
+
+/// 저장 문자열의 시각 구분자 `T`를 사람이 읽게 공백으로("2026-08-05T19:00" → "2026-08-05 19:00"). date-only는 그대로.
+func displayDateTime(_ v: String) -> String { v.replacingOccurrences(of: "T", with: " ") }
 
 // MARK: - 표준 확인·안내 대화상자 (앱 공용 형식 — confirm-dialog-style)
 // 배경 딤 + 가운데 카드 + 큰 제목(표준 alert보다 2단계) + 하단 버튼 행.
