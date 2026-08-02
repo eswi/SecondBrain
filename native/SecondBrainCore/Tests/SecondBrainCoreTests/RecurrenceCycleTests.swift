@@ -47,6 +47,24 @@ final class RecurrenceCycleTests: XCTestCase {
         XCTAssertEqual(Recurrence.completionAdvance(item("daily", due: "2026-08-03"), now: d(8, 3, 14), calendar: utc)?["due"], "2026-08-04")
     }
 
+    // ★ lead 0 (미리 알림 없음) — 실데이터 3개 케이스. 완료 시 **마감만 전진, 미리 알림엔 아무것도 안 들어감.**
+    func testCompletionAdvance_noResurface_onlyDueAdvances() {
+        let c = Recurrence.completionAdvance(item("daily", due: "2026-08-03T08:00"), now: d(8, 3, 8, 5), calendar: utc)
+        XCTAssertEqual(c?["due"], "2026-08-04T08:00")
+        XCTAssertNil(c?["resurface"], "미리 알림 없으면 전진값에도 미리 알림 없음(계속 비어 있음)")
+    }
+    func testCompletionChanges_noResurface_dueAndLastDoneOnly() {
+        let c = Recurrence.completionChanges(for: item("daily", due: "2026-08-03T08:00"), now: d(8, 3, 8, 5), calendar: utc)
+        XCTAssertEqual(c["due"], "2026-08-04T08:00")
+        XCTAssertNil(c["resurface"])
+        XCTAssertNotNil(c[Recurrence.lastDoneKey])
+        XCTAssertNil(c["status"])
+    }
+    // 자정 근처(00:10) 경계 — 01781308 케이스. 완료 시 다음날 같은 시각으로.
+    func testCompletionAdvance_nearMidnightBoundary() {
+        XCTAssertEqual(Recurrence.completionAdvance(item("daily", due: "2026-08-03T00:10"), now: d(8, 3, 0, 20), calendar: utc)?["due"], "2026-08-04T00:10")
+    }
+
     func testMissed_anchorIsDue() {
         XCTAssertEqual(Recurrence.missed(item("daily", due: "2026-08-01T08:00"), now: d(8, 3, 14), calendar: utc), 2)  // 08-01·08-02
         XCTAssertEqual(Recurrence.missed(item("daily", due: "2026-08-03T08:00"), now: d(8, 3, 14), calendar: utc), 0)  // 오늘 것 아님
