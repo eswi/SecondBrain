@@ -72,10 +72,13 @@ final class TimeOfDayTests: XCTestCase {
         XCTAssertEqual(dd.bucket, .future)
     }
 
-    func testPositive_resurfaceWithTime_publishedToday() {
-        // 미리 알림 "2026-08-02 08:00" → 오늘 게시(날 단위)
+    func testResurfaceWithTime_publishedFromThatTime() {
+        // 미리 알림 "2026-08-02 08:00" → **그 시각(08:00)부터** 게시(시각 인지, #3). 전엔 아직.
         let it = item("B", resurface: "2026-08-02T08:00")
-        XCTAssertTrue(ItemSchedule.isPublished(it, now: today(), calendar: utc))
+        let before = utc.date(from: DateComponents(year: 2026, month: 8, day: 2, hour: 7))!
+        let after = utc.date(from: DateComponents(year: 2026, month: 8, day: 2, hour: 9))!
+        XCTAssertFalse(ItemSchedule.isPublished(it, now: before, calendar: utc))
+        XCTAssertTrue(ItemSchedule.isPublished(it, now: after, calendar: utc))
     }
 
     func testPositive_resurfaceTomorrowWithTime_notPublishedToday() {

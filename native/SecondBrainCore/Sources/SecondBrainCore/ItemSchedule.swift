@@ -47,7 +47,11 @@ public enum ItemSchedule {
     public static func isPublished(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
         if ClassSpecCatalog.uses(it.type, .resurface),
            let r = it.resurface, let rd = parseDay(r, calendar: calendar) {
-            return calendar.startOfDay(for: rd) <= calendar.startOfDay(for: now)   // 오늘/과거만 게시
+            // **시각 인지 게이트(2026-08-03, #3).** 그 시점이 **오면(지났으면) 게시**한다.
+            // - 시각 있는 미리 알림: 그 시각부터 게시. **지난 시각은 계속 보임**(아침 약을 오후에 열어도 목록에 남음 —
+            //   시각 지났다고 빠지면 놓친 것을 숨기게 되어 원칙에 어긋남).
+            // - date-only: `parseDay`가 자정을 주므로 `자정 ≤ now` = **오늘 자정부터**(기존 동작 불변).
+            return rd <= now
         }
         if ClassSpecCatalog.uses(it.type, .due),
            let d = it.due, parseDay(d, calendar: calendar) != nil {
