@@ -142,22 +142,31 @@ public enum ItemSchedule {
     // MARK: 규칙 1 — 미리 알림은 마감보다 최소 하루 빠르게 (2026-07-30)
     // 규칙은 여기 Core 한 곳에 두고 세 곳(날짜 선택·자동 분류·미루기)이 이걸 쓴다. 복사 금지.
 
-    /// 미리 알림의 **상한**(마지막으로 허용되는 날 = 마감 − 1일). 없으면(제약 없음) nil.
-    /// - 마감이 **미래**일 때만 적용. 마감이 오늘/과거면 제약 없음(지난 것을 미루는 건 필요한 동작).
-    /// - 마감이 없으면 제약 없음.
-    public static func resurfaceUpperBound(due: String?, now: Date, calendar: Calendar = .current) -> Date? {
+    /// **규칙 1 — 미리 알림은 마감보다 실제로 앞서야 한다.** 규칙이 바뀐 게 아니라 **시각 유무로 적용이 갈린다**(2026-08-03):
+    /// - **시각 없으면(date-only):** 날짜 단위로만 비교 가능 → **최소 하루 전**(마감−1일). (기존 그대로.)
+    /// - **시각 있으면:** 시각으로 비교 → **마감보다 앞서거나 같으면 됨**(`미리 알림 ≤ 마감`, 이후만 위반).
+    /// 마감이 **미래**일 때만(지난 마감 미루기는 제약 없음). 목적: 항목이 자기 마감을 지날 때까지 숨는 것을 막는다.
+    /// (참고: 미리 알림 = 마감(정각)은 허용하되 실질 lead가 0 — 되풀이는 마감 분기도 시각 인지라 미리 알림 없어도 마감 시각부터 보임.)
+
+    /// 미리 알림 **날짜 상한**(DatePicker 범위·미루기용). 없으면(제약 없음) nil.
+    /// `resurfaceHasTime`=true면 마감의 **날까지 허용**(같은 날 — 시각 검증은 `violatesRule1`이); false면 마감−1일.
+    public static func resurfaceUpperBound(due: String?, now: Date, resurfaceHasTime: Bool = false,
+                                           calendar: Calendar = .current) -> Date? {
         guard let due, let dd = parseDay(due, calendar: calendar) else { return nil }   // 마감 없음
+        guard dd > now else { return nil }                                              // 마감 오늘/지남(시각 인지)
         let startDue = calendar.startOfDay(for: dd)
-        guard startDue > calendar.startOfDay(for: now) else { return nil }               // 마감 오늘/과거
-        return calendar.date(byAdding: .day, value: -1, to: startDue)                    // 마감 − 1일
+        return resurfaceHasTime ? startDue : calendar.date(byAdding: .day, value: -1, to: startDue)
     }
 
-    /// 규칙 1 위반 여부 — 미리 알림이 상한(마감−1일)보다 늦은가(= 마감과 같거나 늦은가).
-    /// 상한이 없으면(마감 오늘/과거·없음) 항상 false. 미리 알림이 없어도 false.
+    /// 규칙 1 위반 여부 — 최종 방어선(시각 인지). 마감 없음/지남·미리 알림 없음이면 false.
     public static func violatesRule1(resurface: String?, due: String?, now: Date, calendar: Calendar = .current) -> Bool {
-        guard let ub = resurfaceUpperBound(due: due, now: now, calendar: calendar) else { return false }
-        guard let resurface, let rd = parseDay(resurface, calendar: calendar) else { return false }
-        return calendar.startOfDay(for: rd) > ub
+        guard let due, let dd = parseDay(due, calendar: calendar),
+              let resurface, let rd = parseDay(resurface, calendar: calendar) else { return false }
+        guard dd > now else { return false }                                            // 마감 미래일 때만
+        if timeOfDay(resurface) != nil {
+            return rd > dd                                                              // 시각: 마감 이후만 위반(≤ 마감 OK)
+        }
+        return calendar.startOfDay(for: rd) >= calendar.startOfDay(for: dd)             // date-only: 같은 날부터 위반(하루 전)
     }
 
     /// 미루기(+7일)의 결과 — 규칙 1을 지키며 결정한다. **위반 상태로 저장하는 경로는 없다.**
@@ -172,10 +181,11 @@ public enum ItemSchedule {
     /// - 마감 없음/지남 → 오늘+7일 그대로(`capped:false`).
     /// - 마감 하루 전이 아직 미래면 → 오늘+7일이 그 상한을 넘으면 상한까지 당겨서(`capped:true`), 안 넘으면 그대로.
     /// - 마감 하루 전이 오늘이거나 지났으면 → `blocked`(미루지 않는다).
-    public static func deferSevenDays(due: String?, now: Date, calendar: Calendar = .current) -> DeferOutcome {
+    public static func deferSevenDays(due: String?, now: Date, resurfaceHasTime: Bool = false,
+                                      calendar: Calendar = .current) -> DeferOutcome {
         let today = calendar.startOfDay(for: now)
         let target = calendar.date(byAdding: .day, value: 7, to: today) ?? today
-        guard let ub = resurfaceUpperBound(due: due, now: now, calendar: calendar) else {
+        guard let ub = resurfaceUpperBound(due: due, now: now, resurfaceHasTime: resurfaceHasTime, calendar: calendar) else {
             return .deferred(to: dayString(target, calendar: calendar), capped: false)   // 마감 없음/지남
         }
         if ub <= today {                                                                 // 마감 하루 전 = 오늘/과거

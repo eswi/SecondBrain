@@ -365,7 +365,7 @@ struct DetailView: View {
                     if usesDue && usesResurface { Divider().overlay(Palette.border) }
                     if usesResurface {
                         // 규칙 1: 미리 알림은 마감 하루 전까지만. DatePicker 범위를 상한으로 제한(가능한 만큼).
-                        let bound = ItemSchedule.resurfaceUpperBound(due: due, now: Date())
+                        let bound = ItemSchedule.resurfaceUpperBound(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(resurface ?? "") != nil)
                         timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface,
                                 showDefer: true, upperBound: bound)
                     }
@@ -427,7 +427,7 @@ struct DetailView: View {
     /// +7일 미루기(상세 draft) — 규칙 1을 지켜 미리 알림 draft를 정한다. 위반 상태로 세팅하지 않는다.
     /// 상한에 걸려 당겨졌거나 마감 임박이라 못 미루면 안내 팝업으로 알린다("알린다").
     private func deferResurface(_ value: Binding<String?>) {
-        switch ItemSchedule.deferSevenDays(due: due, now: Date()) {
+        switch ItemSchedule.deferSevenDays(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(value.wrappedValue ?? "") != nil) {
         case .deferred(let day, let capped):
             value.wrappedValue = ItemSchedule.withTimeOfDay(day, from: value.wrappedValue)   // 원래 시각 보존(§6-B)
             if capped {
@@ -675,7 +675,7 @@ struct DetailView: View {
         // 규칙 1 최종 방어선: 미리 알림이 마감 하루 전보다 늦으면(마감 미래 기준) 저장을 막고 알린다.
         // DatePicker 범위 제한을 우회했거나 마감을 나중에 앞으로 당겨 역전된 경우를 여기서 잡는다.
         if ItemSchedule.violatesRule1(resurface: resurface, due: due, now: Date()) {
-            let ub = ItemSchedule.resurfaceUpperBound(due: due, now: Date())
+            let ub = ItemSchedule.resurfaceUpperBound(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(resurface ?? "") != nil)
             let cap = ub.map { InboxModel.korShort(ItemSchedule.dayString($0)) } ?? ""
             noticeDialog = "미리 알림은 마감 하루 전(\(cap))까지만 설정할 수 있어요"
             return

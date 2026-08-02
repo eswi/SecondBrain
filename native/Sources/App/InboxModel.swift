@@ -252,7 +252,7 @@ final class InboxModel: ObservableObject {
     ///   여기서도 조용히 막는다(휴면 값이 써지지 않게). 근거: §7(a) — 못 쓰는 칸은 회색으로 두지 않고 없앤다.
     func defer7(_ item: ResolvedItem) {
         guard ClassSpecCatalog.uses(item.type, .resurface) else { return }   // 안전망(액션 숨김이 1차)
-        switch ItemSchedule.deferSevenDays(due: item.due, now: Date()) {
+        switch ItemSchedule.deferSevenDays(due: item.due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(item.resurface ?? "") != nil) {
         case .deferred(let day, let capped):
             // 미루기는 날짜만 새로 정하고, 원래 미리 알림의 **시각은 보존**한다(§6-B). 시각 없던 값은 날짜만.
             append(.edit(id: item.id, hlc: tick(), ["resurface": ItemSchedule.withTimeOfDay(day, from: item.resurface)]))
