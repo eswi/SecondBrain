@@ -33,6 +33,10 @@ struct DetailView: View {
     @State private var due: String?
     @State private var resurface: String?
     @State private var raw: String
+    // 되풀이(반복) 설정 draft — 새 필드. 되풀이 분류일 때만 카드로 노출(Stage 2).
+    @State private var recurUnit: String?
+    @State private var recurAuto: String
+    @State private var recurPaused: Bool
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -61,10 +65,25 @@ struct DetailView: View {
         _resurface = State(initialValue: item.resurface)
         _raw = State(initialValue: item.raw ?? "")
         _isRemembered = State(initialValue: item.confirmed)
+        _recurUnit = State(initialValue: Recurrence.unit(item)?.rawValue)
+        _recurAuto = State(initialValue: Recurrence.autoComplete(item).rawValue)
+        _recurPaused = State(initialValue: Recurrence.isPaused(item))
     }
 
     private var changes: [String: String] {
-        EditDiff.changes(type: type, due: due, resurface: resurface, raw: raw, from: item)
+        var c = EditDiff.changes(type: type, due: due, resurface: resurface, raw: raw, from: item)
+        foldRecurChanges(into: &c)   // 되풀이 설정도 같은 [저장] 이벤트에 묶는다(새 필드).
+        return c
+    }
+
+    /// 되풀이 설정 draft를 원본과 비교해 바뀐 새 필드만 changes에 넣는다(값 안 지움 — 미설정은 빈 문자열).
+    private func foldRecurChanges(into c: inout [String: String]) {
+        let oldUnit = item.fields[Recurrence.unitKey] ?? ""
+        if (recurUnit ?? "") != oldUnit { c[Recurrence.unitKey] = recurUnit ?? "" }
+        let oldAuto = item.fields[Recurrence.autoKey] ?? Recurrence.AutoComplete.none.rawValue
+        if recurAuto != oldAuto { c[Recurrence.autoKey] = recurAuto }
+        let oldPaused = item.fields[Recurrence.pausedKey] == "true"
+        if recurPaused != oldPaused { c[Recurrence.pausedKey] = recurPaused ? "true" : "false" }
     }
     private var dirty: Bool { !changes.isEmpty }
     /// 본문을 전부 지운 상태(공백만 남은 것 포함). 내용 없는 기억은 만들지 않는다
@@ -79,11 +98,13 @@ struct DetailView: View {
                 // simultaneousGesture라 컨트롤 동작과 **함께** 발화하고(버튼은 정상 동작), rawSection은
                 // 이 그룹 밖이라 원문 탭은 방해받지 않는다(탭하면 그 위치에 커서·키보드 복귀 — .focused 바인딩).
                 VStack(alignment: .leading, spacing: 14) {
+                    pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
                     metaSection
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
                     typeSection
                     if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
-                    timeSection
+                    timeSection          // '시간 설정'(기준 날짜) — 위 (첫 카드 위치 통일)
+                    recurrenceSection    // '반복 설정'(주기·자동완성·꺼두기) — 아래
                     historyRow
                 }
                 .contentShape(Rectangle())
@@ -409,6 +430,66 @@ struct DetailView: View {
             }
         case .blocked(let cap):
             noticeDialog = "마감이 임박해(하루 전 \(InboxModel.korShort(cap))) 더 미룰 수 없어요"
+        }
+    }
+
+    // MARK: 반복 설정 (되풀이 분류 전용, Stage 2) — '시간 설정' 아래 카드.
+    // 주기·자동완성 = "어떻게 도느냐" / 꺼두기 = "지금 도느냐". 회차·완료는 Stage 3·4.
+
+    /// 되풀이 꺼둠이면 상세 상단에 바로 보이는 배너(스크롤 없이). 꺼둔 걸 잊지 않게.
+    @ViewBuilder
+    private var pausedBanner: some View {
+        if normalizedType == "recurrence", recurPaused {
+            HStack(spacing: 8) {
+                Image(systemName: "pause.circle.fill").foregroundStyle(Palette.overdue)
+                Text("되풀이 꺼둠 — 알림·되살아나기 멈춤").font(.callout.weight(.semibold)).foregroundStyle(Palette.overdue)
+                Spacer()
+            }
+            .padding(12)
+            .background(Palette.overdue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    @ViewBuilder
+    private var recurrenceSection: some View {
+        if normalizedType == "recurrence" {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionLabel("반복 설정")
+                menuRow("반복 주기", value: Recurrence.Unit(rawValue: recurUnit ?? "")?.korean ?? "없음") {
+                    ForEach(Recurrence.Unit.allCases, id: \.self) { u in
+                        Button(u.korean) { recurUnit = u.rawValue }
+                    }
+                    Button("없음") { recurUnit = nil }
+                }
+                Divider().overlay(Palette.border)
+                menuRow("자동 완성", value: Recurrence.AutoComplete(rawValue: recurAuto)?.korean ?? "없음") {
+                    ForEach(Recurrence.AutoComplete.allCases, id: \.self) { a in
+                        Button(a.korean) { recurAuto = a.rawValue }
+                    }
+                }
+                Divider().overlay(Palette.border)
+                HStack {
+                    Text("꺼두기").font(.callout).foregroundStyle(Palette.textPrimary)
+                    Spacer()
+                    Toggle("", isOn: $recurPaused).labelsHidden().tint(Palette.accent)
+                }
+            }
+            .padding(14).card()
+        }
+    }
+
+    /// 라벨 + 오른쪽 Menu 한 줄(반복 설정 공용).
+    @ViewBuilder
+    private func menuRow<Content: View>(_ title: String, value: String, @ViewBuilder menu: () -> Content) -> some View {
+        HStack {
+            Text(title).font(.callout).foregroundStyle(Palette.textPrimary)
+            Spacer()
+            Menu { menu() } label: {
+                HStack(spacing: 3) {
+                    Text(value).font(.callout)
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }.foregroundStyle(Palette.accent)
+            }
         }
     }
 
