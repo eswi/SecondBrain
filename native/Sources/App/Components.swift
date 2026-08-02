@@ -100,6 +100,17 @@ func itemCaption(_ it: ResolvedItem) -> String {
 /// 저장 문자열의 시각 구분자 `T`를 사람이 읽게 공백으로("2026-08-05T19:00" → "2026-08-05 19:00"). date-only는 그대로.
 func displayDateTime(_ v: String) -> String { v.replacingOccurrences(of: "T", with: " ") }
 
+/// 목록 **오른쪽 시각 칩**(§6-B 보조 시각) — 캡션이 좁아 잘리므로 배지 옆에 따로 둔다.
+/// 시각이 붙은 시점 값(마감 우선, 없으면 게시 시작)이 있을 때만: 오늘이면 "N시간 남음"/"지남", 다른 날이면 "HH:mm".
+/// 시각 없는(date-only) 항목은 nil — 칩 안 뜬다.
+func scheduleTimeChip(_ it: ResolvedItem, now: Date = Date()) -> String? {
+    let candidates = [ItemSchedule.deadlineDay(it), ItemSchedule.publishDay(it)].compactMap { $0 }
+    guard let v = candidates.first(where: { ItemSchedule.timeOfDay($0) != nil }) else { return nil }
+    if let within = ItemSchedule.withinDayCaption(v, now: now) { return within }        // 오늘: 남은 시간
+    if let t = ItemSchedule.timeOfDay(v) { return String(format: "%02d:%02d", t.hour, t.minute) }  // 다른 날: 시각
+    return nil
+}
+
 // MARK: - 표준 확인·안내 대화상자 (앱 공용 형식 — confirm-dialog-style)
 // 배경 딤 + 가운데 카드 + 큰 제목(표준 alert보다 2단계) + 하단 버튼 행.
 // 사용처: 기억하기 재확인 · 원칙 자동결정 안내 · 삭제 확인(상세·리스트 공통).

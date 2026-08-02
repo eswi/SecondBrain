@@ -350,15 +350,16 @@ struct UpcomingCard: View {
                             SourceBadge(source: entry.item.source)
                             // 캡션 색 = 원문과 같은 textPrimary(밝게). 크기(.caption)로 이미 비중을 죽이므로 색만 올린다.
                             Text(itemCaption(entry.item)).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
-                            // 하루 안 보조 시각(§6-B) — 오늘·시각 있는 항목만 "N시간 남음"/"지남". D±n 배지는 날 단위 유지.
-                            if let sched = ItemSchedule.deadlineDay(entry.item) ?? ItemSchedule.publishDay(entry.item),
-                               let within = ItemSchedule.withinDayCaption(sched, now: Date()) {
-                                Text(within).font(.caption2.weight(.semibold)).foregroundStyle(ddayTint)
-                            }
                         }
                     }
                     Spacer(minLength: 4)
-                    if let dday = entry.dday { DDayBadge(dday: dday) }   // 마감 있을 때만 D-day 배지
+                    // 오른쪽: D-day 배지(마감 있을 때) + 시각 칩(§6-B 보조 시각) — 캡션 잘림과 무관하게 여기서 보인다.
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if let dday = entry.dday { DDayBadge(dday: dday) }
+                        if let chip = scheduleTimeChip(entry.item) {
+                            Text(chip).font(.caption2.weight(.semibold)).monospacedDigit().foregroundStyle(ddayTint)
+                        }
+                    }
                 }
                 .contentShape(Rectangle())
             }
