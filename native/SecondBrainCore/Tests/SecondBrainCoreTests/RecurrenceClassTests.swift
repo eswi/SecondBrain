@@ -5,14 +5,14 @@ import XCTest
 /// 새 key는 자기 스펙에만 작용하고, 기존 7종·미분류 판정은 불변이어야 한다(조사 Q7).
 final class RecurrenceClassTests: XCTestCase {
 
-    func testRecurrence_spec_usesDueAndResurface() {
+    func testRecurrence_spec_usesResurfaceNotDue() {
         let spec = ClassSpecCatalog.spec("recurrence")
         XCTAssertNotNil(spec, "되풀이 분류가 등록돼 있어야")
-        XCTAssertTrue(ClassSpecCatalog.uses("recurrence", .due))       // 기준 날짜
-        XCTAssertTrue(ClassSpecCatalog.uses("recurrence", .resurface)) // 미리 알림
+        XCTAssertFalse(ClassSpecCatalog.uses("recurrence", .due))      // 마감 안 씀 — 반복엔 기한 없음
+        XCTAssertTrue(ClassSpecCatalog.uses("recurrence", .resurface)) // 미리 알림 = 회차 앵커
         XCTAssertTrue(ClassSpecCatalog.uses("recurrence", .photo))
         XCTAssertTrue(ClassSpecCatalog.uses("recurrence", .location))
-        XCTAssertEqual(spec?.title(for: .resurface), "미리 알림")
+        XCTAssertEqual(spec?.title(for: .resurface), "회차 시각")
     }
 
     func testExistingClasses_unchanged() {

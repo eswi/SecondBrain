@@ -103,6 +103,7 @@ struct DetailView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
                     missedBanner   // N일 놓침 주의(§4)
+                    anchorBanner   // 되풀이인데 회차 기준(미리 알림) 없으면 안내(조용히 안 도는 것 방지)
                     metaSection
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
                     typeSection
@@ -451,6 +452,21 @@ struct DetailView: View {
             }
             .padding(12)
             .background(Palette.overdue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// 회차 기준(미리 알림) 없음 안내 — 되풀이는 미리 알림이 앵커라, 없으면 회차가 안 돈다.
+    /// 조용히 안 도는 대신 화면으로 알린다(#3). "시간 설정"의 회차 시각(미리 알림)을 채우게 유도.
+    @ViewBuilder
+    private var anchorBanner: some View {
+        if normalizedType == "recurrence", !Self.isRealDate(resurface) {
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle.fill").foregroundStyle(Palette.accent)
+                Text("회차 기준이 없어요 — 위 '시간 설정'에서 **회차 시각**을 정해야 반복이 돕니다")
+                    .font(.caption).foregroundStyle(Palette.textSecondary)
+                Spacer()
+            }
+            .padding(12).background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 
