@@ -79,6 +79,7 @@ enum TypeCatalog {
         TypeMeta(key: "info",        label: "정보",     color: Color(hex: 0x60A5FA), symbol: "doc.text.fill"),
         TypeMeta(key: "idea",        label: "아이디어", color: Color(hex: 0xA78BFA), symbol: "lightbulb.fill"),
         TypeMeta(key: "principle",   label: "원칙",     color: Color(hex: 0x22D3EE), symbol: "star.fill"),
+        TypeMeta(key: "recurrence",  label: "되풀이",   color: Color(hex: 0xFBBF24), symbol: "arrow.triangle.2.circlepath"),
         TypeMeta(key: nil,           label: "미분류",   color: Color(hex: 0x746F82), symbol: "questionmark.circle"),
     ]
 

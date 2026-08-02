@@ -72,6 +72,10 @@ public enum ClassSpecCatalog {
             ClassSpec(key: "idea",        uses: noTime),
             ClassSpec(key: "principle",   uses: noTime),
             ClassSpec(key: "parking",     uses: mirror.subtracting([.due])),
+            // 되풀이(반복) — 8번째 분류(recurrence-design.md). 기준 날짜(마감·미리 알림)를 쓴다.
+            // 주기·자동완성·꺼두기·마지막완료는 별도 필드(Detail 슬롯 아님) — memory-philosophy §7 밖의 반복 전용.
+            ClassSpec(key: "recurrence",  uses: mirror,
+                      titles: [.due: "날짜", .resurface: "미리 알림"]),
         ]
     }()
 
