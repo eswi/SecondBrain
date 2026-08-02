@@ -56,8 +56,8 @@ public enum Recurrence {
     public static func completionChanges(for it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String] {
         guard it.type == "recurrence" else { return ["status": "done"] }
         var c = [lastDoneKey: ItemSchedule.dayTimeString(now, calendar: calendar)]
-        if let next = advancedResurface(it, now: now, calendar: calendar) {
-            c["resurface"] = next   // 다음 회차를 미리 알림에 → 게시 게이트가 즉시 숨긴다(#1·#2)
+        if let adv = completionAdvance(it, now: now, calendar: calendar) {
+            c.merge(adv) { _, new in new }   // 마감(회차)·미리 알림을 다음 회차로 → 게시 게이트가 즉시 숨긴다(#1·#2)
         }
         return c
     }
@@ -77,7 +77,8 @@ public enum Recurrence {
         priorValue(in: events, id: id, key: lastDoneKey)
     }
 
-    // MARK: 회차 계산 (Stage 4) — 앵커 = 미리 알림(resurface). 순수 함수, 완료·catch-up 공용.
+    // MARK: 회차 계산 (Stage 4) — **앵커 = 마감(due) = 회차 시각.** 미리 알림(resurface) = 게시 시작(lead).
+    // 완료·catch-up은 마감을 전진시키고 미리 알림도 **같은 횟수만큼** 전진(lead 보존). 순수 함수.
 
     /// 주기만큼 뒤의 회차. (하루 N회는 후속.)
     public static func step(_ date: Date, by unit: Unit, calendar: Calendar = .current) -> Date {
@@ -103,38 +104,56 @@ public enum Recurrence {
         return n
     }
 
-    /// **완료 시 다음 미리 알림 값**(문자열) — `max(now, 현재회차)` 이후 첫 회차. 시각 유무는 원본을 따른다.
-    /// 온타임·이른 완료·밀린 경우 모두 "다음 미래 회차"로 넘어가 게이트가 즉시 숨긴다(#1·#2).
-    public static func advancedResurface(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> String? {
-        guard let u = unit(it), let r = it.resurface, let base = ItemSchedule.parseDay(r, calendar: calendar) else { return nil }
-        let pivot = max(now, base)
-        let next = firstOccurrence(after: pivot, from: base, unit: u, calendar: calendar)
-        let hasTime = ItemSchedule.timeOfDay(r) != nil
-        return hasTime ? ItemSchedule.dayTimeString(next, calendar: calendar) : ItemSchedule.dayString(next, calendar: calendar)
+    /// 저장 형식 — 원본에 시각이 있었으면 시각 포함, 아니면 날짜만.
+    private static func formatLike(_ date: Date, source: String, calendar: Calendar) -> String {
+        ItemSchedule.timeOfDay(source) != nil ? ItemSchedule.dayTimeString(date, calendar: calendar)
+                                              : ItemSchedule.dayString(date, calendar: calendar)
     }
 
-    /// 항목의 **놓친 회차 수**(편의) — 되풀이 아니거나 앵커 없으면 0.
+    /// 마감(앵커)을 **k회** 전진시킨 값 + 미리 알림도 **같은 k회** 전진(lead 보존)한 값을 changes로.
+    private static func advanceBy(_ it: ResolvedItem, steps k: Int, dueDate: Date, dueStr: String, unit u: Unit, calendar: Calendar) -> [String: String] {
+        var changes: [String: String] = [:]
+        var od = dueDate; for _ in 0..<k { od = step(od, by: u, calendar: calendar) }
+        changes["due"] = formatLike(od, source: dueStr, calendar: calendar)
+        if let rStr = it.resurface, let rDate = ItemSchedule.parseDay(rStr, calendar: calendar) {
+            var or = rDate; for _ in 0..<k { or = step(or, by: u, calendar: calendar) }
+            changes["resurface"] = formatLike(or, source: rStr, calendar: calendar)
+        }
+        return changes
+    }
+
+    /// **완료 시 회차 전진** — 마감을 `max(now, 현재 마감)` 이후 첫 회차로, 미리 알림도 같은 간격 전진(lead 보존).
+    /// 온타임·이른·밀린 경우 다 다음 미래 회차로 넘어가 게이트가 즉시 숨긴다(#1·#2). 앵커(마감) 없으면 nil.
+    public static func completionAdvance(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String]? {
+        guard let u = unit(it), let dueStr = it.due, let dueDate = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return nil }
+        let pivot = max(now, dueDate)
+        var o = dueDate, k = 0
+        while o <= pivot, k < 100_000 { o = step(o, by: u, calendar: calendar); k += 1 }
+        guard k > 0 else { return nil }
+        return advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, calendar: calendar)
+    }
+
+    /// 항목의 **놓친 회차 수**(편의) — 앵커 = 마감(회차). 되풀이 아니거나 앵커 없으면 0.
     public static func missed(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Int {
         guard it.type == "recurrence", let u = unit(it),
-              let r = it.resurface, let base = ItemSchedule.parseDay(r, calendar: calendar) else { return 0 }
+              let dueStr = it.due, let base = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return 0 }
         return missedCount(base: base, unit: u, now: now, calendar: calendar)
     }
 
-    /// **catch-up(앱 열 때) 새 미리 알림 값** — 자동 완성이 있으면 지난 회차를 자동 완성(전진), `none`이면 안 함(쌓임).
-    /// 변화 없으면 nil(멱등 — 재실행해도 더 안 바뀐다). 자동완성 임계: 정오=그 날 12시, 지나면=그 날 끝(다음 자정).
-    public static func catchUpResurface(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> String? {
+    /// **catch-up(앱 열 때) 회차 전진 changes** — 자동 완성 있으면 지난 회차 자동 완성(마감·미리 알림 전진),
+    /// `none`이면 안 함(쌓임). 변화 없으면 nil(멱등). 자동완성 임계: 정오=그 날 12시, 지나면=그 날 끝(다음 자정).
+    public static func catchUpChanges(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String]? {
         let auto = autoComplete(it)
-        guard auto != .none, let u = unit(it), let r = it.resurface, let base = ItemSchedule.parseDay(r, calendar: calendar) else { return nil }
+        guard auto != .none, let u = unit(it), let dueStr = it.due, let dueDate = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return nil }
         func threshold(_ o: Date) -> Date {
             let d0 = calendar.startOfDay(for: o)
             return auto == .noon ? (calendar.date(byAdding: .hour, value: 12, to: d0) ?? d0)
                                  : (calendar.date(byAdding: .day, value: 1, to: d0) ?? d0)
         }
-        var o = base, n = 0
-        while threshold(o) <= now, n < 100_000 { o = step(o, by: u, calendar: calendar); n += 1 }
-        guard n > 0 else { return nil }   // 전진 없음
-        let hasTime = ItemSchedule.timeOfDay(r) != nil
-        return hasTime ? ItemSchedule.dayTimeString(o, calendar: calendar) : ItemSchedule.dayString(o, calendar: calendar)
+        var o = dueDate, k = 0
+        while threshold(o) <= now, k < 100_000 { o = step(o, by: u, calendar: calendar); k += 1 }
+        guard k > 0 else { return nil }
+        return advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, calendar: calendar)
     }
 
     /// 반복 주기(설정 안 됐거나 모르는 값이면 nil).

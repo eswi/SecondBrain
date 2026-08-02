@@ -208,8 +208,8 @@ final class InboxModel: ObservableObject {
         let now = Date()
         var edits: [Event] = []
         for it in liveNonDone where it.type == "recurrence" {
-            if let newR = Recurrence.catchUpResurface(it, now: now), newR != (it.resurface ?? "") {
-                edits.append(.edit(id: it.id, hlc: tick(), ["resurface": newR]))
+            if let changes = Recurrence.catchUpChanges(it, now: now) {   // 마감·미리 알림 둘 다 전진
+                edits.append(.edit(id: it.id, hlc: tick(), changes))
             }
         }
         appendBatch(edits)   // 비어 있으면 내부에서 무시 → 재귀 종료
@@ -238,10 +238,11 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), Recurrence.completionChanges(for: item, now: Date())))
     }
 
-    /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·resurface(회차)를 둘 다 직전 값으로 되돌린다**(streak·회차 보존).
+    /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·마감·미리 알림을 전부 직전 값으로 되돌린다**(streak·회차 보존).
     func undoRecurComplete(_ item: ResolvedItem) {
         var changes: [String: String] =
             [Recurrence.lastDoneKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneKey) ?? ""]
+        if let priorD = Recurrence.priorValue(in: allEvents, id: item.id, key: "due") { changes["due"] = priorD }
         if let priorR = Recurrence.priorValue(in: allEvents, id: item.id, key: "resurface") { changes["resurface"] = priorR }
         append(.edit(id: item.id, hlc: tick(), changes))
     }

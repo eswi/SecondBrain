@@ -54,8 +54,10 @@ public enum ItemSchedule {
             return rd <= now
         }
         if ClassSpecCatalog.uses(it.type, .due),
-           let d = it.due, parseDay(d, calendar: calendar) != nil {
-            return true   // 마감만 — 먼 미래여도 게시(현재 동작 보존)
+           let d = it.due, let dd = parseDay(d, calendar: calendar) {
+            // 되풀이는 마감(회차 앵커)도 **시각 인지** — 미리 알림 없이 마감만 있으면 **마감 시각부터** 게시(#3).
+            // 일반 항목은 기존대로: 마감만 있으면 먼 미래여도 게시(마감=기한이라 미리 챙기게).
+            return it.type == "recurrence" ? dd <= now : true
         }
         return false
     }

@@ -459,10 +459,10 @@ struct DetailView: View {
     /// 조용히 안 도는 대신 화면으로 알린다(#3). "시간 설정"의 회차 시각(미리 알림)을 채우게 유도.
     @ViewBuilder
     private var anchorBanner: some View {
-        if normalizedType == "recurrence", !Self.isRealDate(resurface) {
+        if normalizedType == "recurrence", !Self.isRealDate(due) {
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill").foregroundStyle(Palette.accent)
-                Text("회차 기준이 없어요 — 위 '시간 설정'에서 **회차 시각**을 정해야 반복이 돕니다")
+                Text("회차 시각이 없어요 — 위 '시간 설정'에서 **회차 시각(마감)**을 정해야 반복이 돕니다")
                     .font(.caption).foregroundStyle(Palette.textSecondary)
                 Spacer()
             }
