@@ -100,15 +100,14 @@ func itemCaption(_ it: ResolvedItem) -> String {
 /// 저장 문자열의 시각 구분자 `T`를 사람이 읽게 공백으로("2026-08-05T19:00" → "2026-08-05 19:00"). date-only는 그대로.
 func displayDateTime(_ v: String) -> String { v.replacingOccurrences(of: "T", with: " ") }
 
-/// 목록 **오른쪽 시각 칩**(§6-B 보조 시각) — 캡션이 좁아 잘리므로 배지 옆에 따로 둔다.
-/// 시각이 붙은 시점 값(마감 우선, 없으면 게시 시작)이 있을 때만: 오늘이면 "N시간 남음"/"지남", 다른 날이면 "HH:mm".
-/// 시각 없는(date-only) 항목은 nil — 칩 안 뜬다.
+/// 목록 **오른쪽 시각 칩**(§6-B 보조 시각) — D-day 배지의 **시각 세분**. **마감(기한) 기준만**이다.
+/// "며칠/몇시간 남음"은 마감 기준이라는 날짜 역할 분리 원칙을 그대로 따른다(D-day 배지 = `deadlineDay`).
+/// 마감에 시각이 있을 때만: 오늘이면 "N시간 남음"/"지남", 다른 날이면 마감 "HH:mm".
+/// 마감 없거나(미리 알림만 있는 항목) 마감에 시각 없으면 nil — 칩 안 뜬다(카운트다운은 기한이 있어야 성립).
 func scheduleTimeChip(_ it: ResolvedItem, now: Date = Date()) -> String? {
-    let candidates = [ItemSchedule.deadlineDay(it), ItemSchedule.publishDay(it)].compactMap { $0 }
-    guard let v = candidates.first(where: { ItemSchedule.timeOfDay($0) != nil }) else { return nil }
-    if let within = ItemSchedule.withinDayCaption(v, now: now) { return within }        // 오늘: 남은 시간
-    if let t = ItemSchedule.timeOfDay(v) { return String(format: "%02d:%02d", t.hour, t.minute) }  // 다른 날: 시각
-    return nil
+    guard let due = ItemSchedule.deadlineDay(it), let t = ItemSchedule.timeOfDay(due) else { return nil }
+    if let within = ItemSchedule.withinDayCaption(due, now: now) { return within }      // 오늘: 남은 시간
+    return String(format: "%02d:%02d", t.hour, t.minute)                                // 다른 날: 마감 시각
 }
 
 // MARK: - 표준 확인·안내 대화상자 (앱 공용 형식 — confirm-dialog-style)
