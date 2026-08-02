@@ -21,7 +21,9 @@ public enum NotificationPlanner {
             guard let dayStr = ItemSchedule.publishDay(it) else { continue }
             guard let day = ItemSchedule.parseDay(dayStr, calendar: calendar) else { continue }
             var comps = calendar.dateComponents([.year, .month, .day], from: day)
-            comps.hour = hour; comps.minute = 0
+            // 값에 시각이 있으면 그 시각, 없으면 `hour`(기본 9시) 폴백 — 시각 도입(§6-B Stage 1).
+            let hm = ItemSchedule.timeOfDay(dayStr)
+            comps.hour = hm?.hour ?? hour; comps.minute = hm?.minute ?? 0
             guard let fire = calendar.date(from: comps), fire > now else { continue }  // 미래만
             out.append(PlannedNotification(
                 id: it.id, fireDate: fire,

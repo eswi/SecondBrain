@@ -64,11 +64,42 @@ public enum ItemSchedule {
         return nil
     }
 
-    /// "YYYY-MM-DD" → 그 날 자정 Date. 형식 안 맞으면 nil.
+    /// "YYYY-MM-DD" 또는 "YYYY-MM-DD'T'HH:mm"("...  HH:mm"도 관대 수용) → Date. 형식 안 맞으면 nil.
+    /// (시각 도입, 2026-08-02 · 방식(a) recurrence-design.md §6-A/§6-B)
+    /// - 시각이 없으면 **그 날 자정**(기존 동작 그대로 — 모든 게이트가 `startOfDay`로 감싸므로 날 단위 판정 불변).
+    /// - 시각이 있으면 그 시각.
+    /// - **시각 부분만 깨진 경우엔 날짜를 살려 자정**으로 판정한다(유실 방지 — 값은 안 지운다).
+    ///   여기가 진앙: 옛/새 형식을 **모두** 받게 하는 것이 전체 안전의 열쇠. 실패는 에러가 아니라 "조용한 강등"이라 테스트로 잡는다.
     public static func parseDay(_ s: String, calendar: Calendar = .current) -> Date? {
-        let p = s.split(separator: "-")
+        let (datePart, timePart) = splitDateTime(s)
+        let p = datePart.split(separator: "-")
         guard p.count == 3, let y = Int(p[0]), let m = Int(p[1]), let d = Int(p[2]) else { return nil }
-        return calendar.date(from: DateComponents(year: y, month: m, day: d))
+        var comps = DateComponents(year: y, month: m, day: d)
+        if let hm = timePart.flatMap(parseHM) { comps.hour = hm.hour; comps.minute = hm.minute }
+        return calendar.date(from: comps)
+    }
+
+    /// 값에 붙은 **유효한 시각(HH:mm)** 만 꺼낸다. 시각이 없거나 깨졌으면 nil. 알림·표시 전용.
+    /// (날짜 판정은 `parseDay`가, 하루 안의 시각은 이 함수가 담당 — 역할 분리.)
+    public static func timeOfDay(_ s: String) -> (hour: Int, minute: Int)? {
+        let (_, timePart) = splitDateTime(s)
+        return timePart.flatMap(parseHM)
+    }
+
+    /// 날짜부와 (있으면) 시각부로 가른다. 구분자는 `T` 또는 공백(읽기 관대). **쓰기 표준형은 `T`**(§6-B).
+    private static func splitDateTime(_ s: String) -> (date: String, time: String?) {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        guard let i = t.firstIndex(where: { $0 == "T" || $0 == " " }) else { return (t, nil) }
+        let time = t[t.index(after: i)...].trimmingCharacters(in: .whitespaces)
+        return (String(t[..<i]), time)
+    }
+
+    /// "HH:mm" → (시,분). 범위 밖(시 0..<24·분 0..<60)이거나 형식이 안 맞으면 nil.
+    private static func parseHM(_ s: String) -> (hour: Int, minute: Int)? {
+        let p = s.split(separator: ":")
+        guard p.count == 2, let h = Int(p[0]), let m = Int(p[1]),
+              (0..<24).contains(h), (0..<60).contains(m) else { return nil }
+        return (h, m)
     }
 
     /// Date → "YYYY-MM-DD"(로케일 무관). parseDay의 역.
