@@ -102,6 +102,7 @@ struct DetailView: View {
                 // 이 그룹 밖이라 원문 탭은 방해받지 않는다(탭하면 그 위치에 커서·키보드 복귀 — .focused 바인딩).
                 VStack(alignment: .leading, spacing: 14) {
                     pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
+                    missedBanner   // N일 놓침 주의(§4)
                     metaSection
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
                     typeSection
@@ -450,6 +451,20 @@ struct DetailView: View {
             }
             .padding(12)
             .background(Palette.overdue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// N일 놓침 주의(§4) — 상단에 바로. 되풀이·놓침>0일 때만.
+    @ViewBuilder
+    private var missedBanner: some View {
+        let n = Recurrence.missed(item, now: Date())
+        if normalizedType == "recurrence", n > 0 {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.overdue)
+                Text("\(n)일 놓침").font(.callout.weight(.semibold)).foregroundStyle(Palette.overdue)
+                Spacer()
+            }
+            .padding(12).background(Palette.overdue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 

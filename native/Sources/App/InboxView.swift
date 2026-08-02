@@ -360,6 +360,11 @@ struct UpcomingCard: View {
                         if let chip = scheduleTimeChip(entry.item) {
                             Text(chip).font(.caption2.weight(.semibold)).monospacedDigit().foregroundStyle(ddayTint)
                         }
+                        // 되풀이 놓침(§4) — 지금 챙길 것에 남아 쌓인 항목에 "N일 놓침"
+                        if let rc = recurStatusChip(entry.item) {
+                            Text(rc.text).font(.caption2.weight(.semibold))
+                                .foregroundStyle(rc.overdue ? Palette.overdue : Palette.accent)
+                        }
                     }
                 }
                 .contentShape(Rectangle())
@@ -396,6 +401,11 @@ struct MemoryRow: View {
                     Text(item.raw ?? "(내용 없음)")
                         .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)   // 원문 2줄까지(넘치면 …)
                     Spacer(minLength: 4)
+                    // 되풀이 상태(§4) — 완료 후 살아있는 기억으로 와도 "오늘 완료"/"N일 놓침"이 목록에 보인다.
+                    if let rc = recurStatusChip(item) {
+                        Text(rc.text).font(.caption2.weight(.semibold))
+                            .foregroundStyle(rc.overdue ? Palette.overdue : Palette.accent)
+                    }
                     if provisional { ProvisionalBadge() }
                     SourceBadge(source: item.source)
                 }

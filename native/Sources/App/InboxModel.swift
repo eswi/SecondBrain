@@ -198,7 +198,21 @@ final class InboxModel: ObservableObject {
         trashed = r.deleted + r.live.filter { $0.type == "discard" }
         sourceLabel = label
 
+        catchUpRecurrence()   // 되풀이 지난 회차 자동완성(자동완성 있는 것만, 멱등) — 앱 열 때/행동 후
         scheduleNotifications()
+    }
+
+    /// 되풀이 catch-up — 자동 완성이 있는 되풀이의 **지나간 회차를 자동 전진**(미리 알림 갱신). `none`이면 안 함(쌓임).
+    /// 멱등: 전진 뒤 재실행하면 더 안 바뀌어 이벤트를 안 낸다(재로드 1회로 수렴). 앱 열 때/행동 후 `resolve()` 끝에서.
+    private func catchUpRecurrence() {
+        let now = Date()
+        var edits: [Event] = []
+        for it in liveNonDone where it.type == "recurrence" {
+            if let newR = Recurrence.catchUpResurface(it, now: now), newR != (it.resurface ?? "") {
+                edits.append(.edit(id: it.id, hlc: tick(), ["resurface": newR]))
+            }
+        }
+        appendBatch(edits)   // 비어 있으면 내부에서 무시 → 재귀 종료
     }
 
     /// 현재 살아있는 항목의 resurface/due 날짜로 로컬 알림 재조정(멱등).
@@ -224,10 +238,12 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), Recurrence.completionChanges(for: item, now: Date())))
     }
 
-    /// 되풀이 완료 취소 — 오늘 완료를 무르고 **직전 완료 시점으로 되돌린다**(streak 보존). 없으면 비움.
+    /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·resurface(회차)를 둘 다 직전 값으로 되돌린다**(streak·회차 보존).
     func undoRecurComplete(_ item: ResolvedItem) {
-        let prior = Recurrence.priorLastDone(in: allEvents, id: item.id) ?? ""
-        append(.edit(id: item.id, hlc: tick(), [Recurrence.lastDoneKey: prior]))
+        var changes: [String: String] =
+            [Recurrence.lastDoneKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneKey) ?? ""]
+        if let priorR = Recurrence.priorValue(in: allEvents, id: item.id, key: "resurface") { changes["resurface"] = priorR }
+        append(.edit(id: item.id, hlc: tick(), changes))
     }
 
     /// 미루기(+7일) — 규칙 1(미리 알림 ≤ 마감 − 1일)을 지키며 미룬다. 위반 상태로 저장하지 않는다.
