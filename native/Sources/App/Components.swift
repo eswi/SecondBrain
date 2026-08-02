@@ -86,15 +86,31 @@ struct TypeGlyph: View {
 
 // MARK: - 항목 캡션(출처 · 시각 · 시점)
 
-func itemCaption(_ it: ResolvedItem) -> String {
+/// 항목 캡션. `showCaptureTime`=false면 **수집 시각을 뺀다**(지금 챙길 것 목록 — 스케줄이 핵심이고 폭이 좁다;
+/// 수집 시각은 상세 "최초 수집 · 성역"에 그대로 남는다). 보관함·검색은 기본값(true)으로 수집 시각 유지.
+func itemCaption(_ it: ResolvedItem, showCaptureTime: Bool = true, now: Date = Date()) -> String {
     var parts: [String] = []
-    let dt = "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces)
-    if !dt.isEmpty { parts.append(dt) }
+    if showCaptureTime {
+        let dt = "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces)
+        if !dt.isEmpty { parts.append(dt) }
+    }
     // §7 분류 게이트: 그 분류가 쓰는 칸의 날짜만 노출한다(안 쓰는 칸의 옛 날짜는 안 보임).
     // 상세 "시간 설정"·"지금 챙길 것"과 같은 게이트를 타 — 보이는 곳마다 어긋나지 않게.
-    if let due = ItemSchedule.deadlineDay(it) { parts.append("~\(displayDateTime(due))") }
-    if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(displayDateTime(rs))") }
+    if let due = ItemSchedule.deadlineDay(it) { parts.append("~\(displaySchedule(due, now: now))") }
+    if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(displaySchedule(rs, now: now))") }
     return parts.joined(separator: " · ")
+}
+
+/// 스케줄 날짜(마감/미리 알림) 표시 — **올해면 연도 생략**("08-05"), **다른 해면 연도 표시**("2027-08-05").
+/// 내년 마감을 올해로 오해하지 않게 한다(사용자 요청). 시각이 있으면 뒤에 붙인다("08-05 19:00").
+func displaySchedule(_ v: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+    guard let d = ItemSchedule.parseDay(v, calendar: calendar) else { return displayDateTime(v) }   // 폴백
+    let c = calendar.dateComponents([.year, .month, .day], from: d)
+    let datePart = (c.year == calendar.component(.year, from: now))
+        ? String(format: "%02d-%02d", c.month ?? 0, c.day ?? 0)
+        : String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    if let t = ItemSchedule.timeOfDay(v) { return String(format: "%@ %02d:%02d", datePart, t.hour, t.minute) }
+    return datePart
 }
 
 /// 저장 문자열의 시각 구분자 `T`를 사람이 읽게 공백으로("2026-08-05T19:00" → "2026-08-05 19:00"). date-only는 그대로.

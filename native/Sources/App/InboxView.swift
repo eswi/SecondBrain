@@ -349,7 +349,8 @@ struct UpcomingCard: View {
                         HStack(spacing: 6) {
                             SourceBadge(source: entry.item.source)
                             // 캡션 색 = 원문과 같은 textPrimary(밝게). 크기(.caption)로 이미 비중을 죽이므로 색만 올린다.
-                            Text(itemCaption(entry.item)).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                            // 지금 챙길 것: 수집 시각은 빼고(상세에 남음) 스케줄 위주 + 연도 생략 — 미리 알림 시각까지 한 줄에 보이게.
+                            Text(itemCaption(entry.item, showCaptureTime: false)).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 4)
