@@ -18,6 +18,7 @@ public enum NotificationPlanner {
                             calendar: Calendar = .current, hour: Int = 9, limit: Int = 32) -> [PlannedNotification] {
         var out: [PlannedNotification] = []
         for it in items {
+            if Recurrence.isDormant(it) { continue }   // 꺼둔 되풀이는 알림 안 냄(배너 약속, 2026-08-03)
             guard let dayStr = ItemSchedule.publishDay(it) else { continue }
             guard let day = ItemSchedule.parseDay(dayStr, calendar: calendar) else { continue }
             var comps = calendar.dateComponents([.year, .month, .day], from: day)

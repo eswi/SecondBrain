@@ -162,9 +162,11 @@ public enum Recurrence {
 
     /// **catch-up(앱 열 때) 회차 전진 changes** — 자동 완성 있으면 지난 회차 자동 완성(마감·미리 알림 전진),
     /// `none`이면 안 함(쌓임). 변화 없으면 nil(멱등). 자동완성 임계: 정오=그 날 12시, 지나면=그 날 끝(다음 자정).
+    /// **꺼둠(`isDormant`)이면 안 한다** — 꺼둔 동안 회차가 조용히 흘러가면 켰을 때 이미 다 지나간 상태가 된다.
+    /// 마감이 꺼둔 시점 회차에 얼어 있다가, 켜면 그때 밀린 만큼 한 번에 전진한다(멱등, 데이터 손상 없음).
     public static func catchUpChanges(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String]? {
         let auto = autoComplete(it)
-        guard auto != .none, let u = unit(it), let dueStr = it.due, let dueDate = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return nil }
+        guard !isDormant(it), auto != .none, let u = unit(it), let dueStr = it.due, let dueDate = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return nil }
         func threshold(_ o: Date) -> Date {
             let d0 = calendar.startOfDay(for: o)
             return auto == .noon ? (calendar.date(byAdding: .hour, value: 12, to: d0) ?? d0)
@@ -187,5 +189,20 @@ public enum Recurrence {
     /// 꺼둠 여부(잠시 멈춤 — §5의 "그만두기(삭제)"와 구분).
     public static func isPaused(_ it: ResolvedItem) -> Bool {
         it.fields[pausedKey] == "true"
+    }
+
+    /// **꺼둔 되풀이 = 시점 없는 것으로 취급**(2026-08-03). 상세 배너가 "알림·되살아나기 멈춤"이라고
+    /// 약속하는데 정작 세 경로에 가드가 없어 셋 다 안 지켜지고 있었다 — 그 약속을 코드로 만든 술어다.
+    /// 세 소비처가 각자 이걸 호출한다: 알림(`NotificationPlanner.plan`)·게시 게이트(`ItemSchedule.isPublished`)·
+    /// 자동완성 catch-up(`catchUpChanges`, 아래).
+    ///
+    /// **뜻은 여기 한 곳, 가드는 세 곳에 명시**한다. 게이트를 `publishDay`에 심어 상속시키는 방법도 되지만
+    /// (소비처가 planner·sectionizer 둘뿐이라) **Stage 5가 알림 경로에서 `publishDay`를 걷어내므로**
+    /// 그러면 가드가 그때 조용히 사라진다. 꺼두기는 *날짜 역할*이 아니라 *항목 상태*라 층이 다르기도 하다.
+    ///
+    /// 되풀이가 아니면 절대 걸리지 않는다 — 다른 분류에 `recurPaused`가 남아 있어도 무시(오염 차단).
+    /// 필드 없음·`"false"`도 전부 통과하므로 **기존 항목 동작은 변하지 않는다.**
+    public static func isDormant(_ it: ResolvedItem) -> Bool {
+        it.type == "recurrence" && isPaused(it)
     }
 }
