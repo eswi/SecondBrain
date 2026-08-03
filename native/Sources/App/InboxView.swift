@@ -358,9 +358,13 @@ struct UpcomingCard: View {
                     VStack(alignment: .trailing, spacing: 4) {
                         if let dday = entry.dday { DDayBadge(dday: dday) }
                         if let chip = scheduleTimeChip(entry.item) {
+                            // 색 위계(2026-08-03 #3): "지남"은 **오늘 마감이 지난 상태만** 뜨고(withinDayCaption=당일 한정),
+                            // D-day 버킷이 .today라 이미 amber(`ddayTint`). **빨강(overdue/coral)은 과거 날짜=진짜 놓침에만.**
+                            // 되풀이는 하루 대부분이 "오늘 지남"이라 이걸 빨강으로 올리면 신호가 상시화돼 죽는다 —
+                            // amber(주의) vs coral(경고=놓침)의 한 단계 위계를 **일부러 유지**한다(되풀이만 특례 아님, 전 항목 동일).
                             Text(chip).font(.caption2.weight(.semibold)).monospacedDigit().foregroundStyle(ddayTint)
                         }
-                        // 되풀이 놓침(§4) — 지금 챙길 것에 남아 쌓인 항목에 "N일 놓침"
+                        // 되풀이 놓침(§4) — 지금 챙길 것에 남아 쌓인 항목에 "N일 놓침"(coral)
                         if let rc = recurStatusChip(entry.item) {
                             Text(rc.text).font(.caption2.weight(.semibold))
                                 .foregroundStyle(rc.overdue ? Palette.overdue : Palette.accent)

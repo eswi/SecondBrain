@@ -37,8 +37,9 @@ struct DetailView: View {
     @State private var recurUnit: String?
     @State private var recurAuto: String
     @State private var recurPaused: Bool
-    /// 오늘 완료 상태(로컬 — 즉시 반영, isRemembered와 같은 이유로 stale item 대신 로컬로 든다). Stage 3.
-    @State private var doneTodayLocal: Bool
+    /// 이번 회차 완료 상태(로컬 — 즉시 반영, isRemembered와 같은 이유로 stale item 대신 로컬로 든다).
+    /// 판정 = `Recurrence.doneThisCycle`(마감 앵커 기준, 게이트와 동일 — 2026-08-03 #4).
+    @State private var cycleDoneLocal: Bool
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -70,7 +71,7 @@ struct DetailView: View {
         _recurUnit = State(initialValue: Recurrence.unit(item)?.rawValue)
         _recurAuto = State(initialValue: Recurrence.autoComplete(item).rawValue)
         _recurPaused = State(initialValue: Recurrence.isPaused(item))
-        _doneTodayLocal = State(initialValue: Recurrence.doneToday(item, now: Date()))
+        _cycleDoneLocal = State(initialValue: Recurrence.doneThisCycle(item, now: Date()))
     }
 
     private var changes: [String: String] {
@@ -514,20 +515,20 @@ struct DetailView: View {
         }
     }
 
-    /// 이번 회차 완료 — 되풀이 완료는 "이번 것 했다"(항목 안 사라짐). 오늘 했으면 상태 표시 + 취소.
+    /// 이번 회차 완료 — 되풀이 완료는 "이번 것 했다"(항목 안 사라짐). 이번 회차 했으면 상태 표시 + 취소.
     /// 문구가 기존 "완료"(끝났다)와 다르다: 되풀이는 "이번 것 했어요".
     @ViewBuilder
     private var completionRow: some View {
-        if doneTodayLocal {
+        if cycleDoneLocal {
             HStack {
-                Label("오늘 완료됨", systemImage: "checkmark.circle.fill")
+                Label("이번 회차 완료됨", systemImage: "checkmark.circle.fill")
                     .font(.callout.weight(.semibold)).foregroundStyle(Palette.accent)
                 Spacer()
-                Button("취소") { model.undoRecurComplete(item); doneTodayLocal = false }
+                Button("취소") { model.undoRecurComplete(item); cycleDoneLocal = false }
                     .font(.caption).tint(Palette.overdue)
             }
         } else {
-            Button { model.markDone(item); doneTodayLocal = true } label: {
+            Button { model.markDone(item); cycleDoneLocal = true } label: {
                 Label("이번 것 했어요", systemImage: "checkmark.circle")
                     .font(.callout.weight(.semibold)).frame(maxWidth: .infinity)
                     .padding(.vertical, 6)

@@ -116,13 +116,14 @@ func displaySchedule(_ v: String, now: Date = Date(), calendar: Calendar = .curr
 /// 저장 문자열의 시각 구분자 `T`를 사람이 읽게 공백으로("2026-08-05T19:00" → "2026-08-05 19:00"). date-only는 그대로.
 func displayDateTime(_ v: String) -> String { v.replacingOccurrences(of: "T", with: " ") }
 
-/// 되풀이 상태 칩(목록, §4) — 놓침이면 "N일 놓침"(주의 톤) / 오늘 완료면 "오늘 완료"(accent). 아니면 nil.
-/// "오늘 약 먹었나"가 목록에서 한눈에 보이게(완료 후 살아있는 기억으로 옮겨가도 티가 남).
+/// 되풀이 상태 칩(목록, §4) — 놓침이면 "N일 놓침"(coral=overdue, 진짜 경고) / 이번 회차 완료면 "완료"(accent). 아니면 nil.
+/// "이번 회차 했나"가 목록에서 한눈에 보이게(완료 후 살아있는 기억으로 옮겨가도 티가 남).
+/// 판정은 게이트와 같은 마감 앵커 기준(`doneThisCycle`) — 옛 날짜기준 `doneToday`는 게이트와 갈려 모순을 냈다(2026-08-03 #4).
 func recurStatusChip(_ it: ResolvedItem, now: Date = Date()) -> (text: String, overdue: Bool)? {
     guard it.type == "recurrence" else { return nil }
     let missed = Recurrence.missed(it, now: now)
     if missed > 0 { return ("\(missed)일 놓침", true) }
-    if Recurrence.doneToday(it, now: now) { return ("오늘 완료", false) }
+    if Recurrence.doneThisCycle(it, now: now) { return ("완료", false) }
     return nil
 }
 

@@ -12,10 +12,14 @@ final class RecurrenceCompletionTests: XCTestCase {
     }
     private func today(_ h: Int = 8) -> Date { utc.date(from: DateComponents(year: 2026, month: 8, day: 2, hour: h))! }
 
-    private func item(type: String?, lastDone: String? = nil) -> ResolvedItem {
+    private func item(type: String?, lastDone: String? = nil, due: String? = nil,
+                      recur: String? = nil, auto: String? = nil) -> ResolvedItem {
         var f: [String: String] = ["raw": "x"]
         if let type { f["type"] = type }
         if let lastDone { f["lastDone"] = lastDone }
+        if let due { f["due"] = due }
+        if let recur { f["recur"] = recur }
+        if let auto { f["recurAuto"] = auto }
         return ResolvedItem(id: "a", fields: f, deleted: false, confirmed: false,
                             createdHLC: HLC(wallMillis: 1, counter: 0, deviceId: "t"))
     }
@@ -51,11 +55,29 @@ final class RecurrenceCompletionTests: XCTestCase {
         XCTAssertFalse(p.done.contains { $0.id == "a" }, "보관함으로 가면 안 된다")
     }
 
-    // "오늘 했나" (최소판) — 오늘 완료면 true.
-    func testDoneToday() {
-        XCTAssertTrue(Recurrence.doneToday(item(type: "recurrence", lastDone: "2026-08-02T08:00"), now: today(12), calendar: utc))
-        XCTAssertFalse(Recurrence.doneToday(item(type: "recurrence", lastDone: "2026-08-01T08:00"), now: today(12), calendar: utc))
-        XCTAssertFalse(Recurrence.doneToday(item(type: "recurrence"), now: today(12), calendar: utc))   // 완료 없음
+    // "이번 회차 했나" — 게이트와 같은 마감 앵커 기준. 세 상태(했다/아직/넘어갔다)를 가른다.
+    // now = 2026-08-02 12:00. 옛 doneToday(날짜기준)를 대체 — #4 모순(칩·게이트 갈림) 회귀 방지.
+    func testDoneThisCycle() {
+        // 했다: 마감 미래(전진됨) + lastDone ≥ 직전 회차(08-02). ← 실제 완료
+        XCTAssertTrue(Recurrence.doneThisCycle(
+            item(type: "recurrence", lastDone: "2026-08-02T08:00", due: "2026-08-03T08:00", recur: "daily"), now: today(12), calendar: utc))
+        // 아직: 마감이 오늘·과거(게이트가 목록에 띄움) → 완료 아님
+        XCTAssertFalse(Recurrence.doneThisCycle(
+            item(type: "recurrence", lastDone: "2026-08-02T08:00", due: "2026-08-02T08:00", recur: "daily"), now: today(12), calendar: utc))
+        // ★ 넘어갔다: 마감은 미래로 갔지만 lastDone은 직전 회차 전(자동완성 catch-up 전진) → "완료" 아님(거짓말 안 함)
+        XCTAssertFalse(Recurrence.doneThisCycle(
+            item(type: "recurrence", lastDone: "2026-08-01T08:00", due: "2026-08-03T08:00", recur: "daily", auto: "endOfDay"), now: today(12), calendar: utc))
+        // 완료 기록 자체가 없음 → 넘어감
+        XCTAssertFalse(Recurrence.doneThisCycle(
+            item(type: "recurrence", due: "2026-08-03T08:00", recur: "daily"), now: today(12), calendar: utc))
+        // 매주도 같은 기준으로 성립(직전 회차 = 마감 − 7일). 옛 "매주·매년은 Stage 4" 구멍이 앵커 기준으로 닫힘.
+        XCTAssertTrue(Recurrence.doneThisCycle(
+            item(type: "recurrence", lastDone: "2026-08-02T08:00", due: "2026-08-09T08:00", recur: "weekly"), now: today(12), calendar: utc))
+        XCTAssertFalse(Recurrence.doneThisCycle(   // 매주 넘어감(전전 주 완료뿐)
+            item(type: "recurrence", lastDone: "2026-07-26T08:00", due: "2026-08-09T08:00", recur: "weekly"), now: today(12), calendar: utc))
+        // 앵커(마감) 없으면 "이번 회차" 정의 불가 → false
+        XCTAssertFalse(Recurrence.doneThisCycle(
+            item(type: "recurrence", lastDone: "2026-08-02T08:00", recur: "daily"), now: today(12), calendar: utc))
     }
 
     // 완료 취소 = 직전 완료 시점(streak 보존).

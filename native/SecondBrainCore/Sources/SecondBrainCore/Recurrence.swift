@@ -43,11 +43,22 @@ public enum Recurrence {
         it.fields[lastDoneKey].flatMap { ItemSchedule.parseDay($0, calendar: calendar) }
     }
 
-    /// **오늘 이미 완료했나 (Stage 3 최소판)** — 마지막 완료 시점의 날이 오늘이면 true.
-    /// "오늘 약 먹었나"에 답한다(매일 약). 주기별 정확한 회차 창(매주·매년)은 Stage 4.
-    public static func doneToday(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
-        guard let d = lastDone(it, calendar: calendar) else { return false }
-        return calendar.isDate(d, inSameDayAs: now)
+    /// **이번 회차를 실제로 완료했나** (칩·배너·완료버튼 공용). 게이트(`isPublished`)와 **같은 기준**을 본다:
+    /// **마감(앵커)이 미래 = 이번 회차 닫힘.** 완료해야만 마감이 다음 회차로 전진하므로 `마감 > now`가
+    /// "이번 회차 할 일 없음"의 구조적 증거다 → 칩과 게이트가 갈릴 수 없다(2026-08-03 #4 회귀 방지).
+    ///
+    /// 단, 마감 전진은 **자동완성(catch-up)** 으로도 일어난다 — 그건 "했다"가 아니라 "넘어갔다".
+    /// 그래서 `lastDone`을 **직전 회차 시각**과 비교해 **실제 완료만** true로 가른다(날짜 비교가 아니라 회차 경계).
+    /// 세 상태: `마감 ≤ now`=아직 / `마감 > now && lastDone ≥ 직전회차`=했다 / 그 외=넘어갔다.
+    /// (이른 완료는 `lastDone < 직전회차`라 under-claim할 수 있으나 — 거짓 "완료"를 내느니 안 내는 쪽이 안전.)
+    ///
+    /// 앵커(마감)·주기 없으면 "이번 회차" 자체가 정의 안 되므로 false(되풀이는 마감=앵커가 전제, §3-A).
+    public static func doneThisCycle(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
+        guard it.type == "recurrence", let u = unit(it),
+              let dueStr = it.due, let due = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return false }
+        guard due > now else { return false }                                   // 마감 미래여야 이번 회차 닫힘
+        guard let ld = lastDone(it, calendar: calendar) else { return false }    // 완료 기록 없음 → 넘어감
+        return ld >= stepBack(due, by: u, calendar: calendar)                    // 실제 완료(직전 회차 이후)만 "했다"
     }
 
     /// **완료 버튼이 낼 이벤트 필드 — 분류로 분기(§5, Stage 3의 핵심).**
@@ -86,6 +97,15 @@ public enum Recurrence {
         case .daily:  return calendar.date(byAdding: .day, value: 1, to: date) ?? date
         case .weekly: return calendar.date(byAdding: .day, value: 7, to: date) ?? date
         case .yearly: return calendar.date(byAdding: .year, value: 1, to: date) ?? date
+        }
+    }
+
+    /// 주기만큼 **앞의** 회차(`step`의 역). `doneThisCycle`이 "직전(방금 닫힌) 회차 시각"을 구할 때만 쓴다.
+    public static func stepBack(_ date: Date, by unit: Unit, calendar: Calendar = .current) -> Date {
+        switch unit {
+        case .daily:  return calendar.date(byAdding: .day, value: -1, to: date) ?? date
+        case .weekly: return calendar.date(byAdding: .day, value: -7, to: date) ?? date
+        case .yearly: return calendar.date(byAdding: .year, value: -1, to: date) ?? date
         }
     }
 
