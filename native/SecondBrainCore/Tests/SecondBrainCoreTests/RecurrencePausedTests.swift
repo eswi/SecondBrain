@@ -21,11 +21,13 @@ final class RecurrencePausedTests: XCTestCase {
     }
     /// 되풀이 항목. `paused`는 nil(필드 없음)·"true"·"false" 셋을 다 넣어볼 수 있게 문자열로 받는다.
     private func rec(_ id: String = "a", due: String, resurface: String? = nil,
-                     auto: String? = nil, paused: String? = nil, unit: String = "daily") -> ResolvedItem {
+                     auto: String? = nil, paused: String? = nil, pausedAt: String? = nil,
+                     unit: String = "daily") -> ResolvedItem {
         var f: [String: String] = ["type": "recurrence", "recur": unit, "due": due, "raw": "약"]
         if let resurface { f["resurface"] = resurface }
         if let auto { f["recurAuto"] = auto }
         if let paused { f["recurPaused"] = paused }
+        if let pausedAt { f["recurPausedAt"] = pausedAt }
         return ResolvedItem(id: id, fields: f, deleted: false, confirmed: false,
                             createdHLC: HLC(wallMillis: 1, counter: 0, deviceId: "t"))
     }
@@ -108,6 +110,56 @@ final class RecurrencePausedTests: XCTestCase {
         XCTAssertEqual(c?["resurface"], "2026-08-05T07:00")
     }
 
+    // MARK: 4. 놓침 — 꺼둔 동안은 세지 않는다
+
+    /// 꺼두기 전에 3일 놓쳤고 그 뒤 2주를 꺼뒀다 → 계속 **3일**. "14일 놓침"이 붙으면 안 놓친 것을 놓쳤다고 하는 것.
+    func testMissed_frozenWhilePaused() {
+        // 마감 8/1 08:00, 8/4에 꺼둠(그때 놓침 = 8/1·8/2·8/3 = 3일), 지금은 8/18.
+        let it = rec(due: "2026-08-01T08:00", paused: "true", pausedAt: "2026-08-04T09:00")
+        XCTAssertEqual(Recurrence.missed(it, now: d(8, 4, 9), calendar: utc), 3)    // 꺼둔 그 순간
+        XCTAssertEqual(Recurrence.missed(it, now: d(8, 18, 9), calendar: utc), 3)   // 2주 뒤에도 그대로
+        // 안 꺼져 있었다면 계속 셌을 것 — 대조군.
+        let on = rec(due: "2026-08-01T08:00")
+        XCTAssertEqual(Recurrence.missed(on, now: d(8, 18, 9), calendar: utc), 17)
+    }
+
+    /// **켤 때 경계에서 숫자가 튀지 않는다** — 꺼둔 기간(14회차)만큼만 전진해 꺼두기 전 놓침 3일을 보존.
+    func testResume_advancesOnlyPausedSpan_missedPreserved() {
+        let now = d(8, 18, 9)
+        // 켠 직후 상태: recurPaused=false 인데 recurPausedAt이 아직 남아 있다(전진은 로드 패스가 한다).
+        let justOn = rec(due: "2026-08-01T08:00", resurface: "2026-08-01T07:00",
+                         paused: "false", pausedAt: "2026-08-04T09:00")
+        let c = Recurrence.resumeChanges(justOn, now: now, calendar: utc)
+        XCTAssertNotNil(c)
+        XCTAssertEqual(c?[Recurrence.pausedAtKey], "")          // 기록 비움
+        // k = 17(지금 놓침) − 3(꺼둘 때 놓침) = 14 → 8/1 + 14일 = 8/15. lead 1시간 보존.
+        XCTAssertEqual(c?["due"], "2026-08-15T08:00")
+        XCTAssertEqual(c?["resurface"], "2026-08-15T07:00")
+
+        // 전진 적용 후 놓침 = 꺼두기 전과 같은 3일(튐 없음).
+        let after = rec(due: "2026-08-15T08:00", resurface: "2026-08-15T07:00")
+        XCTAssertEqual(Recurrence.missed(after, now: now, calendar: utc), 3)
+    }
+
+    /// 멱등 — 전진 뒤(기록 비었음) 재실행하면 nil. 아직 꺼둠이면 아무것도 안 함.
+    func testResume_idempotentAndOnlyWhenOn() {
+        let now = d(8, 18, 9)
+        XCTAssertNil(Recurrence.resumeChanges(rec(due: "2026-08-15T08:00"), now: now, calendar: utc))
+        XCTAssertNil(Recurrence.resumeChanges(rec(due: "2026-08-15T08:00", paused: "false", pausedAt: ""),
+                                             now: now, calendar: utc))
+        // 아직 꺼둠 → 보정 안 함(켜야 한다).
+        XCTAssertNil(Recurrence.resumeChanges(rec(due: "2026-08-01T08:00", paused: "true", pausedAt: "2026-08-04T09:00"),
+                                             now: now, calendar: utc))
+    }
+
+    /// 같은 날 껐다 켰으면 전진 0 — 기록만 비운다(마감을 건드리지 않는다).
+    func testResume_sameDayNoAdvance() {
+        let c = Recurrence.resumeChanges(rec(due: "2026-08-03T08:00", paused: "false", pausedAt: "2026-08-03T09:00"),
+                                        now: d(8, 3, 18), calendar: utc)
+        XCTAssertEqual(c?[Recurrence.pausedAtKey], "")
+        XCTAssertNil(c?["due"])
+    }
+
     // MARK: 기존 항목 불변(레거시 회귀 고정)
 
     /// `recurPaused` 필드가 **없는** 되풀이(= 지금 저장된 전부)는 세 경로가 모두 평시 동작이어야 한다.
@@ -118,5 +170,13 @@ final class RecurrencePausedTests: XCTestCase {
         XCTAssertNotNil(Recurrence.catchUpChanges(it, now: now, calendar: utc))
         let future = rec(due: "2026-08-06T08:00")
         XCTAssertEqual(NotificationPlanner.plan(items: [future], now: now, calendar: utc).count, 1)
+    }
+
+    /// 이 변경 **전에** 꺼둔 항목(= `recurPausedAt` 없는 꺼둠)은 옛 동작으로 폴백 — 크래시·데이터 변화 없음.
+    func testLegacy_pausedWithoutTimestamp_fallsBackToNow() {
+        let it = rec(due: "2026-08-01T08:00", paused: "true")            // pausedAt 없음
+        XCTAssertEqual(Recurrence.missed(it, now: d(8, 18, 9), calendar: utc), 17)   // 옛 동작(계속 셈)
+        XCTAssertNil(Recurrence.resumeChanges(rec(due: "2026-08-01T08:00", paused: "false"),
+                                             now: d(8, 18, 9), calendar: utc))       // 보정할 근거 없음 → 안 함
     }
 }

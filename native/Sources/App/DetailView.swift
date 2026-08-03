@@ -87,7 +87,13 @@ struct DetailView: View {
         let oldAuto = item.fields[Recurrence.autoKey] ?? Recurrence.AutoComplete.none.rawValue
         if recurAuto != oldAuto { c[Recurrence.autoKey] = recurAuto }
         let oldPaused = item.fields[Recurrence.pausedKey] == "true"
-        if recurPaused != oldPaused { c[Recurrence.pausedKey] = recurPaused ? "true" : "false" }
+        if recurPaused != oldPaused {
+            c[Recurrence.pausedKey] = recurPaused ? "true" : "false"
+            // **끌 때 그 시점을 남긴다** — 놓침을 여기까지만 세고(꺼둔 기간은 안 셈), 켤 때 이만큼만
+            // 회차를 전진시켜 이전 놓침을 보존한다(`Recurrence.resumeChanges`). 켤 때는 안 지운다 —
+            // 지우는 건 전진을 실행한 쪽(로드 시 `resumeRecurrence`)의 몫이라야 기록이 유실되지 않는다.
+            if recurPaused { c[Recurrence.pausedAtKey] = ItemSchedule.dayTimeString(Date()) }
+        }
     }
     private var dirty: Bool { !changes.isEmpty }
     /// 본문을 전부 지운 상태(공백만 남은 것 포함). 내용 없는 기억은 만들지 않는다

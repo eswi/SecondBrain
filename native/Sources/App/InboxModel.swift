@@ -202,12 +202,19 @@ final class InboxModel: ObservableObject {
         scheduleNotifications()
     }
 
-    /// 되풀이 catch-up — 자동 완성이 있는 되풀이의 **지나간 회차를 자동 전진**(미리 알림 갱신). `none`이면 안 함(쌓임).
-    /// 멱등: 전진 뒤 재실행하면 더 안 바뀌어 이벤트를 안 낸다(재로드 1회로 수렴). 앱 열 때/행동 후 `resolve()` 끝에서.
+    /// 되풀이 회차 전진 패스 — 두 가지를 본다. 둘 다 멱등(전진 뒤 재실행하면 더 안 바뀜 → 재로드로 수렴).
+    /// 1. **켠 직후 보정**(`resumeChanges`) — 꺼둔 기간에 지나간 회차만큼만 전진. 꺼두기 전 놓침은 보존.
+    /// 2. **자동완성 catch-up**(`catchUpChanges`) — 자동 완성이 있으면 지나간 회차를 자동 전진. `none`이면 안 함(쌓임).
+    ///
+    /// 한 항목에 둘이 겹치면 **이번 로드는 1만** 한다 — 둘 다 같은 옛 마감에서 전진량을 계산하므로
+    /// 합치면 이중 전진이 된다. 1을 반영한 재로드에서 2가 갱신된 마감으로 다시 계산해 이어받는다.
     private func catchUpRecurrence() {
         let now = Date()
         var edits: [Event] = []
         for it in liveNonDone where it.type == "recurrence" {
+            if let resume = Recurrence.resumeChanges(it, now: now) {     // 켠 직후 보정이 우선
+                edits.append(.edit(id: it.id, hlc: tick(), resume)); continue
+            }
             if let changes = Recurrence.catchUpChanges(it, now: now) {   // 마감·미리 알림 둘 다 전진
                 edits.append(.edit(id: it.id, hlc: tick(), changes))
             }

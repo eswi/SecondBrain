@@ -36,6 +36,7 @@ public enum Recurrence {
     public static let unitKey = "recur"
     public static let autoKey = "recurAuto"
     public static let pausedKey = "recurPaused"
+    public static let pausedAtKey = "recurPausedAt"   // 꺼둔 시점(시각 표준형 T) — 놓침을 안 세는 구간의 시작
     public static let lastDoneKey = "lastDone"   // 마지막 완료 시점(시각 표준형 T)
 
     /// 마지막 완료 시점(없거나 못 읽으면 nil). 형식 = 시각 표준형 "YYYY-MM-DD'T'HH:mm".
@@ -154,10 +155,47 @@ public enum Recurrence {
     }
 
     /// 항목의 **놓친 회차 수**(편의) — 앵커 = 마감(회차). 되풀이 아니거나 앵커 없으면 0.
+    ///
+    /// **꺼둔 동안은 세지 않는다(2026-08-03).** 꺼두기는 "세지 않겠다"는 뜻인데 2주 꺼뒀다 켜면
+    /// "14일 놓침"이 붙는 건 안 놓친 것을 놓쳤다고 하는 것이다. 꺼둠이면 `now` 대신 **꺼둔 시점**까지만 센다
+    /// → 꺼두기 전에 이미 쌓인 놓침은 **그대로 보존**되고 그 뒤로는 안 늘어난다.
+    /// 켤 때 `resumeChanges`가 꺼둔 기간만큼 회차를 전진시켜 **경계에서 숫자가 튀지 않는다**(아래 증명).
+    ///
+    /// 꺼둠인데 `recurPausedAt`이 없으면(이 변경 전에 꺼둔 것) `now`로 폴백 — 옛 동작 그대로, 안전한 강등.
     public static func missed(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Int {
         guard it.type == "recurrence", let u = unit(it),
               let dueStr = it.due, let base = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return 0 }
-        return missedCount(base: base, unit: u, now: now, calendar: calendar)
+        let cutoff = isPaused(it) ? (pausedAt(it, calendar: calendar) ?? now) : now
+        return missedCount(base: base, unit: u, now: cutoff, calendar: calendar)
+    }
+
+    /// 꺼둔 시점(없거나 못 읽으면 nil).
+    public static func pausedAt(_ it: ResolvedItem, calendar: Calendar = .current) -> Date? {
+        it.fields[pausedAtKey].flatMap { ItemSchedule.parseDay($0, calendar: calendar) }
+    }
+
+    /// **켤 때 회차 전진 changes** — 꺼둔 기간에 지나간 회차만큼 마감을 전진시키고 `recurPausedAt`을 비운다.
+    /// 안 켜졌거나(아직 꺼둠) 꺼둔 기록이 없으면 nil(멱등 — 전진 뒤 재실행하면 필드가 비어 더 안 바뀐다).
+    ///
+    /// **전진량 k = (지금까지의 놓침) − (꺼둘 때의 놓침).** 즉 꺼둔 구간에 들어간 회차 수만 건너뛴다.
+    /// 그래서 켠 뒤 놓침 = `missedCount(마감+k, now)` = `m_now − k` = **꺼둘 때의 놓침**(정확히 보존).
+    /// 첫 미래 회차로 점프시키면 이전 놓침까지 지워지므로 **그렇게 하지 않는다** — 꺼두기는 사면이 아니다.
+    /// 미리 알림도 같은 k만큼 전진(lead 보존) — `advanceBy` 공용.
+    ///
+    /// 자동완성이 있으면 이 전진 뒤 같은 로드의 `catchUpChanges`가 현재까지 더 전진시켜 놓침이 0이 된다.
+    /// 그건 자동완성의 뜻("완료 안 해도 닫힌다")이 원래 그런 것이라 꺼두기와 무관하게 일관적이다.
+    public static func resumeChanges(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String]? {
+        guard it.type == "recurrence", !isPaused(it),                       // 켜져 있어야(=막 켰거나 켠 상태)
+              let pausedDate = pausedAt(it, calendar: calendar),            // 꺼둔 기록이 남아 있어야
+              let u = unit(it), let dueStr = it.due,
+              let dueDate = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return nil }
+        let k = missedCount(base: dueDate, unit: u, now: now, calendar: calendar)
+              - missedCount(base: dueDate, unit: u, now: pausedDate, calendar: calendar)
+        var changes: [String: String] = [pausedAtKey: ""]                   // 기록 비움(멱등 종료 조건)
+        if k > 0 {
+            changes.merge(advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, calendar: calendar)) { _, new in new }
+        }
+        return changes
     }
 
     /// **catch-up(앱 열 때) 회차 전진 changes** — 자동 완성 있으면 지난 회차 자동 완성(마감·미리 알림 전진),
