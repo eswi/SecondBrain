@@ -112,7 +112,8 @@ final class ClassGateTests: XCTestCase {
 
     // MARK: 소비자 상속 — 게이트된 항목은 '사라지는' 게 아니라 시점 없는 쪽으로 옮겨간다
 
-    /// 게이트 걸린 아이디어는 "곧 닥칠 것"에서 빠지되 **"최근 들어온 것"에 그대로 있다**(유실이면 버그).
+    /// 게이트 걸린 아이디어는 `upcoming`에서 빠지되 **`recent`에 그대로 있다**(유실이면 버그).
+    /// (`recent`는 화면에서 확정 여부로 '살아있는 기억' 탭 / '새 기억들' 섹션으로 갈린다.)
     /// 알림 쪽은 계획에서만 빠진다(항목·데이터는 그대로).
     func testConsumers_gatedItemMovesToRecent_notLost() {
         let cal = utc

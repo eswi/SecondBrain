@@ -22,7 +22,10 @@ public struct InboxSections: Sendable, Equatable {
 }
 
 public enum InboxSectionizer {
-    /// 항목을 "곧 닥칠 것"(시점 있음)과 "최근 들어온 것"(시점 없음)으로 나눈다.
+    /// 항목을 `upcoming`(시점 있음)과 `recent`(시점 없음)으로 나눈다.
+    /// **화면 이름과 1:1이 아니다** — `upcoming` = '지금 챙길 것' 섹션이지만, `recent`는 App(`InboxModel.partition`)이
+    /// 확정 여부로 다시 쪼개 **확정 → '살아있는 기억' 탭 / 미확정 → '새 기억들' 섹션**으로 보낸다.
+    /// (옛 주석의 "곧 닥칠 것"·"최근 들어온 것"은 **화면에 없는 이름**이라 정정 — 2026-08-03 실기기 확인에서 드러남.)
     /// - **멤버십**: `isPublished`(게시 게이트, Stage 2) — 미리 알림이 미래면 도래 전까지 게시 안 함.
     /// - **정렬**: `deadlineDay`(마감) 우선, 없으면 `publishDay`로 D-day 오름차순(지남 → 오늘 → 임박) + id tiebreak.
     /// - **배지**: `deadlineDay` 기준. 마감 없는 항목(미리 알림만)은 `dday=nil` → 배지 안 뜬다.

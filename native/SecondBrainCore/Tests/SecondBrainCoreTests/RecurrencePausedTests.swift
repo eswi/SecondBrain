@@ -85,7 +85,8 @@ final class RecurrencePausedTests: XCTestCase {
         XCTAssertTrue(ItemSchedule.isPublished(on, now: now, calendar: utc))
     }
 
-    /// 게시 안 된 항목은 **사라지지 않는다** — '최근 들어온 것'으로 옮겨가고 총 개수가 보존된다(§7(c)).
+    /// 게시 안 된 항목은 **사라지지 않는다** — `recent`로 옮겨가고 총 개수가 보존된다(§7(c)).
+    /// 화면에선 확정 여부로 '살아있는 기억' 탭 또는 '새 기억들' 섹션에 나타난다(2026-08-03 실기기 E-1로 확인).
     func testSectionizer_dormantMovesToRecent_countPreserved() {
         let now = d(8, 3, 14)
         let items = [rec("A", due: "2026-08-03T08:00", paused: "true"),

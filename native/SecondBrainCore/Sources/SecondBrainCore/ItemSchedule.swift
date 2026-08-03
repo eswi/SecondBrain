@@ -46,7 +46,9 @@ public enum ItemSchedule {
     /// **게시 안 된 항목은 사라지지 않는다** — 시점 없는 쪽 목록으로 옮겨가고 총 개수는 보존된다(§7(c)).
     public static func isPublished(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
         // **꺼둔 되풀이는 게시 안 함**(2026-08-03) — 상세 배너의 "되살아나기 멈춤" 약속.
-        // 사라지는 게 아니라 '최근 들어온 것'으로 옮겨간다(위 §7(c) 원칙 그대로, 총 개수 보존).
+        // 사라지는 게 아니라 시점 없는 쪽(`recent`)으로 옮겨간다(위 §7(c) 원칙 그대로, 총 개수 보존).
+        // 화면에선 확정 여부로 갈린다 — **확정이면 '살아있는 기억' 탭, 미확정이면 '새 기억들' 섹션**
+        // (`InboxModel.partition`이 `recent`를 그 둘로 쪼갠다). 어느 쪽이든 항목은 남는다.
         if Recurrence.isDormant(it) { return false }
         if ClassSpecCatalog.uses(it.type, .resurface),
            let r = it.resurface, let rd = parseDay(r, calendar: calendar) {
