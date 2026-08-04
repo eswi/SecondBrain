@@ -12,6 +12,9 @@ final class InboxModel: ObservableObject {
     @Published private(set) var trashed: [ResolvedItem] = []       // 보관함 삭제 섹션(tombstone + discard)
     @Published var sourceLabel = ""
     @Published var needsFolder = false            // 폴더 미선택 → 피커 안내
+    /// 알림 예산 회계 한 줄(5-B) — 몇 건 등록됐고 **예산 때문에 몇 회차가 잘렸는지**.
+    /// 지금은 확인 경로(디버그 화면이 읽거나 콘솔 로그)일 뿐 화면에 안 띄운다 — 보여줄 방법은 나중에 정한다.
+    @Published var notifyBudget = ""
 
     @Published var filter: TypeFilter = .all      // 받은함 필터 칩 선택(기억 목록에만 적용)
 
@@ -227,8 +230,13 @@ final class InboxModel: ObservableObject {
     private func scheduleNotifications() {
         // 실제 폴더(진실원)가 있을 때만. 샘플/시뮬레이터(폴더 없음)에선 알림 요청·스케줄 안 함.
         guard FragmentFolder.hasFolder else { return }
-        let plans = NotificationPlanner.plan(items: liveNonDone, now: Date())
-        Task { await NotificationScheduler.reschedule(plans) }
+        let result = NotificationPlanner.planned(items: liveNonDone, now: Date())
+        // **잘린 것이 보여야 한다**(5-B) — 알림은 안 오는 것을 눈치채기 어려워 특히 위험하다.
+        // 확인 경로는 여기 하나로 모은다: 상태(`notifyBudget`, 나중에 디버그 화면이 읽으면 됨) + 콘솔 로그.
+        // 사용자에게 어떻게 보여줄지는 아직 안 정했다 — 지금은 "확인이 가능하다"까지만.
+        notifyBudget = result.summary
+        if result.droppedCycles > 0 { print("[알림예산] \(result.summary)") }
+        Task { await NotificationScheduler.reschedule(result.scheduled) }
     }
 
     /// 문서 피커로 고른 폴더를 등록하고 즉시 로드.

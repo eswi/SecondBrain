@@ -39,12 +39,19 @@ final class NotificationPlannerTests: XCTestCase {
         XCTAssertEqual(plan.first?.body, "B 내용")
     }
 
-    func testLimitCap() {
+    /// **정정(Stage 5-B, 2026-08-04).** 옛 기대는 단일 상한 32(`limit: 32`)였다. 지금은 **몫이 갈려서**
+    /// 일반 항목 50개는 **일반 몫(24)** 까지만 등록되고 나머지는 잘린다 — 그리고 **잘린 개수가 값으로 나온다.**
+    func testPlainItemsCapAtPlainShare_andDropsAreCounted() {
         let cal = utc
         let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 16, hour: 0))!
         let items = (1...50).map { item("x\($0)", due: "2026-08-01") }
-        let plan = NotificationPlanner.plan(items: items, now: now, calendar: cal, hour: 9, limit: 32)
-        XCTAssertEqual(plan.count, 32)
+        let r = NotificationPlanner.planned(items: items, now: now, calendar: cal, hour: 9)
+        XCTAssertEqual(r.scheduled.count, 24)
+        XCTAssertEqual(r.usedPlain, 24)
+        XCTAssertEqual(r.usedRecurring, 0)
+        XCTAssertEqual(r.droppedPlainCycles, 26)     // 50 − 24 (각 1슬롯)
+        XCTAssertEqual(r.droppedSlots, 26)
+        XCTAssertTrue(r.summary.contains("잘림"))     // 확인 경로가 실제로 알려준다
     }
 
     func testEmptyWhenNoDates() {
