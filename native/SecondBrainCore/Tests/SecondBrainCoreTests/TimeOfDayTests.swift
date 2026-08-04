@@ -129,9 +129,14 @@ final class TimeOfDayTests: XCTestCase {
         let it = item("O", due: "2026-08-05", resurface: "2026-08-01")
         XCTAssertEqual(DDayCalc.compute(day: ItemSchedule.deadlineDay(it)!, now: now, calendar: cal)!.days, 3)
         XCTAssertTrue(ItemSchedule.isPublished(it, now: now, calendar: cal))   // resurface 08-01 지남 → 게시
+        // **정정(Stage 5-A, 2026-08-04).** 옛 기대는 `plan.isEmpty` — "publishDay = resurface(08-01)이
+        // 과거라 알림 없음"이었다. 그게 **lead-time 구멍의 가장 순수한 형태**다: 미리 알림이 지나가면
+        // 마감이 3일 뒤인데도 알림이 **0건**이었다. 이제 지점별로 판정해 지난 lead는 버리고 미래 마감은 남긴다.
         let plan = NotificationPlanner.plan(items: [it], now: now, calendar: cal)
-        // publishDay = resurface(08-01)이 과거라 알림 없음(미래만) — 기존 동작 그대로
-        XCTAssertTrue(plan.isEmpty)
+        XCTAssertEqual(plan.map { $0.kind }, [.due])
+        XCTAssertEqual(plan.first?.fireDate,
+                       cal.date(from: DateComponents(year: 2026, month: 8, day: 5, hour: 9))!)   // 날짜만 → 9시 폴백
+        // date-only 판정 자체는 불변 — 이 절의 원래 회귀선(D-day·게시)은 위 두 줄이 지킨다.
     }
 
     // MARK: Stage 2 — 직렬화·시각 보존·보조 캡션
