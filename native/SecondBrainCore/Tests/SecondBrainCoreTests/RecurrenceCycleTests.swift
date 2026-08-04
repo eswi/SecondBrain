@@ -80,6 +80,41 @@ final class RecurrenceCycleTests: XCTestCase {
         XCTAssertEqual(c?["due"], "2026-08-04T08:00")
         XCTAssertEqual(c?["resurface"], "2026-08-04T07:00")   // lead 보존
     }
+    /// **Stage 5-0 (2026-08-04) — 회차가 오기도 전에 넘어갈 수는 없다.**
+    /// `noon` + **저녁 마감**이면 임계(12시)가 마감(20시)보다 앞서서 회차가 도착하기도 전에 닫혔다.
+    /// 그러면 정작 20시엔 **이미 닫힌 회차**로 알림이 가는 잡음이 된다 → 임계 = `max(자동완성 임계, 회차 시각)`.
+    func testCatchUp_noon_thresholdCannotPrecedeCycleTime() {
+        let ev = item("daily", due: "2026-08-01T20:00", resurface: "2026-08-01T19:00", auto: "noon")
+        // 정오는 지났지만 **회차(20시)는 아직** → 넘어가지 않는다(고치기 전에는 여기서 전진했다).
+        XCTAssertNil(Recurrence.catchUpChanges(ev, now: d(8, 1, 12, 30), calendar: utc))
+        XCTAssertNil(Recurrence.catchUpChanges(ev, now: d(8, 1, 19, 59), calendar: utc))
+        // 회차 시각이 지나면 넘어간다 — lead(1시간)도 같이 전진.
+        let c = Recurrence.catchUpChanges(ev, now: d(8, 1, 20, 30), calendar: utc)
+        XCTAssertEqual(c?["due"], "2026-08-02T20:00")
+        XCTAssertEqual(c?["resurface"], "2026-08-02T19:00")
+    }
+
+    /// 아침 마감·날짜만 있는 항목은 **전혀 안 바뀐다**(`max(12:00, 08:00) = 12:00`, `max(12:00, 자정) = 12:00`).
+    /// 5-0이 저녁 마감만 건드린다는 회귀선.
+    func testCatchUp_noon_morningAndDateOnlyUnchanged() {
+        // 아침 마감: 정오 지나면 그 날 회차가 넘어간다(고치기 전과 동일).
+        XCTAssertEqual(Recurrence.catchUpChanges(item("daily", due: "2026-08-01T08:00", auto: "noon"),
+                                                now: d(8, 1, 12, 30), calendar: utc)?["due"], "2026-08-02T08:00")
+        XCTAssertNil(Recurrence.catchUpChanges(item("daily", due: "2026-08-01T08:00", auto: "noon"),
+                                              now: d(8, 1, 11, 30), calendar: utc))
+        // 날짜만(자정): 정오가 임계 — 불변.
+        XCTAssertEqual(Recurrence.catchUpChanges(item("daily", due: "2026-08-01", auto: "noon"),
+                                                now: d(8, 1, 12, 30), calendar: utc)?["due"], "2026-08-02")
+    }
+
+    /// `endOfDay`는 임계(다음 자정)가 언제나 그 날 회차 시각보다 뒤라 `max`가 no-op — 늦은 밤 마감으로 확인.
+    func testCatchUp_endOfDay_maxIsNoOp() {
+        let late = item("daily", due: "2026-08-01T23:30", auto: "endOfDay")
+        XCTAssertNil(Recurrence.catchUpChanges(late, now: d(8, 1, 23, 45), calendar: utc))          // 아직 그 날
+        XCTAssertEqual(Recurrence.catchUpChanges(late, now: d(8, 2, 0, 10), calendar: utc)?["due"],  // 자정 넘김
+                       "2026-08-02T23:30")
+    }
+
     func testCatchUp_endOfDay_todayNotYetPassed() {
         XCTAssertNil(Recurrence.catchUpChanges(item("daily", due: "2026-08-03T08:00", auto: "endOfDay"), now: d(8, 3, 14), calendar: utc))
         XCTAssertEqual(Recurrence.catchUpChanges(item("daily", due: "2026-08-03T08:00", auto: "endOfDay"), now: d(8, 4, 1), calendar: utc)?["due"], "2026-08-04T08:00")

@@ -199,16 +199,24 @@ public enum Recurrence {
     }
 
     /// **catch-up(앱 열 때) 회차 전진 changes** — 자동 완성 있으면 지난 회차 자동 완성(마감·미리 알림 전진),
-    /// `none`이면 안 함(쌓임). 변화 없으면 nil(멱등). 자동완성 임계: 정오=그 날 12시, 지나면=그 날 끝(다음 자정).
+    /// `none`이면 안 함(쌓임). 변화 없으면 nil(멱등).
+    /// 자동완성 임계: 정오=그 날 12시, 지나면=그 날 끝(다음 자정) — 단 **회차 시각보다 앞설 수 없다**(아래 `threshold`).
     /// **꺼둠(`isDormant`)이면 안 한다** — 꺼둔 동안 회차가 조용히 흘러가면 켰을 때 이미 다 지나간 상태가 된다.
     /// 마감이 꺼둔 시점 회차에 얼어 있다가, 켜면 그때 밀린 만큼 한 번에 전진한다(멱등, 데이터 손상 없음).
     public static func catchUpChanges(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String]? {
         let auto = autoComplete(it)
         guard !isDormant(it), auto != .none, let u = unit(it), let dueStr = it.due, let dueDate = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return nil }
+        /// 이 회차가 "넘어간" 것으로 볼 시점. **회차가 오기도 전에 넘어갈 수는 없다**(Stage 5-0, 2026-08-04)
+        /// → 임계는 **회차 시각(`o`)보다 앞설 수 없다**. 안 막으면 `noon` + 저녁 마감에서 임계(12시)가
+        /// 마감(20시)보다 앞서서 **회차가 도착하기도 전에 닫히고**, 정작 20시에 이미 닫힌 회차로 알림이 간다.
+        /// 이 보정으로 저녁 마감 + `noon`은 `endOfDay`처럼(마감 시각 이후에) 동작하고,
+        /// **아침 마감·날짜만 있는 항목은 전혀 안 바뀐다**(`max(12:00, 08:00) = 12:00`, `max(12:00, 00:00) = 12:00`).
+        /// `endOfDay`는 임계(다음 자정)가 언제나 그 날 회차 시각보다 뒤라 `max`가 no-op이다.
         func threshold(_ o: Date) -> Date {
             let d0 = calendar.startOfDay(for: o)
-            return auto == .noon ? (calendar.date(byAdding: .hour, value: 12, to: d0) ?? d0)
-                                 : (calendar.date(byAdding: .day, value: 1, to: d0) ?? d0)
+            let base = auto == .noon ? (calendar.date(byAdding: .hour, value: 12, to: d0) ?? d0)
+                                     : (calendar.date(byAdding: .day, value: 1, to: d0) ?? d0)
+            return max(base, o)
         }
         var o = dueDate, k = 0
         while threshold(o) <= now, k < 100_000 { o = step(o, by: u, calendar: calendar); k += 1 }
