@@ -10,8 +10,15 @@ import XCTest
 /// - 완료 후 살아있음 / 취소 복원 = `RecurrenceCompletionTests` · `CompletionRoutingTests`
 ///
 /// **안 덮여 있던 것 = 재완료.** 이 파일이 그 빈칸이다.
-/// ⚠️ 아래 `_현재동작` 두 개는 **버그를 사실로 기록**한다 — 다음 커밋(가드 추가)에서 뒤집힌다.
-/// 뒤집히는 diff 자체가 "고치기 전에 무엇이었나"의 기록이 된다.
+///
+/// ### 정정 (2026-08-05 저녁, (b) Stage 2)
+/// 이 파일은 (a)의 **`stepBack` 휴리스틱 2절**을 전제로 짜였는데, **그 2절에 구멍이 있었다** —
+/// `now ≤ 직전 회차` 조건이 **회차 시각을 지나면 풀려** 재압이 마감을 또 밀었다(구멍 1).
+/// 가드는 삭제됐고 이제 **가드 = 표시 = `doneThisCycle`** 하나다. 아래 네 테스트를 정정한다:
+/// - `testRecomplete_early_isIdempotent` — under-claim 단정이 뒤집힘(이른 완료도 "완료"로 보인다)
+/// - `testBothClausesAreNeeded` → `testOnePredicate_guardEqualsDisplay` (전제 자체가 사라짐)
+/// - `testNextCycle_earlyCompletion_*` · `testWeekly_recompleteIsIdempotent` — **회차가 열려야**
+///   다음 이른 완료가 가능하다(승인된 대가). 지우지 않고 무엇이 바뀌었는지 남긴다.
 final class RecurrenceRecompleteTests: XCTestCase {
 
     private var utc: Calendar {
@@ -50,19 +57,25 @@ final class RecurrenceRecompleteTests: XCTestCase {
     /// **이른 완료 후 재압 = 아무 일도 없다.** 옛 동작은 하루를 건너뛰었다 — 8시 약을 7시 30분에 먹고
     /// 누른 뒤 상세를 다시 열어 또 누르면(버튼이 `[이번 것 했어요]`로 돌아와 있다) **내일 약이 목록·알림에서
     /// 사라졌다.** 이 설계의 출발점("약을 3일 놓친 것")이 바로 그 경우라 고쳐야 했다.
-    /// 이른 완료는 `doneThisCycle`이 못 잡는다(under-claim) → 2절("방금 닫은 회차 시각 전")이 잡는다.
+    /// **정정(Stage 2):** 옛 단정은 *"이른 완료라 under-claim — `doneThisCycle`이 false"* 였다.
+    /// **그 under-claim이 (b)의 뿌리였고 이번에 없앴다** → 이제 true다(화면에 "이번 회차 완료됨"이 뜬다).
+    /// 그리고 재압 멱등은 **회차 시각 뒤에도** 유지된다(옛 2절은 거기서 풀렸다 — 구멍 1).
     func testRecomplete_early_isIdempotent() {
         let start = rec(due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")
         let first = press(start, at: d(8, 5, 7, 30))
         XCTAssertEqual(first.changes["due"], "2026-08-06T08:00")
-        XCTAssertFalse(Recurrence.doneThisCycle(first.next, now: d(8, 5, 7, 35), calendar: utc),
-                       "이른 완료라 under-claim — 1절로는 안 잡힌다(2절이 필요한 이유)")
+        XCTAssertTrue(Recurrence.doneThisCycle(first.next, now: d(8, 5, 7, 35), calendar: utc),
+                      "이른 완료도 '했다'로 보인다 — under-claim 해소")
         let second = press(first.next, at: d(8, 5, 7, 35))
         XCTAssertTrue(second.changes.isEmpty, "재압은 빈 변경이어야 한다")
         // 상태가 그대로다 = 멱등. 세 번 눌러도 같다.
         XCTAssertEqual(second.next.due, "2026-08-06T08:00")
         XCTAssertEqual(second.next.resurface, "2026-08-06T07:00")
         XCTAssertTrue(press(second.next, at: d(8, 5, 7, 40)).changes.isEmpty)
+        // ★ 구멍 1이 닫혔다 — 회차 시각(08:00)을 지나도, 하루 종일 지나도 멱등이다.
+        for t in [d(8, 5, 8, 1), d(8, 5, 9), d(8, 5, 23)] {
+            XCTAssertTrue(press(second.next, at: t).changes.isEmpty, "회차 시각 뒤에도 막혀야 한다")
+        }
     }
 
     /// 늦은(정시) 완료 후 재압 — 이쪽은 `doneThisCycle`이 true라 1절이 잡는다.
@@ -75,34 +88,61 @@ final class RecurrenceRecompleteTests: XCTestCase {
         XCTAssertEqual(first.next.due, "2026-08-06T08:00")
     }
 
-    /// 두 절이 **각각** 필요하다 — 어느 하나만으로는 두 경우를 다 못 막는다(위 둘의 근거를 직접 고정).
-    func testBothClausesAreNeeded() {
-        // 이른 완료 후: 1절 false, 그래도 닫힘 판정은 true(2절 덕).
-        let early = press(rec(due: "2026-08-05T08:00"), at: d(8, 5, 7, 30)).next
-        XCTAssertFalse(Recurrence.doneThisCycle(early, now: d(8, 5, 7, 35), calendar: utc))
-        XCTAssertTrue(Recurrence.alreadyClosedThisCycle(early, now: d(8, 5, 7, 35), calendar: utc))
-        // 늦은 완료 후: 1절 true. 2절 조건(now ≤ 직전 회차)은 이미 지나서 false다.
-        let late = press(rec(due: "2026-08-05T08:00"), at: d(8, 5, 9)).next
-        XCTAssertTrue(Recurrence.doneThisCycle(late, now: d(8, 5, 9, 5), calendar: utc))
-        XCTAssertTrue(Recurrence.alreadyClosedThisCycle(late, now: d(8, 5, 9, 5), calendar: utc))
+    /// **정정(Stage 2) — 옛 이름은 `testBothClausesAreNeeded`였다.**
+    /// 옛 전제: 표시(`doneThisCycle`)와 가드(`alreadyClosedThisCycle`)가 **다른 판정**이고, 가드엔
+    /// 이른 완료를 잡는 2절이 따로 필요하다. **그 2절이 구멍 1의 원인이었고**(회차 시각 뒤에 풀림),
+    /// 옛 테스트는 그 구조를 정상으로 못박고 있었다(5-A의 교훈이 여기서 반복됐다).
+    ///
+    /// 지금은 **가드 = 표시**다. 그 등식이 dead button을 구조적으로 없앤다:
+    /// 판정이 false여서 버튼이 보이는 상태에서 누르면 **반드시** 변경이 나온다(빈 변경이 아니다).
+    func testOnePredicate_guardEqualsDisplay() {
+        let cases: [(String, ResolvedItem, Date)] = [
+            ("이른 완료 직후",   press(rec(due: "2026-08-05T08:00"), at: d(8, 5, 7, 30)).next, d(8, 5, 7, 35)),
+            ("이른 완료+회차 뒤", press(rec(due: "2026-08-05T08:00"), at: d(8, 5, 7, 30)).next, d(8, 5, 9)),
+            ("정시 완료 직후",   press(rec(due: "2026-08-05T08:00"), at: d(8, 5, 9)).next,     d(8, 5, 9, 5)),
+            ("완료 전(첫 압)",   rec(due: "2026-08-05T08:00"),                                  d(8, 5, 9)),
+            ("옛 항목(필드 없음)", rec(due: "2026-08-10T08:00", lastDone: "2026-08-01T08:00"),  d(8, 5, 9)),
+        ]
+        for (name, it, now) in cases {
+            let shown = Recurrence.doneThisCycle(it, now: now, calendar: utc)
+            let blocked = Recurrence.completionChanges(for: it, now: now, calendar: utc).isEmpty
+            XCTAssertEqual(shown, blocked, "\(name): 표시와 가드가 갈리면 그 자리가 dead button이다")
+        }
     }
 
-    /// **마감을 손으로 먼 미래로 옮긴 항목의 이른 완료는 막히지 않는다** — 2절의 "직전 완료가 방금 닫은
-    /// 회차의 창 안" 조건이 이걸 지킨다. 이 조건이 없으면 5일 앞 마감을 완료할 수 없게 된다.
+    /// **마감을 손으로 먼 미래로 옮긴 항목의 이른 완료는 막히지 않는다.**
+    /// 옛 항목(완료 증인 없음)이라 폴백 경로 — 값이 지금과 같아야 한다.
     func testFarFutureDue_earlyCompletionNotBlocked() {
         let it = rec(due: "2026-08-10T08:00", lastDone: "2026-08-01T08:00")
-        XCTAssertFalse(Recurrence.alreadyClosedThisCycle(it, now: d(8, 5, 9), calendar: utc))
+        XCTAssertNil(it.fields[Recurrence.lastDoneDueKey], "전제: 옛 항목")
+        XCTAssertFalse(Recurrence.doneThisCycle(it, now: d(8, 5, 9), calendar: utc))
         XCTAssertEqual(press(it, at: d(8, 5, 9)).changes["due"], "2026-08-11T08:00")
     }
 
-    /// 매주·매년도 같은 판정 — `stepBack`이 주기를 따르므로 창이 한 주기다.
+    /// **정정(Stage 2).** 옛 단정: 이른 완료 뒤 **다음 주의 이른 완료(이틀 전)도 통과**한다.
+    /// 이제 막힌다 — 승인된 대가다. 구멍 1(회차 시각 뒤의 재압이 회차를 먹음)을 닫으면 피할 수 없다:
+    /// **"잘못된 재압"과 "다음 회차의 이른 완료"는 필드 상태가 완전히 같고 `now`만 다르다.**
+    /// 둘을 가르려면 "다음 회차가 언제 열리나"가 필요하고, 그 값은 **미리 알림(게시 시작)** 이다.
+    /// 유실이 아니라 기다림이다 — 회차가 열리면 목록에 떠서 재촉한다.
     func testWeekly_recompleteIsIdempotent() {
         let start = rec(due: "2026-08-05T08:00", unit: "weekly")
         let first = press(start, at: d(8, 3, 10))          // 이른 완료(이틀 전)
         XCTAssertEqual(first.changes["due"], "2026-08-12T08:00")
         XCTAssertTrue(press(first.next, at: d(8, 3, 10, 5)).changes.isEmpty)
-        // 다음 주 이른 완료는 정당 — 통과해야 한다.
-        XCTAssertEqual(press(first.next, at: d(8, 10, 10)).changes["due"], "2026-08-19T08:00")
+        XCTAssertTrue(press(first.next, at: d(8, 10, 10)).changes.isEmpty,
+                      "미리 알림이 없으면 회차(08-12 08:00)가 열리기 전엔 다시 못 누른다")
+        XCTAssertEqual(press(first.next, at: d(8, 12, 9)).changes["due"], "2026-08-19T08:00",
+                       "회차가 열리면 정상 통과")
+    }
+
+    /// ★ **위 대가의 반대편 — 미리 알림을 걸면 그 시각부터 열린다.**
+    /// "이르게 하려면 미리 알림을 걸어라"는 미리 알림 칸의 **원래 뜻**(§3-A: 미리 알림 = 게시 시작)과 같다.
+    func testLeadOpensTheNextCycleEarly() {
+        let start = rec(due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")
+        let first = press(start, at: d(8, 5, 7, 30)).next          // → 마감 08-06 08:00 · lead 08-06 07:00
+        XCTAssertTrue(press(first, at: d(8, 6, 6, 30)).changes.isEmpty, "lead 전엔 아직 안 열렸다")
+        XCTAssertEqual(press(first, at: d(8, 6, 7)).changes["due"], "2026-08-07T08:00",
+                       "lead 시각부터 다음 회차의 이른 완료가 열린다")
     }
 
     // MARK: 바뀌면 안 되는 것들(그물)
@@ -126,7 +166,7 @@ final class RecurrenceRecompleteTests: XCTestCase {
     func testFirstCompletion_noHistory_neverBlocked() {
         let fresh = rec(due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")
         XCTAssertNil(Recurrence.lastDone(fresh, calendar: utc), "이력 없음이 이 테스트의 전제")
-        XCTAssertFalse(Recurrence.alreadyClosedThisCycle(fresh, now: d(8, 3, 9), calendar: utc),
+        XCTAssertFalse(Recurrence.doneThisCycle(fresh, now: d(8, 3, 9), calendar: utc),
                        "완료 이력이 없으면 첫 압이다 — 회차 시각 전이어도 막으면 안 된다")
         let c = press(fresh, at: d(8, 3, 9)).changes
         XCTAssertEqual(c["due"], "2026-08-06T08:00")
@@ -134,13 +174,16 @@ final class RecurrenceRecompleteTests: XCTestCase {
         XCTAssertNotNil(c[Recurrence.lastDoneKey])
     }
 
-    /// **다음 회차의 정당한 완료는 막히면 안 된다** — 이른 완료로 하루 넘어간 뒤, 다음 날 또 이르게 완료.
-    /// (가드가 이걸 막으면 매일 약을 이르게 먹는 사람은 이틀에 한 번만 완료할 수 있게 된다.)
-    func testNextCycle_earlyCompletion_mustStillWork() {
-        let start = rec(due: "2026-08-05T08:00")
-        let first = press(start, at: d(8, 5, 7, 30))          // → 08-06 08:00
-        let nextDay = press(first.next, at: d(8, 6, 7, 30))   // 다음 날 이른 완료
-        XCTAssertEqual(nextDay.changes["due"], "2026-08-07T08:00")
+    /// **정정(Stage 2).** 옛 단정: 미리 알림 없는 항목도 **다음 날 07:30(마감 전)에 이르게 완료**된다.
+    /// 옛 주석의 우려 *"막히면 이틀에 한 번만 완료할 수 있게 된다"* 는 **실현되지 않는다** — 매일 되고,
+    /// 다만 **회차가 열린 뒤**(미리 알림 없으면 마감 시각)여야 한다. 30분 기다림이지 유실이 아니다.
+    /// 이르게 하는 습관이 있으면 미리 알림을 걸면 된다(`testLeadOpensTheNextCycleEarly`).
+    func testNextCycle_earlyCompletion_opensWhenTheCycleOpens() {
+        let start = rec(due: "2026-08-05T08:00")               // 미리 알림 없음 → 마감 시각이 곧 게시 시작
+        let first = press(start, at: d(8, 5, 7, 30))           // → 08-06 08:00
+        XCTAssertTrue(press(first.next, at: d(8, 6, 7, 30)).changes.isEmpty, "아직 회차가 안 열렸다")
+        XCTAssertEqual(press(first.next, at: d(8, 6, 8)).changes["due"], "2026-08-07T08:00",
+                       "회차 시각이 되면 열린다(정각 포함)")
     }
 
     /// 다음 날 늦은 완료도 정당하다.
@@ -163,10 +206,14 @@ final class RecurrenceRecompleteTests: XCTestCase {
     func testUndoThenRecomplete_pathStaysOpen() {
         let start = rec(due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")
         let first = press(start, at: d(8, 5, 7, 30))
-        // 취소 = 직전 값 복원(lastDone 제거 + 마감·미리 알림 되돌림)
+        // 취소 = 직전 값 복원. **`lastDoneDue`도 함께 지운다** — `InboxModel.undoRecurComplete`와 같은 규약
+        // (안 지우면 마감만 과거로 가고 증인은 미래를 가리켜 등식이 어긋난 채 남는다).
         let undone = apply(first.next, ["due": "2026-08-05T08:00", "resurface": "2026-08-05T07:00",
-                                       Recurrence.lastDoneKey: ""])
+                                       Recurrence.lastDoneKey: "", Recurrence.lastDoneDueKey: ""])
         XCTAssertNil(Recurrence.lastDone(undone, calendar: utc))
+        XCTAssertNil(Recurrence.lastDoneDue(undone, calendar: utc))
+        XCTAssertFalse(Recurrence.doneThisCycle(undone, now: d(8, 5, 7, 40), calendar: utc),
+                       "취소하면 '완료' 표시가 사라져 취소 버튼도 함께 사라진다 — 이력을 거슬러 못 올라간다")
         let redo = press(undone, at: d(8, 5, 7, 40))
         XCTAssertEqual(redo.changes["due"], "2026-08-06T08:00", "취소 뒤엔 완료가 다시 먹어야 한다")
     }

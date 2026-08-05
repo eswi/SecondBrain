@@ -114,6 +114,36 @@ final class RecurrenceLastDoneDueTests: XCTestCase {
                      "직전 값 없음 → InboxModel이 \"\"로 지운다")
     }
 
+    // MARK: D-3 시나리오 전체 타임라인 (Stage 2 — 실기기 확인표와 같은 표)
+
+    /// **8시 약을 7시 30분에 먹고 누른 뒤, 하루가 흐른다.** (매일 · 자동완성 없음 · lead 07:00 · 마감 08:00)
+    /// D-3에서 실기기로 본 그 항목이고, 아래 표가 내일 폰에서 볼 것과 같아야 한다.
+    ///
+    /// | 시각 | 화면 | 눌렀을 때 |
+    /// |---|---|---|
+    /// | 08-05 07:35 | 이번 회차 완료됨 ✓ + [취소] | (버튼 없음) |
+    /// | 08-05 09:00 | 그대로 — **회차 시각에 안 꺼진다** | (버튼 없음) |
+    /// | 08-06 06:30 | 그대로 | (버튼 없음) |
+    /// | 08-06 07:00 | [이번 것 했어요] — **회차가 열렸다** | 마감 08-07로 전진 |
+    func testTimeline_earlyCompletionThroughNextCycle() {
+        let start = rec(due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")
+        var f = start.fields
+        for (k, v) in changes(start, at: d(8, 5, 7, 30)) { f[k] = v }        // 이른 완료
+        let done = ResolvedItem(id: "a", fields: f, deleted: false, confirmed: false, createdHLC: start.createdHLC)
+        XCTAssertEqual(done.due, "2026-08-06T08:00")
+        XCTAssertEqual(done.fields[Recurrence.lastDoneDueKey], "2026-08-06T08:00")
+
+        for (label, now) in [("직후 07:35", d(8, 5, 7, 35)), ("회차 시각 뒤 09:00", d(8, 5, 9)),
+                             ("한밤 23:00", d(8, 5, 23)), ("다음 날 06:30", d(8, 6, 6, 30))] {
+            XCTAssertTrue(Recurrence.doneThisCycle(done, now: now, calendar: utc),
+                          "\(label): '이번 회차 완료됨'이 유지되어야 한다(만료 금지)")
+            XCTAssertTrue(changes(done, at: now).isEmpty, "\(label): 눌러도 회차가 안 움직인다")
+        }
+        // lead 시각 = 다음 회차가 열리는 순간.
+        XCTAssertFalse(Recurrence.doneThisCycle(done, now: d(8, 6, 7), calendar: utc))
+        XCTAssertEqual(changes(done, at: d(8, 6, 7))["due"], "2026-08-07T08:00")
+    }
+
     // MARK: 병합 (새 필드 = 코드 추가 없이 필드별 LWW)
 
     /// 두 기기의 완료·catch-up이 엇갈리면 **등식이 깨져 under-claim 쪽으로 강등**된다 — 거짓 완료가 아니라.

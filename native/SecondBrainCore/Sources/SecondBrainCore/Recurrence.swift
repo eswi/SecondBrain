@@ -68,22 +68,44 @@ public enum Recurrence {
         it.fields[lastDoneKey].flatMap { ItemSchedule.parseDay($0, calendar: calendar) }
     }
 
-    /// **이번 회차를 실제로 완료했나** (칩·배너·완료버튼 공용). 게이트(`isPublished`)와 **같은 기준**을 본다:
-    /// **마감(앵커)이 미래 = 이번 회차 닫힘.** 완료해야만 마감이 다음 회차로 전진하므로 `마감 > now`가
-    /// "이번 회차 할 일 없음"의 구조적 증거다 → 칩과 게이트가 갈릴 수 없다(2026-08-03 #4 회귀 방지).
+    /// 완료가 옮긴 목적지(없거나 못 읽으면 nil). 이 값이 있으면 새 판정, 없으면 옛 항목 폴백.
+    public static func lastDoneDue(_ it: ResolvedItem, calendar: Calendar = .current) -> Date? {
+        it.fields[lastDoneDueKey].flatMap { ItemSchedule.parseDay($0, calendar: calendar) }
+    }
+
+    /// **이번 회차를 실제로 완료했나** — 표시(칩·배너)·완료 버튼·취소 버튼·재완료 가드가 **모두 이 하나**를 본다.
+    /// (2026-08-05 (b) Stage 2. 정본 §5·§5-A·§5-B.)
     ///
-    /// 단, 마감 전진은 **자동완성(catch-up)** 으로도 일어난다 — 그건 "했다"가 아니라 "넘어갔다".
-    /// 그래서 `lastDone`을 **직전 회차 시각**과 비교해 **실제 완료만** true로 가른다(날짜 비교가 아니라 회차 경계).
-    /// 세 상태: `마감 ≤ now`=아직 / `마감 > now && lastDone ≥ 직전회차`=했다 / 그 외=넘어갔다.
-    /// (이른 완료는 `lastDone < 직전회차`라 under-claim할 수 있으나 — 거짓 "완료"를 내느니 안 내는 쪽이 안전.)
+    /// **세 절, 각각 하는 일:**
+    /// 1. `마감 > now` — 앵커가 미래여야 이번 회차가 닫힌 것. 꺼둔 항목이 앵커를 지나도 칩이 안 남게 하는 절이기도 하다
+    ///    (꺼둠은 영영 게시가 안 되므로 3절만으론 칩이 영구히 남는다).
+    /// 2. `lastDoneDue == 마감` — **완료 vs 넘어감.** 마감 전진은 자동완성(catch-up)으로도 일어나는데 그건
+    ///    "했다"가 아니라 "넘어갔다". catch-up은 이 필드를 안 쓰므로 등식이 깨진다 → **판정으로** 갈린다
+    ///    (문장이 아니라 구조. `RecurrenceHolesTests.testNet_catchUpAndResume...`).
+    /// 3. `!isPublished` — **다음 회차가 아직 안 열렸다.** 이 절이 구멍 2(lead 창의 거짓 완료)를 닫는다.
+    ///
+    /// **왜 3절이 필요한가 (2026-08-05 계측):** §5-B는 *"`마감 > now`가 게이트가 숨기는 조건과 같은 사실이라
+    /// 둘이 갈릴 수 없다"* 고 적었는데 **lead가 있으면 틀리다** — 게이트는 `resurface`를, 판정은 `due`를 본다.
+    /// lead 창(미리 알림~마감)에선 항목이 '지금 챙길 것'에 있는데 칩이 "완료"였다(= 안 먹은 약을 먹었다고 함).
+    /// under-claim은 사람이 다시 누르면 되지만 **거짓 완료는 약을 안 먹고 넘어가게 만든다.**
+    /// 이제 "회차가 열렸나"는 게이트 하나가 정하고, 판정은 그것을 그대로 쓴다.
+    ///
+    /// **옛 항목 폴백:** `lastDoneDue`가 없으면(이 변경 전에 만들어진 항목) **옛 판정 그대로**.
+    /// 마이그레이션 안 한다(저장소 원칙) — 항목은 다음 완료 때 필드를 얻어 저절로 새 경로로 옮겨간다.
+    /// 폴백은 이른 완료를 under-claim한다(그게 옛 동작이다). 회귀선 =
+    /// `RecurrenceHolesTests.testNet_oldItemsWithoutNewFieldKeepTodaysVerdict`.
     ///
     /// 앵커(마감)·주기 없으면 "이번 회차" 자체가 정의 안 되므로 false(되풀이는 마감=앵커가 전제, §3-A).
     public static func doneThisCycle(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
         guard it.type == "recurrence", let u = unit(it),
               let dueStr = it.due, let due = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return false }
-        guard due > now else { return false }                                   // 마감 미래여야 이번 회차 닫힘
-        guard let ld = lastDone(it, calendar: calendar) else { return false }    // 완료 기록 없음 → 넘어감
-        return ld >= stepBack(due, by: u, calendar: calendar)                    // 실제 완료(직전 회차 이후)만 "했다"
+        guard due > now else { return false }                                   // 1. 마감 미래여야 이번 회차 닫힘
+        if let dest = lastDoneDue(it, calendar: calendar) {                      // ── 새 판정
+            return dest == due                                                   // 2. 완료가 만든 마감인가
+                && !ItemSchedule.isPublished(it, now: now, calendar: calendar)   // 3. 다음 회차가 아직 안 열렸나
+        }
+        guard let ld = lastDone(it, calendar: calendar) else { return false }    // ── 옛 항목 폴백(무변경)
+        return ld >= stepBack(due, by: u, calendar: calendar)
     }
 
     /// **완료 버튼이 낼 이벤트 필드 — 분류로 분기(§5, Stage 3의 핵심).**
@@ -94,7 +116,7 @@ public enum Recurrence {
     ///   앵커가 없어 전진할 게 없으면 안 적는다(등식이 성립할 `due`가 없으므로).
     public static func completionChanges(for it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String] {
         guard it.type == "recurrence" else { return ["status": "done"] }
-        if alreadyClosedThisCycle(it, now: now, calendar: calendar) { return [:] }   // 재완료 멱등(D-3 (a))
+        if doneThisCycle(it, now: now, calendar: calendar) { return [:] }   // 재완료 멱등 — 표시와 **같은 판정**
         var c = [lastDoneKey: ItemSchedule.dayTimeString(now, calendar: calendar)]
         if let adv = completionAdvance(it, now: now, calendar: calendar) {
             c.merge(adv) { _, new in new }   // 마감(회차)·미리 알림을 다음 회차로 → 게시 게이트가 즉시 숨긴다(#1·#2)
@@ -103,33 +125,20 @@ public enum Recurrence {
         return c
     }
 
-    /// **이번 회차를 이미 닫았나** — 재완료 멱등의 판정(D-3 (a), 2026-08-05).
-    ///
-    /// **새 필드를 만들지 않는다.** 전진이 정확히 1회차이므로 `stepBack(due)`가 **방금 닫은 회차의 앵커**다
-    /// → 저장할 게 없어 병합 어긋남·마이그레이션·취소 로직 수정이 전부 없다.
-    ///
-    /// **두 절이 필요하다 — 이른 완료와 늦은 완료를 다른 절이 잡는다.**
-    /// 결과는 같지만(둘 다 첫 압만 먹고 재압은 막힘) 탐지는 갈린다. `doneThisCycle`은 **늦은·정시 완료만**
-    /// 잡는다 — 이른 완료는 `lastDone < 직전 회차`라 under-claim으로 false가 되기 때문이다(D-3의 그 대가).
-    /// 그래서 이른 완료는 **"방금 닫은 회차 시각에 아직 도달하지 않았다"** 는 사실로 잡는다.
-    ///
-    /// 2절의 세 조건이 각각 막는 것:
-    /// - `lastDone` 있음 — 완료 이력이 없으면 첫 압이다(막으면 안 됨).
-    /// - `lastDone > 직전직전 회차` — **직전 완료가 방금 닫은 회차의 창 안에서** 일어났어야 한다.
-    ///   이게 없으면 마감을 손으로 먼 미래로 옮긴 항목의 정당한 이른 완료까지 막힌다.
-    /// - `now ≤ 직전 회차` — 아직 그 회차 시각 전이다. 다음 날 이르게 완료하면 이 조건이 풀려 정상 통과한다
-    ///   (막히면 매일 이르게 먹는 사람이 이틀에 한 번만 완료할 수 있게 된다).
-    ///
-    /// 취소 후 재완료는 통과한다 — 취소가 마감을 되돌리면 `stepBack(due)`가 한 회차 더 뒤로 가 2절이 풀린다.
-    /// (하루 N회는 미구현 — 그리드가 시각별로 갈리면 이 판정을 재검토할 것.)
-    static func alreadyClosedThisCycle(_ it: ResolvedItem, now: Date, calendar: Calendar) -> Bool {
-        guard let u = unit(it), let dueStr = it.due,
-              let due = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return false }
-        if doneThisCycle(it, now: now, calendar: calendar) { return true }      // 늦은·정시 완료
-        guard let ld = lastDone(it, calendar: calendar) else { return false }   // 완료 이력 없음 → 첫 압
-        let closed = stepBack(due, by: u, calendar: calendar)                   // 방금 닫은 회차의 앵커
-        return ld > stepBack(closed, by: u, calendar: calendar) && now <= closed
-    }
+    // **`alreadyClosedThisCycle`는 삭제됐다** (2026-08-05, (b) Stage 2).
+    //
+    // D-3 (a)에서 "새 필드 없이" 재완료를 막으려고 `stepBack(due)`를 방금 닫은 회차로 삼는 휴리스틱 2절을
+    // 뒀었는데, 그 2절의 `now ≤ 직전 회차` 조건이 **회차 시각을 지나면 풀렸다**(구멍 1, 계측 2026-08-05):
+    // 이른 완료 07:30 → 08:01·09:00·23:00의 재압이 전부 통과해 마감을 08-07로 또 밀었다.
+    // 즉 (a)가 막은 것은 회차 시각 **이전**의 재압뿐이었고 데이터 유실 경로는 열려 있었다.
+    // §5-B가 후보 ①(가드형)의 단점으로 지적한 "시간이 지나면 다시 벌어진다"가 이 가드 자체에 있었던 셈.
+    //
+    // 이제 **가드 = 표시 = `doneThisCycle`** 하나다. 그래서:
+    // - **dead button이 구조적으로 사라진다** — 판정이 false여서 버튼이 보이는 상태에서 누르면
+    //   `completionAdvance`가 반드시 마감을 미래로 밀고 `lastDoneDue`를 같이 써서 판정이 참이 된다.
+    //   `DetailView`의 낙관적 `cycleDoneLocal = true`가 재계산과 **항상 일치**한다.
+    // - 옛 항목(필드 없음)도 안전하다 — 첫 압이 필드를 심으므로 두 번째 압부터는 새 판정이 본다.
+    // - 하루 N회를 넣을 때 재검토할 휴리스틱이 남아 있지 않다(등식은 시각별 회차에도 그대로 성립).
 
     /// **완료 취소용 — 어떤 필드든 직전 값**(이벤트 이력의 두 번째 최신). 없으면 nil.
     /// 완료는 lastDone·resurface 둘 다 바꾸므로 되돌리기도 둘 다 이걸로 복원한다(streak·회차 보존).

@@ -67,12 +67,10 @@ final class RecurrenceHolesTests: XCTestCase {
         XCTAssertTrue(press(first.next, at: d(8, 5, 7, 35)).changes.isEmpty,
                       "대조군 — 회차 시각 **전**의 재압은 (a) 가드가 실제로 막는다")
 
-        // ↓ 옳은 기대. 지금은 실패한다(마감이 08-07로 또 밀린다).
-        XCTExpectFailure("구멍 1 — Stage 2에서 판정이 바뀌면 이 감쌈을 지운다") {
-            let again = press(first.next, at: d(8, 5, 9))             // 회차 시각을 지난 뒤 재압
-            XCTAssertTrue(again.changes.isEmpty, "이미 닫은 회차의 재압은 회차 시각 뒤에도 빈 변경이어야 한다")
-            XCTAssertEqual(again.next.due, "2026-08-06T08:00", "08-06 회차가 사라지면 안 된다")
-        }
+        // ✅ 닫혔다 (Stage 2, 2026-08-05) — `XCTExpectFailure` 감쌈을 지운 것이 이 구멍이 막힌 diff다.
+        let again = press(first.next, at: d(8, 5, 9))                 // 회차 시각을 지난 뒤 재압
+        XCTAssertTrue(again.changes.isEmpty, "이미 닫은 회차의 재압은 회차 시각 뒤에도 빈 변경이어야 한다")
+        XCTAssertEqual(again.next.due, "2026-08-06T08:00", "08-06 회차가 사라지면 안 된다")
     }
 
     // MARK: - 구멍 2 — lead 창의 거짓 완료
@@ -102,11 +100,9 @@ final class RecurrenceHolesTests: XCTestCase {
         XCTAssertTrue(ItemSchedule.isPublished(after, now: inLead, calendar: utc),
                       "대조군 — 이 시각 이 항목은 '지금 챙길 것'에 있다(게시됨)")
 
-        // ↓ 옳은 기대. 지금은 실패한다(게시된 채로 "완료"라고 말한다).
-        XCTExpectFailure("구멍 2 — Stage 2에서 게이트 절이 들어오면 이 감쌈을 지운다") {
-            XCTAssertFalse(Recurrence.doneThisCycle(after, now: inLead, calendar: utc),
-                           "게시된(= 이번 회차가 열린) 항목을 '완료'라 하면 안 된다 — 거짓 완료")
-        }
+        // ✅ 닫혔다 (Stage 2, 2026-08-05) — 판정의 3절(`!isPublished`)이 게이트를 그대로 쓴다.
+        XCTAssertFalse(Recurrence.doneThisCycle(after, now: inLead, calendar: utc),
+                       "게시된(= 이번 회차가 열린) 항목을 '완료'라 하면 안 된다 — 거짓 완료")
     }
 
     // MARK: - 그물 (Stage 2 뒤에도 그대로여야 하는 것)

@@ -151,12 +151,16 @@ struct InboxView: View {
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
     @ViewBuilder private func doneDeferActions(_ item: ResolvedItem) -> some View {
-        Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
+        if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+            Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
+        }
         Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
     }
     /// 시점 있는 항목(지금 챙길 것) 컨텍스트: 완료·미루기·삭제.
     @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
-        Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
+        if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+            Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
+        }
         Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
@@ -168,7 +172,9 @@ struct InboxView: View {
         if ClassSpecCatalog.uses(item.type, .resurface) {
             Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
         }
-        Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
+        if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+            Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
+        }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
 

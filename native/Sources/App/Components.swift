@@ -127,6 +127,15 @@ func recurStatusChip(_ it: ResolvedItem, now: Date = Date()) -> (text: String, o
     return nil
 }
 
+/// 목록의 **"했어요" 액션을 그릴지** — 칩과 **같은 판정**(`doneThisCycle`)을 본다.
+/// 안 물리면 칩이 "완료"인데 스와이프엔 "했어요"가 남아 **눌러도 아무 일이 없다**
+/// (§5-A가 지목한 dead button 둘 중 목록 쪽. 상세 버튼은 `completionRow`가 같은 판정으로 이미 갈린다).
+/// 되풀이가 아니면 항상 false — 일반 항목의 완료는 그대로다.
+/// 취소는 여기 안 넣는다(상세에서) — 목록 스와이프에 되돌리기를 두면 오조작이 쉽다.
+func cycleAlreadyDone(_ it: ResolvedItem, now: Date = Date()) -> Bool {
+    it.type == "recurrence" && Recurrence.doneThisCycle(it, now: now)
+}
+
 /// 목록 **오른쪽 시각 칩**(§6-B 보조 시각) — D-day 배지의 **시각 세분**. **마감(기한) 기준만**이다.
 /// "며칠/몇시간 남음"은 마감 기준이라는 날짜 역할 분리 원칙을 그대로 따른다(D-day 배지 = `deadlineDay`).
 /// 마감에 시각이 있을 때만: 오늘이면 "N시간 남음"/"지남", 다른 날이면 마감 "HH:mm".

@@ -47,14 +47,18 @@ struct LivingView: View {
                             Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
                         }
                         .swipeActions(edge: .leading) {
-                            Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
+                            if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+                                Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
+                            }
                             // 미루기는 미리 알림을 쓰는 분류에서만(정보·아이디어는 뺀다 — §7(a)). 완료는 남는다.
                             if ClassSpecCatalog.uses(item.type, .resurface) {
                                 Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
                             }
                         }
                         .contextMenu {
-                            Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
+                            if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+                                Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
+                            }
                             if ClassSpecCatalog.uses(item.type, .resurface) {
                                 Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
                             }
