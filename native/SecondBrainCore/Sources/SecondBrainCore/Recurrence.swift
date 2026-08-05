@@ -65,13 +65,43 @@ public enum Recurrence {
     /// **완료 버튼이 낼 이벤트 필드 — 분류로 분기(§5, Stage 3의 핵심).**
     /// - 되풀이 → **마지막 완료 시점만 기록**(status 안 건드림 → 항목이 살아있음, 안 사라짐).
     /// - 그 외 → **status=done**(영구 종료·보관함행 — 기존 동작 그대로).
+    /// - **재완료는 멱등**(D-3 (a), 2026-08-05) — 이미 닫은 회차에 또 누르면 **빈 변경**을 돌려준다.
     public static func completionChanges(for it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String] {
         guard it.type == "recurrence" else { return ["status": "done"] }
+        if alreadyClosedThisCycle(it, now: now, calendar: calendar) { return [:] }   // 재완료 멱등(D-3 (a))
         var c = [lastDoneKey: ItemSchedule.dayTimeString(now, calendar: calendar)]
         if let adv = completionAdvance(it, now: now, calendar: calendar) {
             c.merge(adv) { _, new in new }   // 마감(회차)·미리 알림을 다음 회차로 → 게시 게이트가 즉시 숨긴다(#1·#2)
         }
         return c
+    }
+
+    /// **이번 회차를 이미 닫았나** — 재완료 멱등의 판정(D-3 (a), 2026-08-05).
+    ///
+    /// **새 필드를 만들지 않는다.** 전진이 정확히 1회차이므로 `stepBack(due)`가 **방금 닫은 회차의 앵커**다
+    /// → 저장할 게 없어 병합 어긋남·마이그레이션·취소 로직 수정이 전부 없다.
+    ///
+    /// **두 절이 필요하다 — 이른 완료와 늦은 완료를 다른 절이 잡는다.**
+    /// 결과는 같지만(둘 다 첫 압만 먹고 재압은 막힘) 탐지는 갈린다. `doneThisCycle`은 **늦은·정시 완료만**
+    /// 잡는다 — 이른 완료는 `lastDone < 직전 회차`라 under-claim으로 false가 되기 때문이다(D-3의 그 대가).
+    /// 그래서 이른 완료는 **"방금 닫은 회차 시각에 아직 도달하지 않았다"** 는 사실로 잡는다.
+    ///
+    /// 2절의 세 조건이 각각 막는 것:
+    /// - `lastDone` 있음 — 완료 이력이 없으면 첫 압이다(막으면 안 됨).
+    /// - `lastDone > 직전직전 회차` — **직전 완료가 방금 닫은 회차의 창 안에서** 일어났어야 한다.
+    ///   이게 없으면 마감을 손으로 먼 미래로 옮긴 항목의 정당한 이른 완료까지 막힌다.
+    /// - `now ≤ 직전 회차` — 아직 그 회차 시각 전이다. 다음 날 이르게 완료하면 이 조건이 풀려 정상 통과한다
+    ///   (막히면 매일 이르게 먹는 사람이 이틀에 한 번만 완료할 수 있게 된다).
+    ///
+    /// 취소 후 재완료는 통과한다 — 취소가 마감을 되돌리면 `stepBack(due)`가 한 회차 더 뒤로 가 2절이 풀린다.
+    /// (하루 N회는 미구현 — 그리드가 시각별로 갈리면 이 판정을 재검토할 것.)
+    static func alreadyClosedThisCycle(_ it: ResolvedItem, now: Date, calendar: Calendar) -> Bool {
+        guard let u = unit(it), let dueStr = it.due,
+              let due = ItemSchedule.parseDay(dueStr, calendar: calendar) else { return false }
+        if doneThisCycle(it, now: now, calendar: calendar) { return true }      // 늦은·정시 완료
+        guard let ld = lastDone(it, calendar: calendar) else { return false }   // 완료 이력 없음 → 첫 압
+        let closed = stepBack(due, by: u, calendar: calendar)                   // 방금 닫은 회차의 앵커
+        return ld > stepBack(closed, by: u, calendar: calendar) && now <= closed
     }
 
     /// **완료 취소용 — 어떤 필드든 직전 값**(이벤트 이력의 두 번째 최신). 없으면 nil.

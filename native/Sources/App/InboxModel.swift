@@ -250,7 +250,11 @@ final class InboxModel: ObservableObject {
     func delete(_ item: ResolvedItem)   { append(.delete(id: item.id, hlc: tick())) }
     /// 완료 — **분류로 분기**(Stage 3). 되풀이=마지막 완료 시점만(항목 살아있음) / 그 외=status=done(보관함행).
     func markDone(_ item: ResolvedItem) {
-        append(.edit(id: item.id, hlc: tick(), Recurrence.completionChanges(for: item, now: Date())))
+        let changes = Recurrence.completionChanges(for: item, now: Date())
+        // **이미 닫은 회차면 빈 변경**(재완료 멱등, D-3 (a)) → 이벤트를 쓰지 않는다.
+        // `append`는 `appendBatch`와 달리 빈 것을 안 걸러내므로, 안 막으면 누를 때마다 빈 `edit` 줄이 쌓인다.
+        guard !changes.isEmpty else { return }
+        append(.edit(id: item.id, hlc: tick(), changes))
     }
 
     /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·마감·미리 알림을 전부 직전 값으로 되돌린다**(streak·회차 보존).
