@@ -257,10 +257,16 @@ final class InboxModel: ObservableObject {
         append(.edit(id: item.id, hlc: tick(), changes))
     }
 
-    /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·마감·미리 알림을 전부 직전 값으로 되돌린다**(streak·회차 보존).
+    /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·lastDoneDue·마감·미리 알림을 전부 직전 값으로 되돌린다**
+    /// (streak·회차 보존).
+    ///
+    /// **`lastDoneDue`도 반드시 함께 되돌린다**(2026-08-05) — 안 되돌리면 마감만 과거로 가고 증인은 미래를
+    /// 가리켜 등식이 어긋난 채 남는다. 되돌릴 직전 값이 없으면(첫 완료의 취소) **빈 값으로 지운다** —
+    /// 낡은 등식을 남기느니 옛 항목 폴백으로 내려보내는 쪽이 안전하다. (`lastDone`과 같은 규약.)
     func undoRecurComplete(_ item: ResolvedItem) {
         var changes: [String: String] =
-            [Recurrence.lastDoneKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneKey) ?? ""]
+            [Recurrence.lastDoneKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneKey) ?? "",
+             Recurrence.lastDoneDueKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneDueKey) ?? ""]
         if let priorD = Recurrence.priorValue(in: allEvents, id: item.id, key: "due") { changes["due"] = priorD }
         if let priorR = Recurrence.priorValue(in: allEvents, id: item.id, key: "resurface") { changes["resurface"] = priorR }
         append(.edit(id: item.id, hlc: tick(), changes))

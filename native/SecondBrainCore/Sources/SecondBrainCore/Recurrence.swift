@@ -39,6 +39,30 @@ public enum Recurrence {
     public static let pausedAtKey = "recurPausedAt"   // 꺼둔 시점(시각 표준형 T) — 놓침을 안 세는 구간의 시작
     public static let lastDoneKey = "lastDone"   // 마지막 완료 시점(시각 표준형 T)
 
+    /// **완료가 회차를 옮긴 목적지**(= 그 완료가 만든 `due` 값) — "지금의 `due`는 완료로 열린 것인가"의 증인.
+    /// (2026-08-05, (b) "닫은 회차를 기록" 결정. 정본 §5-B.)
+    ///
+    /// **필드가 답을 못 해서 표시를 못 고쳤다.** `completionAdvance`와 `catchUpChanges`가 **같은 `advanceBy`** 로
+    /// 마감을 옮기고 catch-up은 `lastDone`을 안 건드리므로, 데이터엔 "언제 완료했나"만 있고
+    /// **"어느 회차를 닫았나"가 없었다** → 이른 완료(A)와 넘어감(B)의 필드 모양이 같았다(§5-B 계측 표).
+    /// 이 필드가 그 답이다.
+    ///
+    /// **"닫은 회차"가 아니라 "전진한 목적지"를 적는다** (§5-B 스케치와 다른 점 — 의도적):
+    /// 밀린 완료(마감 08-02를 08-05에 완료 → k=4회차 전진)에서 "닫은 회차"를 적으면 현재 `due`와의 거리 k가
+    /// 데이터에 없어 판정이 다시 휴리스틱이 된다. 그리고 그 경우가 하필 **"3일 놓친 약을 오늘 먹기"**,
+    /// 이 설계의 출발점이다. 목적지를 적으면 **`lastDoneDue == due` 등식 하나**로 끝나고 k와 무관하다.
+    /// 병합에서도 안전하다 — 두 기기의 완료·catch-up이 필드별 LWW로 엇갈리면 등식이 깨져
+    /// **under-claim(안전) 쪽으로 강등**되지, 거짓 완료가 되지 않는다. 닫은 회차 자체는 이벤트 로그에 남는다.
+    ///
+    /// **값 형식 = `due`의 형식을 그대로 복사**(T 표준형을 강제하지 않는다). due에 시각이 있으면 `...T08:00`,
+    /// date-only 되풀이면 `2026-08-06`. `formatLike` 원칙과 같다 — 없는 시각을 만들어 붙이지 않는다.
+    /// 비교는 `parseDay`로 파싱해서 하므로 형식이 갈려도 거짓 양성이 안 난다.
+    ///
+    /// **catch-up·켜기 보정은 이 필드를 절대 안 건드린다** — 그게 "완료"와 "넘어감"을 가르는 정보다.
+    /// 문장이 아니라 구조로 지킨다: `advanceBy`는 due/resurface만 쓰고, 이 필드는 `completionChanges`만 얹는다
+    /// (회귀선 = `RecurrenceHolesTests.testNet_catchUpAndResumeNeverWriteCompletionFields`).
+    public static let lastDoneDueKey = "lastDoneDue"
+
     /// 마지막 완료 시점(없거나 못 읽으면 nil). 형식 = 시각 표준형 "YYYY-MM-DD'T'HH:mm".
     public static func lastDone(_ it: ResolvedItem, calendar: Calendar = .current) -> Date? {
         it.fields[lastDoneKey].flatMap { ItemSchedule.parseDay($0, calendar: calendar) }
@@ -66,12 +90,15 @@ public enum Recurrence {
     /// - 되풀이 → **마지막 완료 시점만 기록**(status 안 건드림 → 항목이 살아있음, 안 사라짐).
     /// - 그 외 → **status=done**(영구 종료·보관함행 — 기존 동작 그대로).
     /// - **재완료는 멱등**(D-3 (a), 2026-08-05) — 이미 닫은 회차에 또 누르면 **빈 변경**을 돌려준다.
+    /// - **완료만이 `lastDoneDue`를 쓴다**(2026-08-05) — 전진한 목적지를 함께 적어 catch-up의 전진과 갈라놓는다.
+    ///   앵커가 없어 전진할 게 없으면 안 적는다(등식이 성립할 `due`가 없으므로).
     public static func completionChanges(for it: ResolvedItem, now: Date, calendar: Calendar = .current) -> [String: String] {
         guard it.type == "recurrence" else { return ["status": "done"] }
         if alreadyClosedThisCycle(it, now: now, calendar: calendar) { return [:] }   // 재완료 멱등(D-3 (a))
         var c = [lastDoneKey: ItemSchedule.dayTimeString(now, calendar: calendar)]
         if let adv = completionAdvance(it, now: now, calendar: calendar) {
             c.merge(adv) { _, new in new }   // 마감(회차)·미리 알림을 다음 회차로 → 게시 게이트가 즉시 숨긴다(#1·#2)
+            if let newDue = adv["due"] { c[lastDoneDueKey] = newDue }   // 목적지 = 완료의 증인
         }
         return c
     }
