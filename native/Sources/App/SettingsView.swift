@@ -164,7 +164,9 @@ struct SettingsView: View {
         case .unreachable:      return "연결 안 됨 — 기억은 안전"
         case .downloading:      return "내려받는 중"
         case .empty:            return "\(model.folderName) · 비어 있음"
-        case .ok(let files):    return "\(model.folderName) · \(files)개"
+        // **"파일"을 붙인다** — "3개"만 있으면 무엇이 3개인지 화면에서 알 수 없다.
+        // 줄 이름이 「연결된 폴더」이므로 세는 것은 파일 수가 맞다.
+        case .ok(let files):    return "\(model.folderName) · 파일 \(files)개"
         }
     }
 
