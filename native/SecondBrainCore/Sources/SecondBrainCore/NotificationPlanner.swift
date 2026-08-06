@@ -99,7 +99,8 @@ public struct NotificationPlanResult: Equatable, Sendable {
 /// 정렬은 (시각, id, 종류)로 **완전 결정적** — 상한에 걸릴 때 무엇이 남는지가 흔들리지 않게.
 /// 배분은 `NotificationBudget`(반복/일반 분리 + 라운드로빈 + 단방향 대여, 5-B) — `planned(...)` 참조.
 ///
-/// **문구는 아직 한 종류다** — 곧/지금/오늘 세 톤으로 가르는 것은 Stage 5-D. 여기선 지점만 갈랐다.
+/// **문구는 세 톤**(Stage 5-D, 2026-08-06) — 「곧 챙길 것」/「지금 챙길 것」/「오늘 기억할 것」. `title(kind:telling:)` 참조.
+/// 본문(body)은 **원문 그대로**다 — 알림이 기억 자체를 보여준다(요약·가공 안 함).
 ///
 /// **체인(Stage 5-C, 2026-08-06)** — 되풀이는 항목당 **다음 K회차**를 미리 낸다(`chainBundles`).
 /// 호라이즌 = **시간 창 `now + horizonDays`(기본 7) × 예산**. 회차 수로 자르지 않는 이유는 §9 Stage 5-C 참조:
@@ -234,10 +235,11 @@ public enum NotificationPlanner {
             points = points.filter { $0.kind == .lead }
         }
 
+        let telling = notifyOnly(it)
         let planned = points.filter { $0.fire > now }.map {   // 미래만
             PlannedNotification(id: it.id, kind: $0.kind, fireDate: $0.fire,
-                                title: "받은함 · 곧 닥칠 것",   // 5-D에서 곧/지금/오늘로 갈린다
-                                body: it.raw ?? "(항목)",
+                                title: title(kind: $0.kind, telling: telling),
+                                body: it.raw ?? "(항목)",   // 원문 그대로 — 알림이 기억 자체를 보여준다
                                 cycleKey: cycleKey)
         }
         guard !planned.isEmpty else { return nil }
@@ -319,6 +321,28 @@ public enum NotificationPlanner {
     private static func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? {
         guard let a, let b else { return nil }
         return (a, b)
+    }
+
+    /// **알림 제목 — 세 톤**(Stage 5-D, 2026-08-06. 문구는 사용자가 정했다).
+    ///
+    /// | 톤 | 문구 | 언제 |
+    /// |---|---|---|
+    /// | 재촉 · 예고 | **곧 챙길 것** | 완료를 요구하는 항목의 미리 알림(lead) |
+    /// | 재촉 · 지금 | **지금 챙길 것** | 완료를 요구하는 항목의 마감/회차 |
+    /// | 통보 | **오늘 기억할 것** | 완료를 안 요구하는 것(자동 완성이 있는 되풀이 — 생일·기일) |
+    ///
+    /// **"챙기다" = 재촉 / "기억하다" = 통보**로 갈리고, `…것` 어법과 핵심어 "기억"을 유지한다.
+    ///
+    /// **★ 옛 제목 `"받은함 · 곧 닥칠 것"`은 화면에 없는 말이 둘이었다.**
+    /// - **"받은함"** — 탭 이름은 **"새로운 기억"** 이다. 코드·프롬프트에만 사는 옛말이 알림으로 새어 나왔다.
+    /// - **"곧 닥칠 것"** — 섹션 이름은 **"지금 챙길 것"** 이다. 2026-08-03에 Core 주석의 같은 오용을
+    ///   정정했는데 **정작 사용자 눈에 닿는 이 문자열이 남아 있었다**(주석은 고치고 화면은 안 고친 꼴).
+    ///
+    /// **「지금 챙길 것」은 섹션 이름과 일부러 같다** — 알림을 탭했을 때 갈 곳의 이름과 맞춘 것이다.
+    /// ⚠️ **다만 지금은 탭해도 그리로 안 간다**(§9 미결 "알림 탭 착지" 참조). 문구가 약속을 앞서 있다.
+    private static func title(kind: PlannedNotification.Kind, telling: Bool) -> String {
+        if telling { return "오늘 기억할 것" }        // 통보 — lead든 회차든 한 건뿐이라 종류를 안 본다
+        return kind == .lead ? "곧 챙길 것" : "지금 챙길 것"
     }
 
     /// **알려주는 알림**(완료를 요구하지 않는 것) = 자동 완성이 있는 되풀이. 생일이 대표.
