@@ -27,6 +27,24 @@ public enum EditDiff {
         return changes
     }
 
+    /// **완료·취소가 저장값을 옮겼을 때 화면 draft에 되받을 칸**을 고른다 (2026-08-06 `가`).
+    ///
+    /// 완료·취소는 마감·미리 알림을 바꾸는데 화면 draft가 안 따라가면, 그 낡은 값 위에서 부분 저장이
+    /// 일어나 **검사한 쌍 ≠ 저장되는 쌍**이 된다(`ItemSchedule.violatesRule1(applying:to:)`가 막는 그 상황).
+    /// draft를 같이 옮겨 **낡음 자체를 없애는 것**이 이 함수의 몫이다.
+    ///
+    /// **⚠️ 사람이 손댄 칸은 절대 건드리지 않는다** — 미저장 편집을 완료가 조용히 지우면 그건 새로운 사고다.
+    /// `touched` = 지금 draft가 저장값과 다른 칸(= `changes`의 키). 그 칸은 사람의 값이 이긴다.
+    ///
+    /// - Parameter applied: 완료·취소가 실제로 쓴 변경(`Recurrence.completionChanges` / 취소의 되돌림).
+    /// - Parameter touched: 사람이 이미 고쳐 둔 칸의 이름.
+    /// - Returns: draft에 그대로 넣을 `[칸: 값]`. 값이 `""`·`"none"`이면 "시점 없음"(비움)이다.
+    ///   여기 **없는 칸은 건드리지 않는다** — "안 바뀜"과 "비움"이 섞이지 않게 키의 유무로 가른다.
+    public static func draftSync(applied: [String: String], touched: Set<String>,
+                                 fields: Set<String> = ["due", "resurface"]) -> [String: String] {
+        applied.filter { fields.contains($0.key) && !touched.contains($0.key) }
+    }
+
     /// type 정규화: nil·"" = 미분류(동일).
     private static func normType(_ t: String?) -> String { (t?.isEmpty ?? true) ? "" : t! }
 

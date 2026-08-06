@@ -176,6 +176,25 @@ public enum ItemSchedule {
         return calendar.startOfDay(for: rd) >= calendar.startOfDay(for: dd)             // date-only: 같은 날부터 위반(하루 전)
     }
 
+    /// 규칙 1 위반 여부를 **저장될 최종 쌍**으로 판정한다 — 화면 draft 쌍이 아니라
+    /// "**현재 항목 + 이번에 저장할 변경**"을 필드별 LWW로 겹친 결과.
+    ///
+    /// **왜 이 함수가 따로 필요한가 (2026-08-06 `가`):** 위 `violatesRule1`은 넘겨받은 두 값만 본다.
+    /// 그런데 저장은 `EditDiff`가 낸 **바뀐 필드만** 내보내고 그것이 현재 저장값 위에 얹힌다.
+    /// 화면이 낡아지는 경로가 하나라도 있으면(완료→취소·외부 동기화·배경 전진) **적법한 쌍을 검사하고
+    /// 위반인 쌍을 저장**한다. 검사와 저장이 같은 쌍을 보게 하는 것이 이 함수의 몫이다.
+    /// **되풀이 전용이 아니다** — 부분 저장 + 필드별 LWW를 쓰는 모든 항목에 해당한다.
+    ///
+    /// - Parameter changes: 저장할 변경(`EditDiff.changes` 결과). 값 지움은 `""`/`"none"` — 둘 다
+    ///   `parseDay`가 nil을 주므로 "시점 없음"으로 자연히 처리된다(제약 없음).
+    /// - Parameter item: **현재 저장 상태**(화면 스냅숏이 아니라 모델의 최신 항목이어야 한다 — 부르는 쪽 책임).
+    public static func violatesRule1(applying changes: [String: String], to item: ResolvedItem,
+                                     now: Date, calendar: Calendar = .current) -> Bool {
+        violatesRule1(resurface: changes["resurface"] ?? item.resurface,
+                      due: changes["due"] ?? item.due,
+                      now: now, calendar: calendar)
+    }
+
     /// 미루기(+7일)의 결과 — 규칙 1을 지키며 결정한다. **위반 상태로 저장하는 경로는 없다.**
     public enum DeferOutcome: Equatable {
         /// 미룸 — `to`(YYYY-MM-DD)로 저장. `capped`=true면 상한(마감−1일)에 걸려 당겨졌다는 뜻(알린다).

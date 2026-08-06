@@ -19,6 +19,18 @@ public struct ResolvedItem: Sendable, Equatable, Hashable {
     public var source: String? { fields["source"] }
     public var date: String? { fields["date"] }
     public var time: String? { fields["time"] }
+
+    /// 변경 한 묶음을 **필드별 LWW 한 번**으로 겹친 결과. `edit` 이벤트가 반영된 뒤의 모습과 같다.
+    /// **빈 문자열은 값 지움**(앱의 `set k=` 규약 — `MergeEngine.merge`의 처리와 같다).
+    /// 제어 필드(`deleted`·`confirmed`)와 `createdHLC`는 안 건드린다 — 편집으로 바뀌는 값이 아니다.
+    ///
+    /// 쓰임: 저장 **전에** "저장되면 어떤 모습인가"를 알아야 하는 자리
+    /// (규칙 1 최종 검사 · 상세 화면의 기준선 갱신 — 2026-08-06 `가`).
+    public func applying(_ changes: [String: String]) -> ResolvedItem {
+        var f = fields
+        for (k, v) in changes { if v.isEmpty { f.removeValue(forKey: k) } else { f[k] = v } }
+        return ResolvedItem(id: id, fields: f, deleted: deleted, confirmed: confirmed, createdHLC: createdHLC)
+    }
 }
 
 public struct MergeResult: Sendable, Equatable {

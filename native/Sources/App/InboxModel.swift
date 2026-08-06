@@ -254,12 +254,16 @@ final class InboxModel: ObservableObject {
 
     func delete(_ item: ResolvedItem)   { append(.delete(id: item.id, hlc: tick())) }
     /// 완료 — **분류로 분기**(Stage 3). 되풀이=마지막 완료 시점만(항목 살아있음) / 그 외=status=done(보관함행).
-    func markDone(_ item: ResolvedItem) {
+    /// - Returns: **실제로 쓴 변경**(빈 dict = 아무것도 안 씀). 화면이 draft를 같이 옮기는 데 쓴다
+    ///   (`EditDiff.draftSync` — 2026-08-06 `가`: 화면이 안 따라가서 낡은 값 위에 부분 저장이 났다).
+    @discardableResult
+    func markDone(_ item: ResolvedItem) -> [String: String] {
         let changes = Recurrence.completionChanges(for: item, now: Date())
         // **이미 닫은 회차면 빈 변경**(재완료 멱등, D-3 (a)) → 이벤트를 쓰지 않는다.
         // `append`는 `appendBatch`와 달리 빈 것을 안 걸러내므로, 안 막으면 누를 때마다 빈 `edit` 줄이 쌓인다.
-        guard !changes.isEmpty else { return }
+        guard !changes.isEmpty else { return [:] }
         append(.edit(id: item.id, hlc: tick(), changes))
+        return changes
     }
 
     /// 되풀이 완료 취소 — 완료가 바꾼 **lastDone·lastDoneDue·마감·미리 알림을 전부 직전 값으로 되돌린다**
@@ -268,13 +272,17 @@ final class InboxModel: ObservableObject {
     /// **`lastDoneDue`도 반드시 함께 되돌린다**(2026-08-05) — 안 되돌리면 마감만 과거로 가고 증인은 미래를
     /// 가리켜 등식이 어긋난 채 남는다. 되돌릴 직전 값이 없으면(첫 완료의 취소) **빈 값으로 지운다** —
     /// 낡은 등식을 남기느니 옛 항목 폴백으로 내려보내는 쪽이 안전하다. (`lastDone`과 같은 규약.)
-    func undoRecurComplete(_ item: ResolvedItem) {
+    /// - Returns: **실제로 되돌린 변경**. `markDone`과 같은 이유로 화면이 draft를 같이 되돌리는 데 쓴다.
+    ///   직전 값이 없는 칸은 dict에 안 담긴다 = "그 칸은 안 움직였다"(화면도 안 건드려야 한다).
+    @discardableResult
+    func undoRecurComplete(_ item: ResolvedItem) -> [String: String] {
         var changes: [String: String] =
             [Recurrence.lastDoneKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneKey) ?? "",
              Recurrence.lastDoneDueKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneDueKey) ?? ""]
         if let priorD = Recurrence.priorValue(in: allEvents, id: item.id, key: "due") { changes["due"] = priorD }
         if let priorR = Recurrence.priorValue(in: allEvents, id: item.id, key: "resurface") { changes["resurface"] = priorR }
         append(.edit(id: item.id, hlc: tick(), changes))
+        return changes
     }
 
     /// 미루기(+7일) — 규칙 1(미리 알림 ≤ 마감 − 1일)을 지키며 미룬다. 위반 상태로 저장하지 않는다.
@@ -311,6 +319,13 @@ final class InboxModel: ObservableObject {
         guard type != item.type else { return }
         append(.edit(id: item.id, hlc: tick(), ["type": type]))
     }
+
+    /// **id로 현재 항목을 다시 집는다.** 상세 화면의 `item`은 화면을 열 때의 **스냅숏**이라
+    /// 그 뒤 모델이 움직이면(완료·취소·외부 동기화·`catchUpRecurrence`의 배경 전진) 낡는다.
+    /// **저장 검사처럼 "저장될 최종 상태"를 알아야 하는 자리**는 스냅숏이 아니라 이것을 봐야 한다
+    /// (2026-08-06 `가` — 검사한 쌍은 적법했는데 저장되는 쌍이 위반이었다).
+    /// 못 찾으면 nil — 부르는 쪽이 스냅숏으로 폴백한다(항목이 완료·삭제로 목록에서 빠진 경우).
+    func current(_ id: String) -> ResolvedItem? { liveNonDone.first { $0.id == id } }
 
     /// 상세 화면 draft 커밋(edit-policy §2 [저장]). 바뀐 필드를 **이벤트 1개**(단일 HLC)로 붙인다
     /// → "[저장] 한 번 = 이력 한 묶음". `changes`엔 confirmed가 없다(수정 ≠ 기억하기) — EditDiff가 보장.

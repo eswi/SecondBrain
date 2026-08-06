@@ -40,6 +40,11 @@ struct DetailView: View {
     /// 이번 회차 완료 상태(로컬 — 즉시 반영, isRemembered와 같은 이유로 stale item 대신 로컬로 든다).
     /// 판정 = `Recurrence.doneThisCycle`(마감 앵커 기준, 게이트와 동일 — 2026-08-03 #4).
     @State private var cycleDoneLocal: Bool
+    /// **draft의 기준선 = "화면이 아는 저장값".** `EditDiff`가 이것과 draft를 비교해 바뀐 칸을 낸다.
+    /// `item`(스냅숏)을 직접 쓰지 않는 이유: **완료·취소가 이 화면 안에서 저장값을 옮기기 때문**이다.
+    /// 그때 draft만 옮기고 기준선을 안 옮기면 **누른 것만으로 "저장하지 않은 수정이 있어요"** 가 뜬다.
+    /// 둘을 같이 옮기면 화면은 낡지 않고 dirty도 거짓으로 켜지지 않는다 (2026-08-06 `가`).
+    @State private var baseline: ResolvedItem
 
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
@@ -72,21 +77,22 @@ struct DetailView: View {
         _recurAuto = State(initialValue: Recurrence.autoComplete(item).rawValue)
         _recurPaused = State(initialValue: Recurrence.isPaused(item))
         _cycleDoneLocal = State(initialValue: Recurrence.doneThisCycle(item, now: Date()))
+        _baseline = State(initialValue: item)
     }
 
     private var changes: [String: String] {
-        var c = EditDiff.changes(type: type, due: due, resurface: resurface, raw: raw, from: item)
+        var c = EditDiff.changes(type: type, due: due, resurface: resurface, raw: raw, from: baseline)
         foldRecurChanges(into: &c)   // 되풀이 설정도 같은 [저장] 이벤트에 묶는다(새 필드).
         return c
     }
 
     /// 되풀이 설정 draft를 원본과 비교해 바뀐 새 필드만 changes에 넣는다(값 안 지움 — 미설정은 빈 문자열).
     private func foldRecurChanges(into c: inout [String: String]) {
-        let oldUnit = item.fields[Recurrence.unitKey] ?? ""
+        let oldUnit = baseline.fields[Recurrence.unitKey] ?? ""
         if (recurUnit ?? "") != oldUnit { c[Recurrence.unitKey] = recurUnit ?? "" }
-        let oldAuto = item.fields[Recurrence.autoKey] ?? Recurrence.AutoComplete.none.rawValue
+        let oldAuto = baseline.fields[Recurrence.autoKey] ?? Recurrence.AutoComplete.none.rawValue
         if recurAuto != oldAuto { c[Recurrence.autoKey] = recurAuto }
-        let oldPaused = item.fields[Recurrence.pausedKey] == "true"
+        let oldPaused = baseline.fields[Recurrence.pausedKey] == "true"
         if recurPaused != oldPaused {
             c[Recurrence.pausedKey] = recurPaused ? "true" : "false"
             // **끌 때 그 시점을 남긴다** — 놓침을 여기까지만 세고(꺼둔 기간은 안 셈), 켤 때 이만큼만
@@ -530,17 +536,42 @@ struct DetailView: View {
                 Label("이번 회차 완료됨", systemImage: "checkmark.circle.fill")
                     .font(.callout.weight(.semibold)).foregroundStyle(Palette.accent)
                 Spacer()
-                Button("취소") { model.undoRecurComplete(item); cycleDoneLocal = false }
+                Button("취소") { runCycleAction { model.undoRecurComplete($0) }; cycleDoneLocal = false }
                     .font(.caption).tint(Palette.overdue)
             }
         } else {
-            Button { model.markDone(item); cycleDoneLocal = true } label: {
+            Button { runCycleAction { model.markDone($0) }; cycleDoneLocal = true } label: {
                 Label("이번 것 했어요", systemImage: "checkmark.circle")
                     .font(.callout.weight(.semibold)).frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent).tint(Palette.accent)
         }
+    }
+
+    /// **완료·취소를 이 화면에서 실행하고, 화면(draft·기준선)을 저장값에 맞춘다.** (2026-08-06 `가`)
+    ///
+    /// 완료·취소는 **마감·미리 알림을 옮긴다.** 옛 코드는 `cycleDoneLocal`만 뒤집어서 draft가 낡았고,
+    /// 그 낡은 값 위에서 손편집 + 부분 저장이 일어나 **규칙 1 위반이 저장됐다**(항목 `가`).
+    /// 여기서 화면을 같이 옮겨 **낡음 자체를 없앤다.** (저장 쪽 방어선은 `commit()`이 따로 든다 — 둘 다 필요하다:
+    /// 이건 화면을 지키고, 그건 낡음의 다른 경로까지 막는다.)
+    ///
+    /// ⚠️ **사람이 손댄 칸은 안 건드린다(회귀선 6).** 마감을 고쳐 둔 채 완료를 누르면 **그 편집은 남고
+    /// 미리 알림만 따라간다.** 어느 칸이 사람 것인지는 `changes`의 키로 안다 — `EditDiff`와 같은
+    /// 정규화를 그대로 쓰므로 판정이 갈릴 일이 없다. 판정은 **행동 전에** 재 둔다(행동이 값을 바꾸므로).
+    ///
+    /// 완료·취소에 넘기는 항목도 **모델의 현재 항목**이다 — 낡은 스냅숏에서 회차를 전진시키지 않는다.
+    private func runCycleAction(_ run: (ResolvedItem) -> [String: String]) {
+        let touched = Set(changes.keys)                 // ← 반드시 먼저
+        let applied = run(model.current(item.id) ?? item)
+        guard !applied.isEmpty else { return }          // 아무것도 안 썼으면 화면도 그대로
+        for (key, value) in EditDiff.draftSync(applied: applied, touched: touched) {
+            let v: String? = (value.isEmpty || value == "none") ? nil : value
+            if key == "due" { due = v } else if key == "resurface" { resurface = v }
+        }
+        // 기준선은 **손댄 칸까지 포함해 전부** 옮긴다 = 저장값과 같아진다.
+        // 손댄 칸은 draft가 사람 값 그대로이므로 그 칸만 dirty로 남아 [저장]에 실린다.
+        baseline = baseline.applying(applied)
     }
 
     /// 라벨 + 오른쪽 Menu 한 줄(반복 설정 공용).
@@ -681,8 +712,19 @@ struct DetailView: View {
     private func commit() {
         // 규칙 1 최종 방어선: 미리 알림이 마감 하루 전보다 늦으면(마감 미래 기준) 저장을 막고 알린다.
         // DatePicker 범위 제한을 우회했거나 마감을 나중에 앞으로 당겨 역전된 경우를 여기서 잡는다.
-        if ItemSchedule.violatesRule1(resurface: resurface, due: due, now: Date()) {
-            let ub = ItemSchedule.resurfaceUpperBound(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(resurface ?? "") != nil)
+        //
+        // **검사 대상 = 저장될 최종 쌍**(화면 draft 쌍이 아니다 — 2026-08-06 `가`).
+        // 저장은 `EditDiff`가 낸 **바뀐 필드만** 내보내고 그것이 **현재 저장값** 위에 필드별 LWW로 얹힌다.
+        // `item`은 스냅숏이라 낡을 수 있으므로(완료→취소·외부 동기화·배경 전진) 모델의 현재 항목을 다시 집는다.
+        // ⚠️ **`changes`는 계속 스냅숏 기준으로 낸다** — 그게 "사람이 실제로 건드린 것"이고, 신선한 항목과
+        // 비교하면 안 건드린 칸까지 실려 **모델의 새 값을 낡은 화면 값으로 덮어쓴다**(취소된 완료가 되살아난다).
+        // 그래서 진단이 "저장 범위"가 아니라 **검사 입력**을 고치는 쪽이었다.
+        let saving = changes
+        let fresh = model.current(item.id) ?? item
+        if ItemSchedule.violatesRule1(applying: saving, to: fresh, now: Date()) {
+            let finalDue = saving["due"] ?? fresh.due
+            let finalResurface = saving["resurface"] ?? fresh.resurface
+            let ub = ItemSchedule.resurfaceUpperBound(due: finalDue, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(finalResurface ?? "") != nil)
             let cap = ub.map { InboxModel.korShort(ItemSchedule.dayString($0)) } ?? ""
             noticeDialog = "미리 알림은 마감 하루 전(\(cap))까지만 설정할 수 있어요"
             return
@@ -693,7 +735,7 @@ struct DetailView: View {
             showPrincipleAutoRemember = true
             return
         }
-        model.commitEdits(item, changes: changes)   // 빈 변경이면 내부에서 무시
+        model.commitEdits(item, changes: saving)   // 빈 변경이면 내부에서 무시
         dismiss()
     }
 
