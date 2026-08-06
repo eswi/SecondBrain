@@ -1,4 +1,5 @@
 import Foundation
+import SecondBrainCore
 
 /// 사용자가 고른 **iCloud Drive의 열린 폴더**(예: `iCloud Drive/SecondBrain`)에 대한 접근.
 /// 문서 피커로 1회 선택 → **보안 스코프 북마크**로 영속. iCloud entitlement 불필요 → 무료 서명 유지.
@@ -52,26 +53,54 @@ enum FragmentFolder {
 
     /// 폴더의 `inbox*.md`를 모두 (파일명, 내용)으로. iCloud 미다운로드 파일은 당겨오기 시도.
     static func readFragments() -> [(name: String, text: String)] {
-        (withFolder { folder -> [(name: String, text: String)] in
-            let fm = FileManager.default
-            guard let entries = try? fm.contentsOfDirectory(
-                at: folder, includingPropertiesForKeys: nil) else { return [] }
-            let frags = entries
-                .filter { $0.lastPathComponent.hasPrefix("inbox") && $0.pathExtension == "md" }
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            var out: [(name: String, text: String)] = []
-            let coord = NSFileCoordinator()
-            for u in frags {
-                try? fm.startDownloadingUbiquitousItem(at: u)   // iCloud 원격만 있으면 당겨오기
-                var cerr: NSError?
-                coord.coordinate(readingItemAt: u, options: [], error: &cerr) { r in
-                    if let t = try? String(contentsOf: r, encoding: .utf8) {
-                        out.append((name: u.lastPathComponent, text: t))
-                    }
+        read().fragments
+    }
+
+    /// **읽기 + 그 과정에서 드러난 사실**(사양서 §0-A-1). 판정은 Core(`FolderLinkJudge`)가 한다 —
+    /// 여기서는 **실제로 시도해 본 결과만** 모은다.
+    ///
+    /// **옛 구조가 왜 안 됐나:** 화면은 `hasFolder`(= `UserDefaults`에 데이터가 있나)로 판정했는데
+    /// 그건 **저장값**이라 "못 연다"를 원리적으로 못 잡는다. 그래서 연결이 끊겨도 안내 화면에
+    /// **도달조차 안 하고** 빈 목록이 떴다. **읽어봐야 아는 것을 읽지 않고 판정하고 있었다.**
+    ///
+    /// 옛 코드가 조용히 삼키던 자리 셋을 여기서 전부 사실로 남긴다:
+    /// 북마크 해소(`resolved`) · **보안 스코프 접근**(`accessGranted` — 반환값을 보지도 않았다) ·
+    /// 디렉터리 목록(`directoryListed`).
+    static func read() -> (fragments: [(name: String, text: String)], status: FolderLink, folderName: String) {
+        guard hasFolder else { return ([], .notChosen, "") }
+        guard let folder = resolve() else { return ([], .unreachable, "") }
+        let name = folder.lastPathComponent
+
+        let accessed = folder.startAccessingSecurityScopedResource()
+        defer { if accessed { folder.stopAccessingSecurityScopedResource() } }
+
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
+            return ([], FolderLinkJudge.status(bookmarkExists: true, resolved: true,
+                                               accessGranted: accessed, directoryListed: false,
+                                               fragmentFiles: 0, readableFiles: 0), name)
+        }
+        let frags = entries
+            .filter { $0.lastPathComponent.hasPrefix("inbox") && $0.pathExtension == "md" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        var out: [(name: String, text: String)] = []
+        let coord = NSFileCoordinator()
+        for u in frags {
+            try? fm.startDownloadingUbiquitousItem(at: u)   // iCloud 원격만 있으면 당겨오기
+            var cerr: NSError?
+            coord.coordinate(readingItemAt: u, options: [], error: &cerr) { r in
+                if let t = try? String(contentsOf: r, encoding: .utf8) {
+                    out.append((name: u.lastPathComponent, text: t))
                 }
             }
-            return out
-        }) ?? []
+        }
+        // 목록엔 잡혔는데 내용이 하나도 안 읽히면 = iCloud에서 아직 안 내려온 것(`.downloading`).
+        // **새 기기에서 가장 흔한 경로**이고, 이 구분이 없으면 "비었다"와 같아진다.
+        let status = FolderLinkJudge.status(bookmarkExists: true, resolved: true,
+                                            accessGranted: accessed, directoryListed: true,
+                                            fragmentFiles: frags.count, readableFiles: out.count)
+        return (out, status, name)
     }
 
     // MARK: 쓰기 (append-only, 조율)

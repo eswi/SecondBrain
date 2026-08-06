@@ -133,7 +133,8 @@ struct InboxView: View {
             Text("새로운 기억").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
             Spacer()
             // 폴더 관리는 설정으로 이관 — 여기는 수집(마이크). 폴더 없으면 온보딩 프롬프트가 처리.
-            if !model.needsFolder {
+            // ⚠️ **"비었다"에서도 마이크는 있어야 한다** — 그 화면이 "아래 마이크를 눌러"라고 말한다(§0-A-1).
+            if model.folderLink.canCapture {
                 Button { showCapture = true } label: {
                     Image(systemName: "mic.fill").font(.title3).foregroundStyle(Palette.accent)
                 }
@@ -221,17 +222,58 @@ struct InboxView: View {
             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
     }
 
+    /// **폴더 연결 안내 — 네 상태를 갈라 말한다**(사양서 §0-A-1, 문구 확정 2026-08-06).
+    ///
+    /// 여기가 하나였을 때 **연결이 끊긴 것과 비어 있는 것이 같게 보였다** —
+    /// 정확히는 "못 연다"가 이 화면에 **도달조차 못 하고** 빈 목록만 떠서 **기억이 사라진 것처럼** 보였다.
+    ///
+    /// ⚠️ **"기억은 안전합니다"는 못 연다·받는 중에만 쓴다.** 비었다에 대고 말하면 **거짓일 수 있다** —
+    /// 폴더는 열렸는데 파일이 사라진 경우도 그 상태로 오기 때문이다.
+    /// ⚠️ **비었다는 사고가 아니다.** 새 폴더를 막 골랐을 때의 정상 상태이므로 경고하지 않는다.
     private var folderPrompt: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "folder.badge.questionmark").font(.system(size: 44)).foregroundStyle(Palette.textTertiary)
-            Text("받은함 폴더를 선택하세요").font(.headline).foregroundStyle(Palette.textPrimary)
-            Text("iCloud Drive의 SecondBrain 폴더를 고르면\ninbox.md와 조각 파일들을 함께 읽습니다.")
+            Image(systemName: promptIcon).font(.system(size: 44)).foregroundStyle(Palette.textTertiary)
+            Text(promptTitle).font(.headline).foregroundStyle(Palette.textPrimary)
+                .multilineTextAlignment(.center)
+            Text(promptBody)
                 .font(.callout).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
-            Button("폴더 선택") { showPicker = true }.buttonStyle(.borderedProminent).tint(Palette.accent)
+            // 고르는 버튼은 폴더가 필요한 두 상태에만. 받는 중·비었다는 사람이 할 일이 없다.
+            if model.folderLink == .notChosen || model.folderLink == .unreachable {
+                Button(model.folderLink == .notChosen ? "폴더 선택" : "폴더 다시 선택") { showPicker = true }
+                    .buttonStyle(.borderedProminent).tint(Palette.accent)
+            }
             Spacer()
         }
         .padding()
+    }
+
+    private var promptIcon: String {
+        switch model.folderLink {
+        case .notChosen:   return "folder.badge.questionmark"
+        case .unreachable: return "folder.badge.minus"
+        case .downloading: return "icloud.and.arrow.down"
+        default:           return "tray"
+        }
+    }
+    private var promptTitle: String {
+        switch model.folderLink {
+        case .notChosen:   return "기억을 담을 폴더를 골라주세요"
+        // 안심을 **제목 첫 줄**에 둔다 — 이 화면을 보는 사람은 기억이 사라진 것으로 보이는 순간에 있고,
+        // 놀란 사람은 첫 줄만 읽는다.
+        case .unreachable: return "기억은 안전합니다. 폴더 연결이 끊겼어요"
+        case .downloading: return "아직 다 받아오지 못했어요"
+        default:           return "아직 담은 기억이 없어요"
+        }
+    }
+    private var promptBody: String {
+        switch model.folderLink {
+        case .notChosen:   return "iCloud Drive의 SecondBrain 폴더를 고르면\n기억이 이 기기에서도 열립니다."
+        case .unreachable: return "파일은 iCloud에 그대로 있습니다.\n폴더를 다시 골라주세요."
+        // **왜 비어 보이는지**를 말하는 유일한 자리 — 새 기기에서 처음 겪는 상태다.
+        case .downloading: return "폴더는 열렸는데 파일이 아직 iCloud에서\n안 내려왔습니다. 곧 나타납니다."
+        default:           return "아래 마이크를 눌러 말하거나 적어보세요."
+        }
     }
 }
 

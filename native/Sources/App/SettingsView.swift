@@ -32,11 +32,11 @@ struct SettingsView: View {
                 Palette.bg.ignoresSafeArea()
                 List {
                     Section {
-                        row("연결된 폴더", model.needsFolder ? "미선택" : model.sourceLabel)
+                        row("연결된 폴더", folderStatusLabel)
                         Button {
                             showPicker = true
                         } label: {
-                            Label(model.needsFolder ? "폴더 선택" : "폴더 변경", systemImage: "folder")
+                            Label(model.folderLink.isLinked ? "폴더 변경" : "폴더 선택", systemImage: "folder")
                                 .foregroundStyle(Palette.accent)
                         }
                         .listRowBackground(Palette.surface)
@@ -148,6 +148,23 @@ struct SettingsView: View {
         case .done(let n):     return n > 0 ? "\(base)\n방금 \(n)개를 분류했습니다." : base
         case .failed(let msg): return "\(base)\n실패: \(msg)"
         default:               return base
+        }
+    }
+
+    /// **「연결된 폴더」 — 다섯 상태를 갈라 보인다**(사양서 §0-A-1, 문구 확정 2026-08-06).
+    /// 옛 `(빈 폴더)` 하나가 **못 연다·받는 중·비었다·정상을 전부 덮고 있었다.**
+    ///
+    /// **개수를 보이는 이유:** 잘 돌고 있다는 것이 한눈에 보이고, **숫자가 줄면 그 자체가 신호**가 된다
+    /// (일부만 내려받힌 경우도 여기서 작은 수로 드러난다).
+    /// **"못 연다"에만 안심을 붙인다** — 좁은 줄에 넣는 것은 보통 과하지만,
+    /// **이 줄을 보러 온 사람은 이미 놀란 뒤**다.
+    private var folderStatusLabel: String {
+        switch model.folderLink {
+        case .notChosen:        return "안 골랐음"
+        case .unreachable:      return "연결 안 됨 — 기억은 안전"
+        case .downloading:      return "내려받는 중"
+        case .empty:            return "\(model.folderName) · 비어 있음"
+        case .ok(let files):    return "\(model.folderName) · \(files)개"
         }
     }
 

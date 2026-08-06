@@ -10,8 +10,14 @@ final class InboxModel: ObservableObject {
     @Published private(set) var liveNonDone: [ResolvedItem] = []   // 처리 대상(완료·삭제 제외, 원칙 포함)
     @Published private(set) var doneItems: [ResolvedItem] = []     // 보관함 완료 섹션
     @Published private(set) var trashed: [ResolvedItem] = []       // 보관함 삭제 섹션(tombstone + discard)
-    @Published var sourceLabel = ""
-    @Published var needsFolder = false            // 폴더 미선택 → 피커 안내
+    /// 연결된 폴더 이름(설정 화면이 보여준다). 못 열거나 안 골랐으면 빈 문자열.
+    @Published private(set) var folderName = ""
+    /// **폴더 연결 상태**(사양서 §0-A-1). 옛 `needsFolder`(Bool)를 대체한다 —
+    /// 그건 "북마크 데이터가 있나"만 보는 **저장값 판정**이라 **"못 연다"를 원리적으로 못 잡았고**,
+    /// 연결이 끊겨도 안내 화면에 도달조차 못 한 채 빈 목록이 떠 **기억이 사라진 것처럼 보였다.**
+    @Published private(set) var folderLink: FolderLink = .notChosen
+    /// 옛 이름 호환 — 화면이 "안내를 띄울지"를 이걸로 묻던 자리. 뜻이 넓어졌다(미선택 → 안내 필요).
+    var needsFolder: Bool { folderLink.needsGuidance }
     /// 알림 예산 회계 한 줄(5-B) — 몇 건 등록됐고 **예산 때문에 몇 회차가 잘렸는지**.
     /// 지금은 확인 경로(디버그 화면이 읽거나 콘솔 로그)일 뿐 화면에 안 띄운다 — 보여줄 방법은 나중에 정한다.
     @Published var notifyBudget = ""
@@ -152,40 +158,40 @@ final class InboxModel: ObservableObject {
     /// **파일 I/O(iCloud 조율 읽기)는 백그라운드**에서 돈다 — 메인 스레드를 막지 않는다.
     /// (콜드 iCloud에서 동기 조율 읽기가 수십 초 앱을 얼리던 문제 수정.) 결과 반영만 메인.
     func reload() async {
-        guard FragmentFolder.hasFolder else {
-            #if DEBUG
-            if SampleData.useInSimulator {
-                needsFolder = false
-                resolve(EventLog.parse(SampleData.text), label: "샘플(시뮬레이터)")
-                return
-            }
-            #endif
-            needsFolder = true
-            liveNonDone = []; doneItems = []; trashed = []
-            sourceLabel = "폴더 미선택"
+        #if DEBUG
+        if !FragmentFolder.hasFolder, SampleData.useInSimulator {
+            folderLink = .ok(files: 1)
+            resolve(EventLog.parse(SampleData.text))
             return
         }
-        needsFolder = false
+        #endif
         loadGen &+= 1
         let gen = loadGen
-        let (events, label) = await Self.readAndParse()
+        // **상태는 읽어봐야 안다** — `hasFolder`(저장값)로 미리 가르지 않는다(사양서 §0-A-1).
+        let (events, status, name) = await Self.readAndParse()
         guard gen == loadGen else { return }   // 그사이 더 최신 로드가 시작됨 → 낡은 결과 버림
-        resolve(events, label: label)
+        folderLink = status
+        folderName = name
+        guard case .ok = status else {
+            // 못 연다·받는 중·비었다·안 골랐다 — **목록을 비우되 상태는 화면이 갈라 말한다.**
+            liveNonDone = []; doneItems = []; trashed = []
+            return
+        }
+        resolve(events)
     }
 
-    /// 폴더의 조각을 읽고 파싱 — 전부 **메인 밖**(Task.detached). 순수 값(Event: Sendable)만 돌려준다.
-    private static func readAndParse() async -> ([Event], String) {
+    /// 폴더의 조각을 읽고 파싱 — 전부 **메인 밖**(Task.detached). 순수 값(Event·FolderLink: Sendable)만 돌려준다.
+    private static func readAndParse() async -> ([Event], FolderLink, String) {
         await Task.detached(priority: .userInitiated) {
-            let frags = FragmentFolder.readFragments()
+            let (frags, status, name) = FragmentFolder.read()
             var events: [Event] = []
             for f in frags { events.append(contentsOf: EventLog.parse(f.text)) }
-            let label = frags.isEmpty ? "(빈 폴더)" : frags.map(\.name).joined(separator: ", ")
-            return (events, label)
+            return (events, status, name)
         }.value
     }
 
     /// 이벤트 배열을 병합해 상태에 반영(시계 전진·알림 재조정 포함).
-    private func resolve(_ events: [Event], label: String) {
+    private func resolve(_ events: [Event]) {
         allEvents = events   // 이력 요약용 원본 보관
         // 본 이벤트 최대 HLC 이상으로 시계 전진(인과성) + 영속
         if let maxH = events.map(\.hlc).max() {
@@ -199,7 +205,6 @@ final class InboxModel: ObservableObject {
         liveNonDone = active.filter { $0.status != "done" }
         doneItems = active.filter { $0.status == "done" }
         trashed = r.deleted + r.live.filter { $0.type == "discard" }
-        sourceLabel = label
 
         catchUpRecurrence()   // 되풀이 지난 회차 자동완성(자동완성 있는 것만, 멱등) — 앱 열 때/행동 후
         scheduleNotifications()
