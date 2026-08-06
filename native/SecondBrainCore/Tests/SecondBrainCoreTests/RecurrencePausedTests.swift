@@ -59,8 +59,9 @@ final class RecurrencePausedTests: XCTestCase {
         XCTAssertTrue(off.isEmpty)
         let on = NotificationPlanner.plan(items: [rec(due: "2026-08-05T08:00", paused: "false")],
                                          now: now, calendar: utc)
-        XCTAssertEqual(on.map { $0.id }, ["a"])
-        XCTAssertEqual(on.first?.fireDate, d(8, 5, 8))
+        // 체인(5-C) 이후 켠 항목은 **여러 회차**를 낸다 — 이 줄이 보는 건 개수가 아니라 **켜면 나온다**는 것.
+        XCTAssertEqual(Set(on.map { $0.id }), ["a"])
+        XCTAssertEqual(on.first?.fireDate, d(8, 5, 8))   // 첫 회차는 그대로
     }
 
     /// 꺼둔 되풀이만 빠지고 **나머지는 그대로** — 상한·정렬에 영향 없음.
@@ -70,7 +71,9 @@ final class RecurrencePausedTests: XCTestCase {
                      rec("B", due: "2026-08-06T08:00"),                    // 남음(필드 없음)
                      plain("C", due: "2026-08-05", paused: "true")]        // 남음(되풀이 아님)
         let plan = NotificationPlanner.plan(items: items, now: now, calendar: utc, hour: 9)
-        XCTAssertEqual(plan.map { $0.id }, ["C", "B"])                     // 08-05 09:00, 08-06 08:00
+        // 체인(5-C) 이후 B는 여러 회차를 낸다. 이 줄이 보는 건 **누가 들어오고 누가 빠지나** + 앞 순서다.
+        XCTAssertEqual(Set(plan.map { $0.id }), ["C", "B"])                // A(꺼둠)만 빠졌다
+        XCTAssertEqual(plan.prefix(2).map { $0.id }, ["C", "B"])           // 08-05 09:00, 08-06 08:00
     }
 
     // MARK: 2. 게시 게이트
@@ -170,7 +173,10 @@ final class RecurrencePausedTests: XCTestCase {
         XCTAssertTrue(ItemSchedule.isPublished(it, now: now, calendar: utc))
         XCTAssertNotNil(Recurrence.catchUpChanges(it, now: now, calendar: utc))
         let future = rec(due: "2026-08-06T08:00")
-        XCTAssertEqual(NotificationPlanner.plan(items: [future], now: now, calendar: utc).count, 1)
+        // 체인(5-C) 이후 개수는 창·예산이 정한다 — 이 줄이 보는 건 **필드가 없어도 계획이 나온다**는 것.
+        let plan = NotificationPlanner.plan(items: [future], now: now, calendar: utc)
+        XCTAssertFalse(plan.isEmpty)
+        XCTAssertEqual(plan.first?.fireDate, d(8, 6, 8))
     }
 
     /// 이 변경 **전에** 꺼둔 항목(= `recurPausedAt` 없는 꺼둠)은 옛 동작으로 폴백 — 크래시·데이터 변화 없음.

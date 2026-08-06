@@ -147,7 +147,9 @@ final class NotificationPlannerTests: XCTestCase {
             items: [recur("생신", due: "2026-08-20T09:00", resurface: "2026-08-17T09:00", auto: "endOfDay")],
             now: now, calendar: cal)
         XCTAssertEqual(withLead.map { $0.kind }, [.lead])
-        XCTAssertEqual(withLead.first?.requestKey, "생신:lead")
+        // 식별자에 **회차**가 들어간다(5-C) — 한 항목이 여러 회차를 내므로 종류만으론 안 갈린다.
+        // (이 항목은 첫 회차가 창 밖이라 한 회차만 나온다 — 그래도 회차 키는 붙는다.)
+        XCTAssertEqual(withLead.first?.requestKey, "생신:2026-08-20:lead")
         // lead가 없으면 회차 하나.
         let noLead = NotificationPlanner.plan(items: [recur("생신2", due: "2026-08-20T09:00", auto: "noon")],
                                               now: now, calendar: cal)

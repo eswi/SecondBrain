@@ -35,8 +35,10 @@ enum NotificationScheduler {
             content.sound = .default
             let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: p.fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-            // 식별자 = `sb:<항목id>:<lead|due>` — 한 항목이 두 지점을 내므로 종류까지 넣어야 한다(5-A).
-            // 안 갈면 두 번째 `add`가 첫 번째를 덮어써 조용히 한 건만 남는다.
+            // 식별자 = `sb:<항목id>:<회차날짜>:<lead|due>` — 한 항목이 **여러 회차 × 두 지점**을 내므로
+            // 종류·회차까지 넣어야 한다(5-A에서 종류, 5-C에서 회차).
+            // 안 갈면 뒤의 `add`가 앞의 것을 덮어써 **체인이 조용히 한 건으로 줄어든다.**
+            // (체인이 아닌 것은 옛 형식 `sb:<id>:<kind>` 그대로 — 형식이 섞여도 무해하다.)
             // 옛 형식(`sb:<id>`)의 잔여물은 신경 쓸 필요 없다 — 아래처럼 매번 전부 지우고 다시 등록하므로.
             let req = UNNotificationRequest(identifier: idPrefix + p.requestKey, content: content, trigger: trigger)
             try? await center.add(req)

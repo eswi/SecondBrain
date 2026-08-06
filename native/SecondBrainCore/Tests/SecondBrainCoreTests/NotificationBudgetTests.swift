@@ -67,11 +67,13 @@ final class NotificationBudgetTests: XCTestCase {
         let r = NotificationPlanner.planned(items: recurs, now: now, calendar: utc, budget: budget)
 
         XCTAssertEqual(r.usedRecurring, 2)                 // 3칸 중 2칸만 — 쪼개서 3칸 채우지 않는다
-        XCTAssertEqual(r.droppedRecurringCycles, 1)
-        // 등록된 항목은 반드시 lead·회차 **둘 다** 가진다.
-        for id in Set(r.scheduled.map { $0.id }) {
-            let kinds = Set(r.scheduled.filter { $0.id == id }.map { $0.kind })
-            XCTAssertEqual(kinds, [.lead, .due], "\(id)가 반쪽만 등록됐다")
+        // 체인(5-C) 이후 `droppedRecurringCycles`는 **체인 길이**를 같이 센다(a·b의 뒷 회차들).
+        // 이 줄이 보는 건 "b의 **첫** 회차가 못 들어갔다" 하나다 — 그게 진짜 손실이다.
+        XCTAssertEqual(r.droppedFirstRoundCycles, 1)
+        // 등록된 것은 **회차마다** lead·회차 둘 다 가진다(묶음을 쪼개지 않는다 = 이 테스트의 본체).
+        for key in Set(r.scheduled.map { "\($0.id)|\($0.cycleKey ?? "")" }) {
+            let kinds = Set(r.scheduled.filter { "\($0.id)|\($0.cycleKey ?? "")" == key }.map { $0.kind })
+            XCTAssertEqual(kinds, [.lead, .due], "\(key)가 반쪽만 등록됐다")
         }
     }
 
@@ -123,10 +125,23 @@ final class NotificationBudgetTests: XCTestCase {
                      med("r1", due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")]
         let r = NotificationPlanner.planned(items: items, now: now, calendar: utc, budget: budget)
         XCTAssertEqual(r.droppedPlainCycles, 1)
-        XCTAssertEqual(r.droppedRecurringCycles, 1)      // 2슬롯 묶음이 1칸에 안 들어간다
-        XCTAssertEqual(r.droppedCycles, 2)
-        XCTAssertEqual(r.droppedSlots, 3)                // 일반 1 + 반복 2
-        XCTAssertTrue(r.summary.contains("⚠️잘림"), r.summary)
+        XCTAssertGreaterThanOrEqual(r.droppedRecurringCycles, 1)   // 2슬롯 묶음이 1칸에 안 들어간다(+체인 뒷 회차)
+        // **진짜 손실은 라운드 1 잘림뿐**(5-C) — p2 하나 + r1의 첫 회차 하나.
+        XCTAssertEqual(r.droppedFirstRoundCycles, 2)
+        XCTAssertTrue(r.summary.contains("⚠️알림 없음"), r.summary)
+    }
+
+    /// **체인이 예산에 걸려 짧아진 것은 경고가 아니다**(5-C). 라운드 1이 다 들어갔으면 ⚠️를 켜지 않는다.
+    /// 안 가르면 체인은 예산을 끝까지 쓰므로 경고가 **상시** 켜져 신호가 죽는다.
+    func testChainShrinkIsNotAWarning() {
+        // 반복 1개 · 2슬롯/회차 · 몫 5 → 첫 회차는 넉넉히 들어가고 뒷 회차들만 잘린다.
+        let budget = NotificationBudget(total: 5, recurring: 5, plain: 0)
+        let r = NotificationPlanner.planned(items: [med("r", due: "2026-08-05T08:00", resurface: "2026-08-05T07:00")],
+                                            now: now, calendar: utc, budget: budget)
+        XCTAssertEqual(r.droppedFirstRoundCycles, 0)         // 첫 회차는 들어갔다 = 손실 없음
+        XCTAssertGreaterThan(r.droppedCycles, 0)             // 뒷 회차는 잘렸다
+        XCTAssertFalse(r.summary.contains("⚠️"), r.summary)  // 그래도 경고는 안 뜬다
+        XCTAssertTrue(r.summary.contains("체인 축소"), r.summary)
     }
 
     /// 아무것도 안 잘리면 경고가 안 뜬다(잡음 방지).
