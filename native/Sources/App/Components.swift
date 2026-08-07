@@ -116,15 +116,82 @@ func displaySchedule(_ v: String, now: Date = Date(), calendar: Calendar = .curr
 /// 저장 문자열의 시각 구분자 `T`를 사람이 읽게 공백으로("2026-08-05T19:00" → "2026-08-05 19:00"). date-only는 그대로.
 func displayDateTime(_ v: String) -> String { v.replacingOccurrences(of: "T", with: " ") }
 
-/// 되풀이 상태 칩(목록, §4) — 놓침이면 "N일 놓침"(coral=overdue, 진짜 경고) / 이번 회차 완료면 "완료"(accent). 아니면 nil.
-/// "이번 회차 했나"가 목록에서 한눈에 보이게(완료 후 살아있는 기억으로 옮겨가도 티가 남).
+/// 목록 상태 칩 — **칩 자리는 한 줄에 하나뿐**이라 세 신호가 여기서 우선순위를 다툰다.
+///
+/// | 순위 | 칩 | 색 | 언제 |
+/// |---|---|---|---|
+/// | 1 | "N일 놓침" | **coral**(경고) | 되풀이가 회차를 건너뛰어 쌓였다 |
+/// | 2 | "8/14에 다시 · 7일 늦음" | **amber**(주의) | **늦었는데 숨겨진 것**(D, 2026-08-07) |
+/// | 3 | "완료" | accent | 이번 회차를 실제로 했다 |
+///
+/// **1이 2를 이긴다** — coral(경고) > amber(주의)의 한 단계 위계를 지킨다(D-4). 놓침이 있으면 그것부터 봐야 한다.
+/// **2와 3은 서로 배타적이라 순서가 뜻이 없다** — `doneThisCycle`은 `마감 > now`(1절)를,
+/// `overdueHidden`은 `마감 ≤ now`(3절)를 요구하므로 **둘이 동시에 참일 수 없다.**
+///
 /// 판정은 게이트와 같은 마감 앵커 기준(`doneThisCycle`) — 옛 날짜기준 `doneToday`는 게이트와 갈려 모순을 냈다(2026-08-03 #4).
-func recurStatusChip(_ it: ResolvedItem, now: Date = Date()) -> (text: String, overdue: Bool)? {
-    guard it.type == "recurrence" else { return nil }
-    let missed = Recurrence.missed(it, now: now)
-    if missed > 0 { return ("\(missed)일 놓침", true) }
-    if Recurrence.doneThisCycle(it, now: now) { return ("완료", false) }
+func statusChip(_ it: ResolvedItem, now: Date = Date()) -> (text: String, tint: Color)? {
+    if it.type == "recurrence" {
+        let missed = Recurrence.missed(it, now: now)
+        if missed > 0 { return ("\(missed)일 놓침", Palette.overdue) }
+    }
+    if let oh = ItemSchedule.overdueHidden(it, now: now) {
+        return (overdueHiddenChipText(oh), Palette.today)
+    }
+    if it.type == "recurrence", Recurrence.doneThisCycle(it, now: now) { return ("완료", Palette.accent) }
     return nil
+}
+
+/// **늦었는데 숨겨진 것**의 칩 문구 — 「8/14에 다시 · 7일 늦음」(2026-08-07, 문구는 사용자가 정했다).
+///
+/// **★ "숨겨짐"이라고 말하지 않는다.** 그 상태를 만든 것은 **사람 자신**이고(미루기를 눌렀거나 날짜를 옮겼거나),
+/// 앱이 "숨겨졌습니다"라고 알리는 것은 **자기가 치운 것을 앱에게 듣는 꼴**이다.
+/// 알릴 것은 **"언제 돌아오나"** 와 **"그것이 마감보다 뒤다"** 둘뿐이다.
+///
+/// **늦은 날 수가 0이면 그 부분을 뺀다** — 「0일 늦음」이라는 말은 안 쓴다(오늘 마감이 지난 경우).
+/// 늦었다는 것 자체는 **색(amber)** 이 말한다.
+///
+/// 폭 실측(iPhone 16 Pro 393pt · `MemoryRow`): 칩+원문 예산 274pt 중 **긴 형태 103pt**(최악 114pt).
+/// 들어가지만 그 줄의 원문이 약 34자 → 24자로 준다. **칩이 붙은 줄은 "왜 안 보이나"를 알려주는 자리**라
+/// 원문 10자보다 값이 크다고 보고 긴 형태를 택했다(2026-08-07 사용자 결정).
+/// 폰에서 답답하면 「8/14에 다시」로 줄이고 늦음은 색으로만 말한다.
+func overdueHiddenChipText(_ oh: ItemSchedule.OverdueHidden) -> String {
+    // `returnsOn`은 nil이 될 수 없다 — 숨긴 장본인이 미리 알림이므로(`overdueHidden` 4절의 귀결).
+    // 그래도 문자열을 만드는 자리라 방어한다: 없으면 늦음만.
+    guard let on = oh.returnsOn.map(slashDate) else {
+        return oh.lateDays > 0 ? "\(oh.lateDays)일 늦음" : "마감 지남"
+    }
+    return oh.lateDays > 0 ? "\(on)에 다시 · \(oh.lateDays)일 늦음" : "\(on)에 다시"
+}
+
+/// **늦었는데 숨겨진 것** 배너의 둘째 줄 — 「마감은 7월 31일이었어요 · 7일 지남」.
+/// 늦음 0일이면 일수를 뺀다(칩과 같은 규약 — 「0일」이라는 말은 안 쓴다).
+@MainActor func overdueHiddenSubtitle(_ due: String?, lateDays: Int, now: Date = Date()) -> String {
+    guard let due else { return lateDays > 0 ? "\(lateDays)일 지남" : "" }
+    let d = korDateTime(due, now: now)
+    return lateDays > 0 ? "마감은 \(d)이었어요 · \(lateDays)일 지남" : "마감은 \(d)이었어요"
+}
+
+/// 배너용 사람말 날짜 — "8월 14일" · "8월 8일 12:00" · **오늘이면 "오늘 13:00"**.
+/// 배너는 넓어서 `korShort`를 그대로 쓸 수 있다(칩은 `slashDate`).
+/// `@MainActor`인 이유는 `InboxModel.korShort`를 **그대로 쓰기 위해서**다 —
+/// 같은 모양의 날짜 문구를 하나 더 만들지 않는다(복사 금지). 부르는 곳이 전부 뷰라 제약이 안 된다.
+@MainActor func korDateTime(_ v: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+    let head: String
+    if let d = ItemSchedule.parseDay(v, calendar: calendar), calendar.isDate(d, inSameDayAs: now) {
+        head = "오늘"
+    } else {
+        head = InboxModel.korShort(v)
+    }
+    if let t = ItemSchedule.timeOfDay(v) { return String(format: "%@ %02d:%02d", head, t.hour, t.minute) }
+    return head
+}
+
+/// "2026-08-14" · "2026-08-08T12:00" → **"8/14"**. 칩은 좁아서 `korShort`("8월 14일")를 못 쓴다.
+func slashDate(_ v: String) -> String {
+    let day = v.split(whereSeparator: { $0 == "T" || $0 == " " }).first.map(String.init) ?? v
+    let p = day.split(separator: "-")
+    guard p.count == 3, let m = Int(p[1]), let d = Int(p[2]) else { return day }
+    return "\(m)/\(d)"
 }
 
 /// 목록의 **"했어요" 액션을 그릴지** — 칩과 **같은 판정**(`doneThisCycle`)을 본다.

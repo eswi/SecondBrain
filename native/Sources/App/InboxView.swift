@@ -413,9 +413,10 @@ struct UpcomingCard: View {
                             Text(chip).font(.caption2.weight(.semibold)).monospacedDigit().foregroundStyle(ddayTint)
                         }
                         // 되풀이 놓침(§4) — 지금 챙길 것에 남아 쌓인 항목에 "N일 놓침"(coral)
-                        if let rc = recurStatusChip(entry.item) {
+                        if let rc = statusChip(entry.item) {
                             Text(rc.text).font(.caption2.weight(.semibold))
-                                .foregroundStyle(rc.overdue ? Palette.overdue : Palette.accent)
+                                .foregroundStyle(rc.tint)
+                                .fixedSize(horizontal: true, vertical: false)   // 잘리는 쪽은 언제나 원문
                         }
                     }
                 }
@@ -453,10 +454,14 @@ struct MemoryRow: View {
                     Text(item.raw ?? "(내용 없음)")
                         .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)   // 원문 2줄까지(넘치면 …)
                     Spacer(minLength: 4)
-                    // 되풀이 상태(§4) — 완료 후 살아있는 기억으로 와도 "오늘 완료"/"N일 놓침"이 목록에 보인다.
-                    if let rc = recurStatusChip(item) {
+                    // 상태 칩(§4 + D) — 완료 후 살아있는 기억으로 와도 "완료"/"N일 놓침"이 보이고,
+                    // **늦었는데 숨겨진 것**은 여기서 「8/14에 다시 · 7일 늦음」(amber)으로 드러난다.
+                    // ⚠️ `.fixedSize` — 이 칩은 최장 114pt로 기존(≤47pt)의 두 배가 넘어, 안 붙이면
+                    //    원문이 긴 줄에서 **SwiftUI가 원문 대신 칩을 줄인다.** 잘리는 쪽은 언제나 원문이어야 한다.
+                    if let rc = statusChip(item) {
                         Text(rc.text).font(.caption2.weight(.semibold))
-                            .foregroundStyle(rc.overdue ? Palette.overdue : Palette.accent)
+                            .foregroundStyle(rc.tint)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     if provisional { ProvisionalBadge() }
                     SourceBadge(source: item.source)

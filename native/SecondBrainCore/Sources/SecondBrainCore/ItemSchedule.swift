@@ -195,6 +195,59 @@ public enum ItemSchedule {
                       now: now, calendar: calendar)
     }
 
+    // MARK: 늦었는데 숨겨진 것 — D (2026-08-07)
+
+    /// **늦었는데 숨겨진 것.** 마감이 지났는데 미리 알림이 아직이라 **화면 어디에도 안 보이는** 상태.
+    ///
+    /// **왜 필요한가 (2026-08-07, 실데이터 두 건):** 규칙 1은 *"항목이 자기 마감을 지날 때까지 숨는 것"* 을
+    /// 막는데, **마감이 과거면 두 겹(상한·저장 검사)이 다 잠든다**(`resurfaceUpperBound`·`violatesRule1`의
+    /// `dd > now` 가드). 지난 것을 미루려면 그 느슨함이 필요해서 그렇게 정한 것이라 **규칙이 틀린 게 아니다.**
+    /// 그런데 그 결과가 규칙 1이 막으려던 상태 그대로다 — 그리고 **아무 표시가 없어 사람이 모른다.**
+    /// 이 판정은 그 "모름"을 없앤다. **저장값은 안 바꾼다** — 숨기는 것 자체는 사람이 시킨 것이다.
+    ///
+    /// **실데이터 두 건(2026-08-07 14:3x 전수 스캔, live 106개):**
+    /// - `E75C2531` 「우리 샌드박스 협력 병원…」 마감 2026-07-31 · 미리 알림 2026-08-14 (당일 미루기 +7일)
+    ///   → **15:32에 사용자가 손으로 해소**(마감 2026-08-14 · 미리 알림 2026-08-10). 16:40 재스캔에선 안 걸린다.
+    /// - `AF9BAB30` 「가 - 이른 완료 시험」 마감 2026-08-07 13:00 · 미리 알림 2026-08-08 12:00 (뒤집힌 lead)
+    ///
+    /// **꺼둔 되풀이는 제외한다** — 그건 사람이 명시적으로 멈춘 것이고 **"되풀이 꺼둠" 배너가 이미 말한다.**
+    /// 여기서 또 알리면 같은 사실에 신호가 둘이 된다(색 위계가 죽는 것과 같은 종류의 손해).
+    /// **`status=done`은 안 거른다** — 시점 판정에 상태를 섞지 않는다(`isPublished`·`doneThisCycle`과 같은 규약).
+    /// 보관함 항목은 애초에 목록에 안 그려지므로 부르는 쪽(`liveNonDone`)이 이미 걸러 준다.
+    public struct OverdueHidden: Equatable, Sendable {
+        /// 마감 이후 지난 **날 수**(날짜 단위 — 오늘 마감이면 0). "얼마나 늦었나".
+        /// ⚠️ **0일도 숨은 것은 사실이다** — 오늘 13:00 마감이 지나고 내일 12:00까지 숨는 `가`가 그 경우다.
+        public let lateDays: Int
+        /// **다시 보일 날** = 미리 알림 값 그대로("YYYY-MM-DD" 또는 "…T HH:mm"). 숨긴 장본인이다.
+        public let returnsOn: String?
+
+        public init(lateDays: Int, returnsOn: String?) {
+            self.lateDays = lateDays; self.returnsOn = returnsOn
+        }
+    }
+
+    /// 위 상태면 값을, 아니면 nil.
+    ///
+    /// **네 관문 — 순서에 뜻이 있다:**
+    /// 1. 꺼둔 되풀이는 먼저 뺀다(배너가 이미 말한다 — 위 참조).
+    /// 2. **마감을 쓰는 분류 + 유효한 마감**이어야 "늦음"이 정의된다. 게이트는 화면과 같이 탄다(`ClassSpecCatalog`).
+    /// 3. `마감 ≤ now` — **시각 인지**다. 오늘 13:00 마감은 13:00부터 늦은 것이지 자정부터가 아니다.
+    /// 4. **`!isPublished` — 숨었나.** 늦었어도 목록에 있으면 알릴 것이 없다.
+    ///    ★ 이 절이 *"숨기는 것은 미리 알림이지 마감이 아니다"* 를 담는다 — 미리 알림 없이 마감만 지난
+    ///    항목은 게시되므로(2절) 여기서 걸러진다. `isPublished` 하나만 보므로 게이트와 **절대 안 갈린다.**
+    public static func overdueHidden(_ it: ResolvedItem, now: Date,
+                                     calendar: Calendar = .current) -> OverdueHidden? {
+        if Recurrence.isDormant(it) { return nil }                                   // 1
+        guard ClassSpecCatalog.uses(it.type, .due),                                  // 2
+              let ds = it.due, let dd = parseDay(ds, calendar: calendar) else { return nil }
+        guard dd <= now else { return nil }                                          // 3
+        guard !isPublished(it, now: now, calendar: calendar) else { return nil }     // 4
+        // "얼마나 늦었나"는 **날짜 단위** — 놓침(`Recurrence.missedCount`)과 같은 규약이라 두 숫자가 안 어긋난다.
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: dd),
+                                           to: calendar.startOfDay(for: now)).day ?? 0
+        return OverdueHidden(lateDays: max(0, days), returnsOn: gatedResurface(it))
+    }
+
     /// 미루기(+7일)의 결과 — 규칙 1을 지키며 결정한다. **위반 상태로 저장하는 경로는 없다.**
     public enum DeferOutcome: Equatable {
         /// 미룸 — `to`(YYYY-MM-DD)로 저장. `capped`=true면 상한(마감−1일)에 걸려 당겨졌다는 뜻(알린다).

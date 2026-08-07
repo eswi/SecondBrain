@@ -116,6 +116,7 @@ struct DetailView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
                     missedBanner   // N일 놓침 주의(§4)
+                    overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
                     anchorBanner   // 되풀이인데 회차 기준(미리 알림) 없으면 안내(조용히 안 도는 것 방지)
                     metaSection
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
@@ -480,6 +481,38 @@ struct DetailView: View {
                 Spacer()
             }
             .padding(12).background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// **늦었는데 숨겨진 것**(D, 2026-08-07) — 마감이 지났는데 미리 알림이 아직이라 목록에 안 나오는 항목.
+    ///
+    /// **★ "숨겨졌습니다"라고 말하지 않는다.** 그 상태를 만든 것은 사람 자신이다(미루기를 눌렀거나 날짜를 옮겼거나) —
+    /// 자기가 치운 것을 앱에게 듣는 꼴이 된다. 알릴 것은 **"언제 돌아오나"** 와 **"그것이 마감보다 뒤다"** 둘뿐.
+    ///
+    /// **첫 줄이 돌아오는 날이다** — §0-A-2의 *"놀란 사람은 첫 줄만 읽는다"* 와 같은 원칙이고,
+    /// 여기서 첫 줄에 와야 할 것은 **행동에 쓸 사실**이다. 마감·늦음은 그것을 해석하게 해주는 설명이라 둘째 줄.
+    ///
+    /// **amber다** — 숨긴 것은 사람이 시킨 결과라 경고가 아니라 주의다. coral을 늘리면
+    /// D-4에서 일부러 지킨 위계(놓침=coral)가 죽는다. 바로 위 `missedBanner`가 coral이라 같은 화면에서 부딪힌다.
+    ///
+    /// **⚠️ 판정 입력은 화면 draft가 아니라 모델의 현재 항목이다.** draft로 재면 사용자가 날짜만 고치고
+    /// **저장하기 전에 배너가 사라져** "해결됐다"고 잘못 읽게 된다 — 그게 §0-A-2 넷째 유형(**고치는 변경이 새 거짓을 만든다**)이다.
+    /// 배너는 **지금 저장돼 있는 상태**를 말한다. 스냅숏(`item`) 대신 `model.current`를 집는 이유는 어젯밤 (a)와 같다(스냅숏은 낡는다).
+    @ViewBuilder
+    private var overdueHiddenBanner: some View {
+        let fresh = model.current(item.id) ?? item
+        if let oh = ItemSchedule.overdueHidden(fresh, now: Date()), let on = oh.returnsOn {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Palette.today)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(korDateTime(on))에 다시 보여드려요")
+                        .font(.callout.weight(.semibold)).foregroundStyle(Palette.today)
+                    Text(overdueHiddenSubtitle(fresh.due, lateDays: oh.lateDays))
+                        .font(.caption).foregroundStyle(Palette.textSecondary)
+                }
+                Spacer()
+            }
+            .padding(12).background(Palette.today.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 
