@@ -378,7 +378,8 @@ struct DetailView: View {
                     if usesDue { timeRow(ClassRegistry.title(normalizedType, .due), value: $due, showDefer: false) }
                     if usesDue && usesResurface { Divider().overlay(Palette.border) }
                     if usesResurface {
-                        // 규칙 1: 미리 알림은 마감 하루 전까지만. DatePicker 범위를 상한으로 제한(가능한 만큼).
+                        // 규칙 1(**시각 인지**, 2026-08-03): 미리 알림에 **시각이 있으면 마감 시각까지**,
+                        // **없으면 마감 하루 전까지**. DatePicker 날짜 범위를 상한으로 제한(가능한 만큼).
                         let bound = ItemSchedule.resurfaceUpperBound(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(resurface ?? "") != nil)
                         timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface,
                                 showDefer: true, upperBound: bound)
@@ -445,10 +446,13 @@ struct DetailView: View {
         case .deferred(let day, let capped):
             value.wrappedValue = ItemSchedule.withTimeOfDay(day, from: value.wrappedValue)   // 원래 시각 보존(§6-B)
             if capped {
-                noticeDialog = "마감이 가까워 미리 알림을 마감 하루 전(\(InboxModel.korShort(day)))으로 맞췄어요"
+                // "하루 전"을 뺐다(미결 3번) — 시각 있는 미리 알림이면 상한이 **마감 당일**이라 거짓이었다.
+                // 맞춘 **값만** 말하면 규칙이 갈려도 안 틀린다.
+                noticeDialog = "마감이 가까워 미리 알림을 \(InboxModel.korShort(day))로 맞췄어요"
             }
-        case .blocked(let cap):
-            noticeDialog = "마감이 임박해(하루 전 \(InboxModel.korShort(cap))) 더 미룰 수 없어요"
+        case .blocked:
+            // cap(상한)이 아니라 **마감**을 말한다 — 사람이 아는 값이고, "하루 전"이라는 규칙 서술이 필요 없다.
+            noticeDialog = "마감(\(korDateTime(due ?? "")))이 가까워 더 미룰 수 없어요"
         }
     }
 
@@ -752,14 +756,23 @@ struct DetailView: View {
         // ⚠️ **`changes`는 계속 스냅숏 기준으로 낸다** — 그게 "사람이 실제로 건드린 것"이고, 신선한 항목과
         // 비교하면 안 건드린 칸까지 실려 **모델의 새 값을 낡은 화면 값으로 덮어쓴다**(취소된 완료가 되살아난다).
         // 그래서 진단이 "저장 범위"가 아니라 **검사 입력**을 고치는 쪽이었다.
+        //
+        // **문구는 이유별로 갈린다**(미결 3번, 2026-08-07). 옛 문구는 하나뿐이라
+        // 시각 위반에서 「마감 **하루 전**(**마감 당일**)까지만」이라는 **자기모순**을 냈고,
+        // **원인이 시각인데 날짜만 말해** 사람이 무엇을 고칠지 알 수 없었다(이미 그 날짜로 맞춰 뒀으므로).
+        // ★ **규칙을 설명하는 말("하루 전")을 빼고 값과 할 일만 말한다** — 그래야 규칙이 갈려도 안 틀린다.
         let saving = changes
         let fresh = model.current(item.id) ?? item
-        if ItemSchedule.violatesRule1(applying: saving, to: fresh, now: Date()) {
-            let finalDue = saving["due"] ?? fresh.due
-            let finalResurface = saving["resurface"] ?? fresh.resurface
-            let ub = ItemSchedule.resurfaceUpperBound(due: finalDue, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(finalResurface ?? "") != nil)
-            let cap = ub.map { InboxModel.korShort(ItemSchedule.dayString($0)) } ?? ""
-            noticeDialog = "미리 알림은 마감 하루 전(\(cap))까지만 설정할 수 있어요"
+        if let block = ItemSchedule.rule1Block(applying: saving, to: fresh, now: Date()) {
+            switch block {
+            case let .dayBeforeDeadline(cap, deadline):
+                // **"까지로"**(2026-08-07 정정) — cap 그 날 자체가 허용인데 "이전으로"는 그 날을 빼는 것으로 읽힌다.
+                // 거짓말을 없애는 작업에서 남길 애매함이 아니다.
+                // **마감도 날짜만 말한다**(`withTime: false`) — 이 갈래의 판정이 날짜 단위이기 때문이다.
+                noticeDialog = "미리 알림을 \(korDateTime(cap, withTime: false))까지로 옮겨 주세요 — 마감은 \(korDateTime(deadline, withTime: false))이에요"
+            case let .atOrBeforeDeadline(deadline):
+                noticeDialog = "미리 알림이 마감(\(korDateTime(deadline)))보다 늦어요 — 시각을 앞으로 옮겨 주세요"
+            }
             return
         }
         // 미기억 항목을 원칙으로 지정한 채 저장하면 → 기억하기로 자동 결정(원칙은 살아있는 기억).

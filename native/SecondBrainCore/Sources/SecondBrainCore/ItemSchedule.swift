@@ -195,6 +195,53 @@ public enum ItemSchedule {
                       now: now, calendar: calendar)
     }
 
+    // MARK: 규칙 1이 막은 이유 — 미결 3번 (2026-08-07)
+
+    /// **규칙 1이 왜 막았나.** 화면이 **값과 할 일**을 말할 수 있게 이유를 갈라 준다.
+    ///
+    /// **왜 필요한가:** 규칙 1은 2026-08-03에 **시각 인지**로 갈렸는데(시각 있으면 `미리 알림 ≤ 마감`,
+    /// 없으면 마감−1일) **화면 문구는 하나로 남았다** — 「미리 알림은 **마감 하루 전**(◯월 ◯일)까지만…」.
+    /// 그래서 시각 위반일 때 ⓐ "하루 전"인데 괄호에는 **마감 당일**이 들어가 문장이 자기모순이고,
+    /// ⓑ **원인은 시각인데 날짜만 말해** 사람이 무엇을 고칠지 알 수 없다(이미 그 날짜로 맞춰 뒀으므로).
+    ///
+    /// **★ 진단: 화면이 규칙을 *설명하려* 해서 생긴 거짓이다.** "하루 전"은 규칙 서술이고, 규칙이 갈리자
+    /// 한 문장이 두 규칙을 말하게 됐다. → **값과 할 일만 말하면 규칙이 갈려도 문장이 안 틀린다.**
+    ///
+    /// **cap·deadline은 저장 표준형 문자열**로 준다 — 사람말 변환은 App(`korDateTime`)이 한다(층 분리).
+    /// **`violatesRule1`은 안 건드린다** — 회귀선이 여럿이고 자동 분류(`InboxModel`)는 Bool로 충분하다.
+    /// 기존 함수를 두고 얹는 방식은 2026-08-06 (a)와 같다.
+    ///
+    /// **A(지난 마감 상한 N=7)가 나중에 `case tooFarWhilePastDue(cap:)`를 얹는다** — 그때
+    /// `rule1Block`의 `guard dd > now` 분기 하나만 늘면 된다(worklog 2026-08-07 §4-C).
+    public enum Rule1Block: Equatable, Sendable {
+        /// 미리 알림에 **시각이 없다** — 마감 하루 전까지. `cap` = 마감−1일, `deadline` = 마감.
+        case dayBeforeDeadline(cap: String, deadline: String)
+        /// 미리 알림에 **시각이 있다** — 마감 시각까지(정각 허용). 상한이 곧 마감이라 `deadline` 하나면 된다.
+        case atOrBeforeDeadline(deadline: String)
+    }
+
+    /// 저장될 최종 쌍이 규칙 1을 어기면 **왜인지**, 안 어기면 nil.
+    /// 입력 규약은 `violatesRule1(applying:to:)`와 같다(현재 저장 상태 + 이번 변경).
+    ///
+    /// **판정은 `violatesRule1` 하나만 본다** — 막을지 말지와 왜 막았는지가 **갈릴 수 없게** 한다.
+    /// 이 함수가 하는 일은 **이미 확정된 위반을 사람이 할 일로 번역하는 것**뿐이다.
+    ///
+    /// **경우는 여섯인데 갈래는 둘이다** — 사람이 할 일이 **미리 알림에 시각이 있나** 하나로만 갈린다:
+    /// 시각 없으면 *"날짜를 마감−1일 이하로"*, 있으면 *"미리 알림을 마감 시각 이하로"*.
+    /// 같은 날이든 다른 날이든 시각 있는 쪽은 규칙이 하나(`미리 알림 ≤ 마감`)라 **case를 더 쪼개지 않는다.**
+    public static func rule1Block(applying changes: [String: String], to item: ResolvedItem,
+                                  now: Date, calendar: Calendar = .current) -> Rule1Block? {
+        let resurface = changes["resurface"] ?? item.resurface
+        let due = changes["due"] ?? item.due
+        guard violatesRule1(resurface: resurface, due: due, now: now, calendar: calendar),
+              let due else { return nil }
+        // 시각이 있으면 상한이 곧 마감이다 — 상한을 따로 계산할 것이 없다(`미리 알림 ≤ 마감`).
+        if timeOfDay(resurface ?? "") != nil { return .atOrBeforeDeadline(deadline: due) }
+        guard let ub = resurfaceUpperBound(due: due, now: now, resurfaceHasTime: false,
+                                           calendar: calendar) else { return nil }
+        return .dayBeforeDeadline(cap: dayString(ub, calendar: calendar), deadline: due)
+    }
+
     // MARK: 늦었는데 숨겨진 것 — D (2026-08-07)
 
     /// **늦었는데 숨겨진 것.** 마감이 지났는데 미리 알림이 아직이라 **화면 어디에도 안 보이는** 상태.

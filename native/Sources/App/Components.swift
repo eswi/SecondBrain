@@ -175,14 +175,18 @@ func overdueHiddenChipText(_ oh: ItemSchedule.OverdueHidden) -> String {
 /// 배너는 넓어서 `korShort`를 그대로 쓸 수 있다(칩은 `slashDate`).
 /// `@MainActor`인 이유는 `InboxModel.korShort`를 **그대로 쓰기 위해서**다 —
 /// 같은 모양의 날짜 문구를 하나 더 만들지 않는다(복사 금지). 부르는 곳이 전부 뷰라 제약이 안 된다.
-@MainActor func korDateTime(_ v: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+/// **`withTime: false`면 시각을 뺀다** — **판정이 날짜 단위인 문장에서 쓴다**(2026-08-07).
+/// 규칙 1의 date-only 갈래가 그 자리다: 판정은 날짜로 하는데 문장이 「마감은 8월 10일 **08:00**이에요」라고
+/// 시각을 말하면 *"그럼 07:00은 왜 안 되지"* 를 부른다. **문장이 판정보다 더 말하지 않게 한다.**
+@MainActor func korDateTime(_ v: String, now: Date = Date(), calendar: Calendar = .current,
+                            withTime: Bool = true) -> String {
     let head: String
     if let d = ItemSchedule.parseDay(v, calendar: calendar), calendar.isDate(d, inSameDayAs: now) {
         head = "오늘"
     } else {
         head = InboxModel.korShort(v)
     }
-    if let t = ItemSchedule.timeOfDay(v) { return String(format: "%@ %02d:%02d", head, t.hour, t.minute) }
+    if withTime, let t = ItemSchedule.timeOfDay(v) { return String(format: "%@ %02d:%02d", head, t.hour, t.minute) }
     return head
 }
 

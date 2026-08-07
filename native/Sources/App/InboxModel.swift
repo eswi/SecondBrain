@@ -285,8 +285,9 @@ final class InboxModel: ObservableObject {
         return changes
     }
 
-    /// 미루기(+7일) — 규칙 1(미리 알림 ≤ 마감 − 1일)을 지키며 미룬다. 위반 상태로 저장하지 않는다.
-    /// - 마감이 가까우면 마감 하루 전까지 당겨서 미루고 알린다. 마감이 임박(하루 전이 오늘/과거)이면 미루지 않고 알린다.
+    /// 미루기(+7일) — 규칙 1(**시각 인지**, 2026-08-03)을 지키며 미룬다. 위반 상태로 저장하지 않는다.
+    /// 상한은 미리 알림에 **시각이 있으면 마감 당일**, **없으면 마감 하루 전**이다(`resurfaceUpperBound`).
+    /// - 마감이 가까우면 그 상한까지 당겨서 미루고 알린다. 상한이 오늘/과거면 미루지 않고 알린다.
     /// - 미리 알림을 안 쓰는 분류(정보·아이디어·원칙)에선 미루기가 무의미 → UI에서 액션을 숨겼지만(1차 방어),
     ///   여기서도 조용히 막는다(휴면 값이 써지지 않게). 근거: §7(a) — 못 쓰는 칸은 회색으로 두지 않고 없앤다.
     func defer7(_ item: ResolvedItem) {
@@ -296,12 +297,15 @@ final class InboxModel: ObservableObject {
             // 미루기는 날짜만 새로 정하고, 원래 미리 알림의 **시각은 보존**한다(§6-B). 시각 없던 값은 날짜만.
             append(.edit(id: item.id, hlc: tick(), ["resurface": ItemSchedule.withTimeOfDay(day, from: item.resurface)]))
             if capped {
+                // "하루 전"을 뺐다(미결 3번, 2026-08-07) — 시각 있는 미리 알림이면 상한이 **마감 당일**이라 거짓이었다.
+                // 상세의 같은 문구(`DetailView.deferResurface`)와 **글자까지 같게** 유지할 것.
                 autoToast = ClassifyToast(kind: .success,
-                    text: "마감이 가까워 미리 알림을 마감 하루 전(\(Self.korShort(day)))으로 맞췄어요")
+                    text: "마감이 가까워 미리 알림을 \(Self.korShort(day))로 맞췄어요")
             }
-        case .blocked(let cap):
+        case .blocked:
+            // cap(상한)이 아니라 **마감**을 말한다 — 사람이 아는 값이고, 규칙 서술이 필요 없다.
             autoToast = ClassifyToast(kind: .failure,
-                text: "마감이 임박해(하루 전 \(Self.korShort(cap))) 더 미룰 수 없어요")
+                text: "마감(\(korDateTime(item.due ?? "")))이 가까워 더 미룰 수 없어요")
         }
     }
 
