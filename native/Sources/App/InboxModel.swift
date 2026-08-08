@@ -281,6 +281,11 @@ final class InboxModel: ObservableObject {
              Recurrence.lastDoneDueKey: Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.lastDoneDueKey) ?? ""]
         if let priorD = Recurrence.priorValue(in: allEvents, id: item.id, key: "due") { changes["due"] = priorD }
         if let priorR = Recurrence.priorValue(in: allEvents, id: item.id, key: "resurface") { changes["resurface"] = priorR }
+        // **당김 기록도 같이 되돌린다**((c), 2026-08-08). 완료가 미리 알림을 당겼다면 그 완료를 취소할 때
+        // 값은 돌아가는데 기록만 남는다 → **배너가 "…으로 맞췄어요"라고 없는 사실을 말한다.**
+        // 직전 값이 없으면(그 완료가 처음 쓴 것) 빈 값 = 지움. `lastDone`과 같은 규약.
+        changes[Recurrence.leadClampedKey] =
+            Recurrence.priorValue(in: allEvents, id: item.id, key: Recurrence.leadClampedKey) ?? ""
         append(.edit(id: item.id, hlc: tick(), changes))
         return changes
     }

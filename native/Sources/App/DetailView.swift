@@ -118,6 +118,7 @@ struct DetailView: View {
                     missedBanner   // N일 놓침 주의(§4)
                     overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
                     anchorBanner   // 되풀이인데 회차 기준(미리 알림) 없으면 안내(조용히 안 도는 것 방지)
+                    leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
                     metaSection
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
                     typeSection
@@ -520,6 +521,39 @@ struct DetailView: View {
                 Spacer()
             }
             .padding(12).background(Palette.today.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// **회차 전진이 미리 알림을 당겼다**((c), 2026-08-08) — 앱이 사람 값을 옮겼으면 **말한다.**
+    ///
+    /// **왜 있어야 하나:** 완료·자동 완성·꺼두기 켜기가 회차를 전진시킬 때, lead가 뒤집혀 있으면
+    /// 미리 알림을 규칙 1 안으로 당긴다(`Recurrence.clampToRule1`). 그건 **앱이 값을 정하는 일**이다.
+    /// 미루기(+7일)가 상한에 걸려 당겼을 때 팝업으로 알리는 것과 **같은 종류의 빚**이다 —
+    /// 다만 자동 완성·켜기는 **사람이 안 누른 경로**라 팝업이 뜰 자리가 없다. 그래서 배너다(셋 다 같은 자리).
+    ///
+    /// **왜 목록에는 안 넣나:** 당김은 **사건**이지 상태가 아니다(한 번 당기면 lead가 고쳐져 다음 회차부터
+    /// 정상 보존). 상태 칩 자리에 넣으면 사라질 조건이 없다. 그리고 **목록 신호는 이미 있다** —
+    /// 뒤집힌 lead는 `overdueHidden`(「◯/◯에 다시 · N일 늦음」)이 붙는 바로 그 상태이고, 당김은 그것을
+    /// **해소**한다(= 칩이 사라지는 것으로 보인다). 하나 더 넣으면 같은 사실에 신호가 둘이 된다.
+    ///
+    /// **한 회차만 산다** — 다음 전진이 기록을 지운다. 당겨진 값은 이미 규칙을 지키는 정상 상태라
+    /// **사람이 반드시 할 일이 없기 때문**이다. 할 일 없는 신호가 남으면 꺼둠·D 배너와 자리를 다투고
+    /// 정작 할 일 있는 신호가 묻힌다(색 위계에서 배운 것과 같다).
+    /// ⚠️ **회차가 잦으면(하루 3회 약) 몇 시간 만에 사라진다.** 그래도 이쪽이 맞다고 봤다 —
+    /// 회차가 잦다는 것은 그만큼 자주 본다는 뜻이다. 나중에 짧다고 느껴지면 그때 다시 본다.
+    ///
+    /// 판정 입력은 **모델의 현재 항목**이다(스냅숏은 낡는다 — `overdueHiddenBanner`와 같은 이유).
+    @ViewBuilder
+    private var leadClampedBanner: some View {
+        let fresh = model.current(item.id) ?? item
+        if let v = fresh.fields[Recurrence.leadClampedKey], !v.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle.fill").foregroundStyle(Palette.accent)
+                Text("미리 알림이 마감보다 늦어 \(korDateTime(v))으로 맞췄어요")
+                    .font(.caption).foregroundStyle(Palette.textSecondary)
+                Spacer()
+            }
+            .padding(12).background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 

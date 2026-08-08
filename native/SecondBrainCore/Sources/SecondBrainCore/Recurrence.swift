@@ -38,6 +38,10 @@ public enum Recurrence {
     public static let pausedKey = "recurPaused"
     public static let pausedAtKey = "recurPausedAt"   // 꺼둔 시점(시각 표준형 T) — 놓침을 안 세는 구간의 시작
     public static let lastDoneKey = "lastDone"   // 마지막 완료 시점(시각 표준형 T)
+    /// **회차 전진이 미리 알림을 당겼을 때 맞춘 값**((c), 2026-08-08). 배너가 이 값을 그대로 말한다.
+    /// **한 회차만 산다** — 다음 전진이 빈 값으로 덮는다(지우는 조건 ㄱ). 왜 그렇게 정했는지는
+    /// `clampToRule1` 주석 참조. 값이 있다는 것 = "직전 전진에서 앱이 네 값을 옮겼다".
+    public static let leadClampedKey = "recurLeadClamped"
 
     /// **완료가 회차를 옮긴 목적지**(= 그 완료가 만든 `due` 값) — "지금의 `due`는 완료로 열린 것인가"의 증인.
     /// (2026-08-05, (b) "닫은 회차를 기록" 결정. 정본 §5-B.)
@@ -198,15 +202,55 @@ public enum Recurrence {
     }
 
     /// 마감(앵커)을 **k회** 전진시킨 값 + 미리 알림도 **같은 k회** 전진(lead 보존)한 값을 changes로.
-    private static func advanceBy(_ it: ResolvedItem, steps k: Int, dueDate: Date, dueStr: String, unit u: Unit, calendar: Calendar) -> [String: String] {
+    ///
+    /// **(c) 2026-08-08 — lead가 뒤집혀 있으면 여기서 끊는다.** 옛 코드는 lead를 **묻지 않고** 옮겼다.
+    /// 뒤집힌 lead(미리 알림이 마감보다 늦음)는 마감이 **과거**일 때 정당하게 생긴다(규칙 1이 자는 구간 —
+    /// 지난 것을 미루려면 필요한 느슨함). 문제는 전진이 **그 쌍을 미래로 옮긴다**는 것이다.
+    /// 미래에선 규칙 1이 깨어 있는데 이 경로는 [저장] 검사를 안 탄다(`markDone`이 이벤트를 바로 쓴다)
+    /// → 위반이 검사 없이 들어가고 **회차마다 자기를 복제한다.**
+    ///
+    /// **세 경로(완료·자동 완성·켜기)가 다 이 함수를 쓴다** — 그래서 clamp도 여기 한 곳이다. 복사 금지.
+    private static func advanceBy(_ it: ResolvedItem, steps k: Int, dueDate: Date, dueStr: String,
+                                  unit u: Unit, now: Date, calendar: Calendar) -> [String: String] {
         var changes: [String: String] = [:]
         var od = dueDate; for _ in 0..<k { od = step(od, by: u, calendar: calendar) }
-        changes["due"] = formatLike(od, source: dueStr, calendar: calendar)
-        if let rStr = it.resurface, let rDate = ItemSchedule.parseDay(rStr, calendar: calendar) {
-            var or = rDate; for _ in 0..<k { or = step(or, by: u, calendar: calendar) }
-            changes["resurface"] = formatLike(or, source: rStr, calendar: calendar)
-        }
+        let newDue = formatLike(od, source: dueStr, calendar: calendar)
+        changes["due"] = newDue
+        guard let rStr = it.resurface, let rDate = ItemSchedule.parseDay(rStr, calendar: calendar) else { return changes }
+        var or = rDate; for _ in 0..<k { or = step(or, by: u, calendar: calendar) }
+        let moved = formatLike(or, source: rStr, calendar: calendar)
+        let clamped = clampToRule1(moved, due: newDue, now: now, calendar: calendar)
+        changes["resurface"] = clamped ?? moved
+        // **기록은 바뀔 때만 쓴다.** 안 당겼는데 매 전진마다 빈 값을 쓰면 이벤트 로그가 지저분해진다.
+        // 바뀔 때만 쓰면 ⓐ 당김 = 값이 들어가고 ⓑ 다음 전진 = 빈 값으로 덮여 지워진다(지우는 조건 ㄱ).
+        let prior = it.fields[leadClampedKey] ?? ""
+        let record = clamped ?? ""
+        if record != prior { changes[leadClampedKey] = record }
         return changes
+    }
+
+    /// **미리 알림이 마감보다 늦으면 규칙 1 안으로 당긴 값**, 안 늦으면 nil(= 안 건드림).
+    ///
+    /// **판정은 `ItemSchedule.violatesRule1` 하나만 본다** — 당길지와 화면이 막을지가 **갈릴 수 없게**.
+    /// (`rule1Block`이 "왜 막았나"를 판정과 갈라놓지 않은 것과 같은 규약.)
+    ///
+    /// **두 단계로 당긴다 — 사람이 정한 시각을 최대한 지키려고:**
+    /// 1. **날짜만** 상한으로 당기고 **시각은 보존**한다(§6-B — "약 아침 8시"는 미뤄도 8시).
+    ///    상한은 화면·미루기와 **같은 함수**(`resurfaceUpperBound`)라 셋이 갈릴 수 없다.
+    /// 2. 그래도 마감보다 늦으면(같은 날 더 늦은 시각) **마감 시각까지.** 미리 알림 = 마감은 규칙 1이 허용한다.
+    ///
+    /// **마감이 과거로 떨어지면 당기지 않는다** — `resurfaceUpperBound`가 nil을 준다.
+    /// 규칙 1이 자고 있는 구간을 앱이 임의로 깨우면 **그거야말로 조용한 변경**이다.
+    static func clampToRule1(_ resurface: String, due: String, now: Date,
+                             calendar: Calendar = .current) -> String? {
+        guard ItemSchedule.violatesRule1(resurface: resurface, due: due, now: now, calendar: calendar),
+              let ub = ItemSchedule.resurfaceUpperBound(due: due, now: now,
+                                                        resurfaceHasTime: ItemSchedule.timeOfDay(resurface) != nil,
+                                                        calendar: calendar) else { return nil }
+        var candidate = ItemSchedule.withTimeOfDay(ItemSchedule.dayString(ub, calendar: calendar), from: resurface)
+        if let cd = ItemSchedule.parseDay(candidate, calendar: calendar),
+           let dd = ItemSchedule.parseDay(due, calendar: calendar), cd > dd { candidate = due }
+        return candidate
     }
 
     /// **완료 시 회차 전진** — 마감을 `max(now, 현재 마감)` 이후 첫 회차로, 미리 알림도 같은 간격 전진(lead 보존).
@@ -217,7 +261,7 @@ public enum Recurrence {
         var o = dueDate, k = 0
         while o <= pivot, k < 100_000 { o = step(o, by: u, calendar: calendar); k += 1 }
         guard k > 0 else { return nil }
-        return advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, calendar: calendar)
+        return advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, now: now, calendar: calendar)
     }
 
     /// 항목의 **놓친 회차 수**(편의) — 앵커 = 마감(회차). 되풀이 아니거나 앵커 없으면 0.
@@ -259,7 +303,7 @@ public enum Recurrence {
               - missedCount(base: dueDate, unit: u, now: pausedDate, calendar: calendar)
         var changes: [String: String] = [pausedAtKey: ""]                   // 기록 비움(멱등 종료 조건)
         if k > 0 {
-            changes.merge(advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, calendar: calendar)) { _, new in new }
+            changes.merge(advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, now: now, calendar: calendar)) { _, new in new }
         }
         return changes
     }
@@ -287,7 +331,7 @@ public enum Recurrence {
         var o = dueDate, k = 0
         while threshold(o) <= now, k < 100_000 { o = step(o, by: u, calendar: calendar); k += 1 }
         guard k > 0 else { return nil }
-        return advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, calendar: calendar)
+        return advanceBy(it, steps: k, dueDate: dueDate, dueStr: dueStr, unit: u, now: now, calendar: calendar)
     }
 
     /// 반복 주기(설정 안 됐거나 모르는 값이면 nil).
