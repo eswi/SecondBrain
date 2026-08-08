@@ -38,6 +38,9 @@ struct DetailView: View {
     @State private var recurAuto: String
     @State private var recurPaused: Bool
     /// 이번 회차 완료 상태(로컬 — 즉시 반영, isRemembered와 같은 이유로 stale item 대신 로컬로 든다).
+    /// **⚠️ 2026-08-08 전수 점검에서 「안 고침」으로 판단한 자리다** — 다음에 같은 점검을 하는 사람이
+    /// 조사를 되풀이하지 않게 남긴다. 초기값만 스냅숏이고 그 뒤로는 **낙관적 로컬 상태**다.
+    /// 저장값으로 바꾸면 누른 즉시 반영이 사라져 **의도한 동작이 죽는다**(그래서 일부러 이렇게 뒀다).
     /// 판정 = `Recurrence.doneThisCycle`(마감 앵커 기준, 게이트와 동일 — 2026-08-03 #4).
     @State private var cycleDoneLocal: Bool
     /// **draft의 기준선 = "화면이 아는 저장값".** `EditDiff`가 이것과 draft를 비교해 바뀐 칸을 낸다.
@@ -117,7 +120,7 @@ struct DetailView: View {
                     pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
                     missedBanner   // N일 놓침 주의(§4)
                     overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
-                    anchorBanner   // 되풀이인데 회차 기준(미리 알림) 없으면 안내(조용히 안 도는 것 방지)
+                    anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
                     leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
                     metaSection
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
@@ -193,6 +196,9 @@ struct DetailView: View {
 
     // MARK: 메타 — 최초 수집 정보(불변 성역, §4-1·§7). 언제·기기·방식.
 
+    /// **⚠️ 2026-08-08 전수 점검에서 「안 고침」** — 스냅숏 `item`을 읽지만 여기 나오는 것은
+    /// 캡처 시각·방식·기기·음성·사진처럼 **어떤 편집으로도 안 바뀌는 필드**다(화면이 그렇게 말하고도 있다).
+    /// 낡을 여지가 없으므로 `saved`로 옮길 이유가 없다.
     private var metaSection: some View {
         let when = "\(item.date ?? "") \(item.time ?? "")".trimmingCharacters(in: .whitespaces)
         let device = CaptureDevice.label(source: item.source, createdDeviceId: item.createdHLC.deviceId,
@@ -317,7 +323,25 @@ struct DetailView: View {
 
     // MARK: 분류 (미기억이면 "임시" 배지 + override)
 
+    /// **편집 중인 분류**(draft). 편집기(분류 메뉴·시간 설정 노출·반복 설정)가 쓴다.
     private var normalizedType: String? { (type?.isEmpty ?? true) ? nil : type }
+
+    // MARK: ★ 사실을 말하는 자리의 입력 — `saved` / `savedType` (2026-08-08 전수 점검)
+    //
+    // **기준(사양서 §0-A-2):** *저장 없이 화면을 닫았을 때 그 말이 거짓이 되면 저장값을,
+    // 화면 안에서만 뜻이 있으면 화면 값을, 둘의 차이가 곧 그 말이면 둘 다 본다.*
+    //
+    // **왜 기준이 필요했나:** 같은 파일 20줄 사이에서 `overdueHiddenBanner`는 이 함정을 피하고
+    // `anchorBanner`는 밟았다. 함정을 주석으로 적어 놓고도 **옆을 안 봤다.** 알고도 놓쳤으므로
+    // 자리마다 고치는 것으로는 안 된다 — 자리를 세지 말고 **입력을 한 곳으로 모은다.**
+    //
+    // 사실을 말하는 배너·확인 문구는 **전부 이 둘만** 본다. draft(`due`/`recurPaused`/`normalizedType`)나
+    // 스냅숏(`item`)을 직접 보면 안 된다 — 전자는 저장 전에 거짓이 되고, 후자는 낡는다(2026-08-06 `가`).
+
+    /// **지금 저장돼 있는 상태.** 스냅숏(`item`)은 이 화면 안에서 완료·취소가 저장값을 옮겨도 안 따라간다.
+    private var saved: ResolvedItem { model.current(item.id) ?? item }
+    /// 저장된 분류(정규화) — `normalizedType`의 저장값 짝.
+    private var savedType: String? { (saved.type?.isEmpty ?? true) ? nil : saved.type }
 
     private var typeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -354,6 +378,9 @@ struct DetailView: View {
     }
 
     // MARK: 재확인 질문 (info-action, §3 자동분류가 남긴 "구체적으로 뭘·언제")
+    //
+    // **⚠️ 2026-08-08 전수 점검에서 「안 고침」** — 스냅숏 `item`을 읽지만 이 화면이 **못 고치는 필드**라
+    // draft와 갈릴 일이 없다. (자동분류 스윕이 나중에 채울 수는 있는데, 그건 상세를 연 채로는 안 돈다.)
     // 읽기 전용 표시. fields.v1 편집 블록으로 파일에 저장되므로 재실행에도 유지된다(그릇 Stage 1 검증 지점).
     private func questionSection(_ q: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -464,9 +491,13 @@ struct DetailView: View {
     // 주기·자동완성 = "어떻게 도느냐" / 꺼두기 = "지금 도느냐". 회차·완료는 Stage 3·4.
 
     /// 되풀이 꺼둠이면 상세 상단에 바로 보이는 배너(스크롤 없이). 꺼둔 걸 잊지 않게.
+    ///
+    /// **저장값을 본다**(2026-08-08). 기준을 돌려보면: 꺼두기 토글만 켜고 저장 없이 닫으면
+    /// **알림은 안 멈춘다** → 지금 떠 있던 배너가 거짓이다. 배너가 약속하는 것("알림·되살아나기 멈춤")은
+    /// **저장된 사실**이지 토글의 위치가 아니다. 토글 자체가 움직이므로 반응이 없지도 않다.
     @ViewBuilder
     private var pausedBanner: some View {
-        if normalizedType == "recurrence", recurPaused {
+        if savedType == "recurrence", Recurrence.isPaused(saved) {
             HStack(spacing: 8) {
                 Image(systemName: "pause.circle.fill").foregroundStyle(Palette.overdue)
                 Text("되풀이 꺼둠 — 알림·되살아나기 멈춤").font(.callout.weight(.semibold)).foregroundStyle(Palette.overdue)
@@ -477,11 +508,18 @@ struct DetailView: View {
         }
     }
 
-    /// 회차 기준(미리 알림) 없음 안내 — 되풀이는 미리 알림이 앵커라, 없으면 회차가 안 돈다.
-    /// 조용히 안 도는 대신 화면으로 알린다(#3). "시간 설정"의 회차 시각(미리 알림)을 채우게 유도.
+    /// 회차 기준(회차 시각) 없음 안내 — 되풀이는 마감이 앵커라, 없으면 회차가 안 돈다.
+    /// 조용히 안 도는 대신 화면으로 알린다(#3). "시간 설정"의 회차 시각을 채우게 유도.
+    ///
+    /// **★ 저장값을 본다**(E-5, 2026-08-08 — 사용자가 실기기에서 발견). 옛 코드는 draft `due`를 봐서
+    /// **날짜를 입력하는 순간 배너가 사라졌는데 저장값은 아직 비어 있었다** — 화면이 "이제 반복이 돕니다"라고
+    /// 말하는데 사실은 안 돌았다. 저장 없이 [이번 것 했어요]를 눌러도 아무것도 전진하지 않는 이유가 이것이다
+    /// (완료는 저장값 위에서 돈다 — `runCycleAction`).
+    /// **바로 아래 `overdueHiddenBanner`가 같은 함정을 피하고 있었다** — 그런데도 여기서 밟았다.
+    /// 그래서 자리를 고치는 대신 입력을 `saved`/`savedType`으로 모았다(위 MARK 참조).
     @ViewBuilder
     private var anchorBanner: some View {
-        if normalizedType == "recurrence", !Self.isRealDate(due) {
+        if savedType == "recurrence", !Self.isRealDate(saved.due) {
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill").foregroundStyle(Palette.accent)
                 Text("회차 시각이 없어요 — 위 '시간 설정'에서 **회차 시각(마감)**을 정해야 반복이 돕니다")
@@ -558,10 +596,15 @@ struct DetailView: View {
     }
 
     /// N일 놓침 주의(§4) — 상단에 바로. 되풀이·놓침>0일 때만.
+    ///
+    /// **저장값을 본다**(2026-08-08). 옛 코드는 스냅숏 `item`을 봤다. 이 화면 안에서 완료·취소를 누르면
+    /// `runCycleAction`이 `baseline`만 옮기고 **`item`은 안 건드린다** — 그건 코드에서 확실하다.
+    /// ⚠️ **실기기에서 옛 숫자로 남는 것을 본 적은 없다.** 고친 근거는 관찰이 아니라
+    /// **바로 위아래 두 배너가 같은 이유로 저장값을 쓴다**는 것이다(확인표 F-3에 넣어 뒀다).
     @ViewBuilder
     private var missedBanner: some View {
-        let n = Recurrence.missed(item, now: Date())
-        if normalizedType == "recurrence", n > 0 {
+        let n = Recurrence.missed(saved, now: Date())
+        if savedType == "recurrence", n > 0 {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.overdue)
                 Text("\(n)일 놓침").font(.callout.weight(.semibold)).foregroundStyle(Palette.overdue)
@@ -747,7 +790,9 @@ struct DetailView: View {
     /// 삭제 로직 자체는 무변경(tombstone → 보관된 기억, 복구 가능). 확인 단계만 앞에 둔다.
     private var deleteDialog: some View {
         // 되풀이는 "그만두기 = 삭제"임을 명확히(잠시 멈춤은 꺼두기, §5). 헷갈리지 않게 문구로 가른다.
-        let isRecur = normalizedType == "recurrence"
+        // **저장값을 본다**(2026-08-08) — 지우는 것은 **저장된 항목**이다. 분류를 draft에서만 바꿔 둔 채
+        // 삭제하면, 옛 코드는 되풀이 항목에 「정말로 삭제하시겠습니까?」를 띄워 **"기록도 함께"를 안 말했다.**
+        let isRecur = savedType == "recurrence"
         return ConfirmDialog(
             title: isRecur ? "되풀이를 그만둘까요? 기록도 함께 삭제돼요" : "정말로 삭제하시겠습니까?",
             confirmTitle: isRecur ? "그만두기" : "삭제", confirmTint: Palette.overdue,
