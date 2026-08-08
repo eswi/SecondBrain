@@ -378,11 +378,9 @@ struct DetailView: View {
                     if usesDue { timeRow(ClassRegistry.title(normalizedType, .due), value: $due, showDefer: false) }
                     if usesDue && usesResurface { Divider().overlay(Palette.border) }
                     if usesResurface {
-                        // 규칙 1(**시각 인지**, 2026-08-03): 미리 알림에 **시각이 있으면 마감 시각까지**,
-                        // **없으면 마감 하루 전까지**. DatePicker 날짜 범위를 상한으로 제한(가능한 만큼).
-                        let bound = ItemSchedule.resurfaceUpperBound(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(resurface ?? "") != nil)
-                        timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface,
-                                showDefer: true, upperBound: bound)
+                        // 규칙 1은 **여기서 안 막는다** — [저장]에서 저장될 최종 짝으로 검사한다(B, 2026-08-08).
+                        // 두 칸이 같은 `timeRow`를 같은 인자로 쓴다 = 날짜와 시각이 같은 방식으로 다뤄진다.
+                        timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface, showDefer: true)
                     }
                 }
                 .padding(14).card()
@@ -391,8 +389,7 @@ struct DetailView: View {
     }
 
     @ViewBuilder
-    private func timeRow(_ title: String, value: Binding<String?>, showDefer: Bool,
-                        upperBound: Date? = nil) -> some View {
+    private func timeRow(_ title: String, value: Binding<String?>, showDefer: Bool) -> some View {
         let hasDate = Self.isRealDate(value.wrappedValue)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -407,16 +404,22 @@ struct DetailView: View {
                 }
             }
             if hasDate {
-                // 규칙 1: 상한이 있으면 그 날까지만 고를 수 있게 범위 제한(미리 알림 ≤ 마감 − 1일).
-                // 상한이 지금 값보다 과거여도(마감을 앞으로 당긴 경우) 저장 시 검증이 최종 방어선이다.
-                if let ub = upperBound {
-                    DatePicker("", selection: dateBinding(value), in: ...ub, displayedComponents: .date)
-                        .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
-                } else {
-                    DatePicker("", selection: dateBinding(value), displayedComponents: .date)
-                        .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
-                }
-                // 시각(선택) — OFF면 날짜만, ON이면 시·분 지정(§6-B: 시각 안 넣을 자유). 규칙1은 날짜 단위라 여기 상한 없음.
+                // ★ **범위 제한(`in: ...ub`)을 두지 않는다** — B, 2026-08-08. 규칙 1은 [저장]에서만 막는다.
+                //
+                // **왜 뺐나:** 범위를 주면 피커가 **값의 원천이 된다.** `dateBinding`의 setter는 피커가 뱉은 값을
+                // 그대로 draft에 쓰는데, 그것이 **사람이 고른 것인지 피커가 스스로 재조정한 것인지 구분할 수 없다.**
+                // 실측(2026-08-08, 실기기): 선택값이 상한에 **딱 붙어 있으면 상한을 따라 움직인다** —
+                // 마감을 08-09로 고친 draft에서 미리 알림 08-08에 **시각 토글만 켜자**(상한이 08-08→08-09로 넓어짐)
+                // 날짜가 저절로 08-09가 됐다. 끄면 08-08로 돌아온다(왕복). **대조군:** 상한에 안 붙은 08-07은
+                // 양쪽에서 안 움직였다 → 원인이 토글이나 시·분 피커가 아니라 **범위**임이 갈렸다.
+                // → **앱이 사람이 안 건드린 값을 조용히 바꾼다.** 그 값은 규칙 1 위반도 아니라 저장 검사도 못 잡는다.
+                //
+                // **막음이 약해지지 않는다 — 오히려 넓어진다.** 피커 상한은 날짜만 봐서 마감과 **같은 날 늦은 시각**을
+                // 통과시켰다(시각 칸엔 애초에 상한이 없었다 = 반쪽 방어). `violatesRule1`은 시각 인지라 그것도 잡는다.
+                // 달라지는 것은 **언제 아느냐** 하나다: 고를 때 → [저장] 누를 때(`rule1Block`이 값과 할 일을 말한다).
+                DatePicker("", selection: dateBinding(value), displayedComponents: .date)
+                    .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
+                // 시각(선택) — OFF면 날짜만, ON이면 시·분 지정(§6-B: 시각 안 넣을 자유). 여기도 상한 없음(위와 같은 이유·같은 방식).
                 HStack(spacing: 8) {
                     Text("시각").font(.caption).foregroundStyle(Palette.textSecondary)
                     Toggle("", isOn: timeEnabledBinding(value)).labelsHidden().tint(Palette.accent)
@@ -747,8 +750,9 @@ struct DetailView: View {
     // MARK: 행동 구현
 
     private func commit() {
-        // 규칙 1 최종 방어선: 미리 알림이 마감 하루 전보다 늦으면(마감 미래 기준) 저장을 막고 알린다.
-        // DatePicker 범위 제한을 우회했거나 마감을 나중에 앞으로 당겨 역전된 경우를 여기서 잡는다.
+        // 규칙 1을 막는 **유일한 자리**(B, 2026-08-08): 미리 알림이 마감보다 늦으면(마감 미래 기준) 저장을 막고 알린다.
+        // 고르는 단계(DatePicker)에는 범위 제한이 없다 — 범위가 값을 조용히 끌어당기기 때문이다(`timeRow` 참조).
+        // 그래서 여기가 "최종" 방어선이 아니라 **그냥 방어선**이다. 사람이 위반을 고르는 것은 정상 경로다.
         //
         // **검사 대상 = 저장될 최종 쌍**(화면 draft 쌍이 아니다 — 2026-08-06 `가`).
         // 저장은 `EditDiff`가 낸 **바뀐 필드만** 내보내고 그것이 **현재 저장값** 위에 필드별 LWW로 얹힌다.
