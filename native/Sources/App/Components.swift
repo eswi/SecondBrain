@@ -223,6 +223,9 @@ func scheduleTimeChip(_ it: ResolvedItem, now: Date = Date()) -> String? {
 
 struct StandardDialog<Buttons: View>: View {
     let title: String
+    /// 카드 폭. 기본 300 — **기존 대화상자는 전부 이 값 그대로**다(부르는 쪽을 안 건드린다).
+    /// 넓히는 것은 **안에 넓은 것을 담을 때만**이다(시점 고치는 자리의 달력 — 칸 너비가 행 높이를 정한다).
+    var width: CGFloat = 300
     @ViewBuilder var buttons: () -> Buttons
 
     var body: some View {
@@ -239,7 +242,7 @@ struct StandardDialog<Buttons: View>: View {
                 Divider().overlay(Palette.border)
                 buttons()
             }
-            .frame(width: 300)
+            .frame(width: width)
             .background(Palette.surface2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.border))
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)

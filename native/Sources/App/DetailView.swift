@@ -506,6 +506,17 @@ struct DetailView: View {
         let edited = changes[field == .due ? "due" : "resurface"] != nil
         // 「없음」으로 열렸는데 지금은 날짜가 있다 = 날짜 자체가 새로 생긴 것.
         let cameFromEmpty = !Self.isRealDate(editingBackup) && Self.isRealDate(value.wrappedValue)
+        // **폭은 300pt(기본값)로 돌아왔다** — 2026-08-10 실기기 판단.
+        //
+        // **360pt를 시험했다.** `.graphical` 달력의 **행 높이는 칸 너비를 따르므로**(300pt에선 칸 41pt·행 34pt,
+        // 360pt면 칸 ≈50pt·행 ≈42pt) 넓히면 **늘리기 없이** 큰 달력을 얻을 줄 알았다.
+        // **결과: 크기 변함이 줄기는 했으나 없어지지 않았다.** 넓히는 것으로는 못 닫는다는 뜻이고,
+        // 그렇다면 폭만 키워 대화상자를 무겁게 할 이유가 없다. → **원래 폭으로 되돌린다.**
+        //
+        // ⚠️ **남은 사실 하나:** `fixedSize(vertical:)`를 줘도 크기가 여전히 조금 변한다.
+        // 「제 이상 크기로만 그린다」가 이 피커에선 완전히 안 지켜진다는 뜻이다 — **미결**이다.
+        // (`StandardDialog`의 `width` 인자는 남겨 둔다. 기본값이 300이라 다른 대화상자는 무변경이고,
+        //  나중에 이 자리를 다시 볼 때 쓸 수 있다.)
         StandardDialog(title: title) {
             VStack(spacing: 12) {
                 // **달력은 평소 accent다.** `.tint`는 선택 표시뿐 아니라 **월 이동 < > 까지** 물들여서,
