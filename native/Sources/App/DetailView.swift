@@ -72,6 +72,11 @@ struct DetailView: View {
     /// 임시층이 아니다 — 편집은 그대로 draft에 담기고, 이건 "열 때 무엇이었나" 한 칸짜리 되돌리기 버퍼다.
     /// (임시층을 두면 값의 층이 셋이 되어 draft/저장값 하나로 정리해 둔 판정이 흐려진다.)
     @State private var editingBackup: String?
+    /// **시각 토글을 껐을 때 그 시각을 기억해 둔다**(2026-08-09). 끄면 값에서 시각이 빠지지만
+    /// 화면은 그것을 **흐리게 계속 보여주고**, 다시 켜면 **그 시각이 되살아난다.**
+    /// 안 기억하면 껐다 켜는 것만으로 사람이 정한 시각이 사라져 기본값 09:00으로 덮인다 — 조용한 유실이다.
+    /// 화면 안에서만 산다(`@State`) — 저장 형식은 안 바뀐다.
+    @State private var rememberedTime: [TimeField: String] = [:]
 
     /// 시점 두 칸. `ClassSpec`의 칸과 1:1이고 **화면에 안 나오는 이름**이다(제목은 분류가 정한다).
     enum TimeField { case due, resurface }
@@ -496,19 +501,26 @@ struct DetailView: View {
     private func timeDialog(_ field: TimeField) -> some View {
         let value = field == .due ? $due : $resurface
         let title = ClassRegistry.title(normalizedType, field == .due ? .due : .resurface)
+        // **amber = 「지금 값이 저장값과 다르다」.** 줄의 값 색·하단 문장·[저장] 버튼이 보는 그 `changes`를
+        // 그대로 본다 — 대화상자 안팎이 같은 판정을 쓰므로 어긋날 수 없다(새 판정 없음).
+        let edited = changes[field == .due ? "due" : "resurface"] != nil
         StandardDialog(title: title) {
             VStack(spacing: 12) {
+                // 바뀐 날짜는 **선택 표시가 amber**로 물든다. 원래(저장값) 날짜로 돌아오면 색도 돌아온다.
                 DatePicker("", selection: dateBinding(value), displayedComponents: .date)
-                    .datePickerStyle(.graphical).labelsHidden().tint(Palette.accent)
+                    .datePickerStyle(.graphical).labelsHidden()
+                    .tint(edited ? Palette.today : Palette.accent)
                     .padding(.horizontal, 6)
                 // **미루기 셋 — 바로 위 날력에 결과가 나타난다.** 자리를 닫지 않는다:
                 // 눌러 보고 마음에 안 들면 다른 날 수를 누르거나 [취소]로 되돌릴 수 있어야 한다.
-                // 미리 알림에만 있다(옛 `showDefer`와 같은 조건).
+                // **지금 값을 만든 버튼이 amber**로 켜진다(아래 `deferSelected`). 미리 알림에만 있다.
                 if field == .resurface {
                     HStack(spacing: 8) {
                         ForEach([1, 3, 7], id: \.self) { n in
                             Button("\(n)일 미루기") { deferResurface(value, days: n) }
-                                .font(.callout).buttonStyle(.plain).foregroundStyle(Palette.accent)
+                                .font(.callout).buttonStyle(.plain)
+                                .foregroundStyle(deferSelected(n, value: value.wrappedValue, edited: edited)
+                                                 ? Palette.today : Palette.accent)
                             if n != 7 { Spacer(minLength: 0) }
                         }
                     }
@@ -517,11 +529,16 @@ struct DetailView: View {
                 Divider().overlay(Palette.border)
                 HStack(spacing: 8) {
                     Text("시각").font(.callout).foregroundStyle(Palette.textPrimary)
-                    Toggle("", isOn: timeEnabledBinding(value)).labelsHidden().tint(Palette.accent)
+                    Toggle("", isOn: timeEnabledBinding(value, field)).labelsHidden().tint(Palette.accent)
                     Spacer()
                     if ItemSchedule.timeOfDay(value.wrappedValue ?? "") != nil {
                         DatePicker("", selection: timeBinding(value), displayedComponents: .hourAndMinute)
                             .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
+                    } else {
+                        // **꺼도 시각은 보인다 — 흐리게.** 안 고른 상태임이 색으로 드러나고,
+                        // 그 값이 **켜면 붙을 값**이다(같은 `pendingTime`). 꺼둔 시각을 화면에서 잃지 않는다.
+                        Text(pendingTimeText(field))
+                            .font(.callout).foregroundStyle(Palette.textPrimary.opacity(0.35))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -537,6 +554,28 @@ struct DetailView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// **이 미루기 버튼이 지금 값을 만든 것인가** — 그러면 amber로 켠다.
+    ///
+    /// **`edited`가 먼저다.** 값이 저장값과 같으면 어떤 버튼도 안 켠다 — *"원래 날짜로 오면 색깔은 변화 없게"*.
+    /// 그래서 amber의 뜻이 대화상자 안에서 하나로 유지된다: **「지금 값이 원래와 다르다」.**
+    ///
+    /// 판정은 `deferBy`를 **다시 돌려** 그 날짜와 비교한다 — 버튼이 실제로 만들 값과 **같은 함수**라
+    /// 갈릴 수 없다(상한에 걸려 당겨지는 경우까지 그대로 따라간다).
+    /// ⚠️ 그래서 **둘 이상이 켜질 수 있다** — 3일과 7일이 같은 상한으로 당겨지면 둘 다 그 값을 만든다.
+    /// 그건 거짓이 아니라 사실이다(어느 쪽을 눌러도 같은 날이 된다).
+    private func deferSelected(_ n: Int, value: String?, edited: Bool) -> Bool {
+        guard edited, let value, Self.isRealDate(value) else { return false }
+        guard case .deferred(let day, _) = ItemSchedule.deferBy(
+                days: n, due: due, now: Date(),
+                resurfaceHasTime: ItemSchedule.timeOfDay(value) != nil) else { return false }
+        return Self.datePart(value) == day
+    }
+
+    /// 값의 날짜부("2026-08-14T06:00" → "2026-08-14"). 시각이 있든 없든 날짜만 비교할 때 쓴다.
+    static func datePart(_ s: String) -> String {
+        s.split(whereSeparator: { $0 == "T" || $0 == " " }).first.map(String.init) ?? s
     }
 
     /// 값 글자의 색 — **저장 안 된 변경이 있으면 amber**(하단 「저장하지 않은 수정이 있어요」와 **같은 색**).
@@ -985,15 +1024,37 @@ struct DetailView: View {
         )
     }
 
-    /// "시각" 토글 — OFF면 날짜만(시각 안 넣을 자유, §6-B), ON이면 기본 09:00을 붙여 시·분 지정을 연다.
-    private func timeEnabledBinding(_ b: Binding<String?>) -> Binding<Bool> {
+    /// "시각" 토글 — OFF면 날짜만(시각 안 넣을 자유, §6-B), ON이면 **꺼둘 때의 시각**을 되살린다.
+    ///
+    /// **끌 때 시각을 기억한다**(2026-08-09) — 안 그러면 껐다 켜는 것만으로 사람이 정한 6:00이
+    /// 기본값 09:00으로 덮인다. **화면이 흐리게 보여주는 그 시각과 켤 때 붙는 시각이 같은 값**이어야
+    /// 하므로 둘 다 `pendingTime(_:)` 하나를 본다(갈리면 화면이 거짓말을 한다).
+    private func timeEnabledBinding(_ b: Binding<String?>, _ field: TimeField) -> Binding<Bool> {
         Binding(
             get: { ItemSchedule.timeOfDay(b.wrappedValue ?? "") != nil },
             set: { on in
                 let base = Self.fmt.string(from: ItemSchedule.parseDay(b.wrappedValue ?? "") ?? Date())
-                b.wrappedValue = on ? "\(base)T09:00" : base
+                if on {
+                    b.wrappedValue = "\(base)T\(pendingTime(field))"
+                } else {
+                    if let t = ItemSchedule.timeOfDay(b.wrappedValue ?? "") {
+                        rememberedTime[field] = String(format: "%02d:%02d", t.hour, t.minute)   // ← 끄기 전에 기억
+                    }
+                    b.wrappedValue = base
+                }
             }
         )
+    }
+
+    /// **꺼져 있을 때 화면이 보여줄 시각 = 켜면 붙을 시각.** 기억해 둔 것이 없으면 09:00(옛 기본값).
+    private func pendingTime(_ field: TimeField) -> String { rememberedTime[field] ?? "09:00" }
+
+    /// 흐린 시각 표시용 — **시스템 시각 형식 그대로**(피커가 보여주는 모양과 같게. 새 표기를 만들지 않는다).
+    private func pendingTimeText(_ field: TimeField) -> String {
+        let hm = pendingTime(field).split(separator: ":").compactMap { Int($0) }
+        var c = DateComponents(); c.hour = hm.first ?? 9; c.minute = hm.count > 1 ? hm[1] : 0
+        guard let date = Calendar.current.date(from: c) else { return pendingTime(field) }
+        return Self.timeFmt.string(from: date)
     }
 
     /// 시·분 피커 브릿지 — 날짜부는 유지하고 시각만 바꾼다. 쓰기 표준형 `T`.
@@ -1016,6 +1077,10 @@ struct DetailView: View {
     static let fmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
         return f
+    }()
+    /// 시각 표시(「오전 6:00」) — 기기 형식을 따른다. 컴팩트 시각 피커와 같은 모양이 나오게.
+    static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f
     }()
     static let shortFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
