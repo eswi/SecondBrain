@@ -59,7 +59,7 @@ struct DetailView: View {
     @State private var showDeleteConfirm = false
     /// 저장하지 않은 수정이 있는데 뒤로가기로 이탈하려 할 때 재확인(조용히 버리지 않음, 결정 1).
     @State private var showDiscardConfirm = false
-    /// 규칙 1 안내(단일 버튼 정보 팝업) — +7일 미루기 상한/차단, 저장 시 위반 차단에 공용으로 쓴다.
+    /// 규칙 1 안내(단일 버튼 정보 팝업) — N일 미루기 상한/차단, 저장 시 위반 차단에 공용으로 쓴다.
     @State private var noticeDialog: String?
 
     /// 원문 편집 포커스. 원문 밖을 누르면 내리고(키보드 숨김), 원문을 다시 누르면 그 위치에 커서·키보드 복귀.
@@ -68,6 +68,10 @@ struct DetailView: View {
     /// 지금 고치는 중인 시점 칸(없으면 nil). **기억하지 않는다** — `@State`라 화면과 함께 태어나고 죽는다.
     /// 화면을 다시 열면 언제나 닫힌 채다.
     @State private var editingTime: TimeField?
+    /// **고치는 자리를 열 때의 값.** [취소]가 이것으로 되돌린다.
+    /// 임시층이 아니다 — 편집은 그대로 draft에 담기고, 이건 "열 때 무엇이었나" 한 칸짜리 되돌리기 버퍼다.
+    /// (임시층을 두면 값의 층이 셋이 되어 draft/저장값 하나로 정리해 둔 판정이 흐려진다.)
+    @State private var editingBackup: String?
 
     /// 시점 두 칸. `ClassSpec`의 칸과 1:1이고 **화면에 안 나오는 이름**이다(제목은 분류가 정한다).
     enum TimeField { case due, resurface }
@@ -473,6 +477,7 @@ struct DetailView: View {
 
     /// 고치는 자리를 연다. 값이 없었으면 **오늘**을 넣고 연다(옛 [날짜 설정]과 같은 동작 — 빈 피커를 안 만든다).
     private func startEditing(_ value: Binding<String?>, _ field: TimeField) {
+        editingBackup = value.wrappedValue                 // ← 반드시 오늘을 넣기 **전에**
         if !Self.isRealDate(value.wrappedValue) { value.wrappedValue = Self.fmt.string(from: Date()) }
         editingTime = field
     }
@@ -496,6 +501,19 @@ struct DetailView: View {
                 DatePicker("", selection: dateBinding(value), displayedComponents: .date)
                     .datePickerStyle(.graphical).labelsHidden().tint(Palette.accent)
                     .padding(.horizontal, 6)
+                // **미루기 셋 — 바로 위 날력에 결과가 나타난다.** 자리를 닫지 않는다:
+                // 눌러 보고 마음에 안 들면 다른 날 수를 누르거나 [취소]로 되돌릴 수 있어야 한다.
+                // 미리 알림에만 있다(옛 `showDefer`와 같은 조건).
+                if field == .resurface {
+                    HStack(spacing: 8) {
+                        ForEach([1, 3, 7], id: \.self) { n in
+                            Button("\(n)일 미루기") { deferResurface(value, days: n) }
+                                .font(.callout).buttonStyle(.plain).foregroundStyle(Palette.accent)
+                            if n != 7 { Spacer(minLength: 0) }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
                 Divider().overlay(Palette.border)
                 HStack(spacing: 8) {
                     Text("시각").font(.callout).foregroundStyle(Palette.textPrimary)
@@ -507,19 +525,17 @@ struct DetailView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                // 미루기는 **미리 알림에만** 있다(옛 `showDefer`와 같은 조건). 누르면 값이 바뀌므로 자리를 닫는다 —
-                // 상한에 걸리거나 막히면 `deferResurface`가 안내 팝업을 띄우는데, 그 팝업이 이 뒤에 가리면 안 된다.
-                if field == .resurface {
-                    Button { deferResurface(value); editingTime = nil } label: {
-                        Label("+7일 미루기", systemImage: "clock")
-                    }
-                    .font(.callout).buttonStyle(.plain).foregroundStyle(Palette.accent)
-                }
             }
             .padding(.vertical, 14)
             Divider().overlay(Palette.border)
-            DialogButton(title: "확인", prominent: true) { editingTime = nil }
-                .fixedSize(horizontal: false, vertical: true)
+            // [취소]는 **열 때의 값으로 되돌린다** — 「없음」이었으면 다시 「없음」이 된다.
+            // [확인]은 닫기만 한다(편집은 이미 draft에 있다). 저장은 화면 아래 [저장]이 한다.
+            HStack(spacing: 0) {
+                DialogButton(title: "취소") { value.wrappedValue = editingBackup; editingTime = nil }
+                Divider().overlay(Palette.border)
+                DialogButton(title: "확인", prominent: true) { editingTime = nil }
+            }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -535,10 +551,15 @@ struct DetailView: View {
         return hasDate ? Palette.textPrimary : Palette.textTertiary
     }
 
-    /// +7일 미루기(상세 draft) — 규칙 1을 지켜 미리 알림 draft를 정한다. 위반 상태로 세팅하지 않는다.
+    /// **N일 미루기**(상세 draft) — 규칙 1을 지켜 미리 알림 draft를 정한다. 위반 상태로 세팅하지 않는다.
     /// 상한에 걸려 당겨졌거나 마감 임박이라 못 미루면 안내 팝업으로 알린다("알린다").
-    private func deferResurface(_ value: Binding<String?>) {
-        switch ItemSchedule.deferSevenDays(due: due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(value.wrappedValue ?? "") != nil) {
+    ///
+    /// **1·3·7일이 같은 길을 탄다** — `ItemSchedule.deferBy`가 날 수만 받고 판정은 하나다(2026-08-09).
+    /// **자리를 닫지 않는다** — 눌러 보고 다른 날 수를 누르거나 [취소]로 되돌릴 수 있어야 한다.
+    /// 상한/차단 안내는 이 대화상자 **위에** 겹쳐 뜬다(오버레이 순서로 보장).
+    private func deferResurface(_ value: Binding<String?>, days: Int) {
+        switch ItemSchedule.deferBy(days: days, due: due, now: Date(),
+                                    resurfaceHasTime: ItemSchedule.timeOfDay(value.wrappedValue ?? "") != nil) {
         case .deferred(let day, let capped):
             value.wrappedValue = ItemSchedule.withTimeOfDay(day, from: value.wrappedValue)   // 원래 시각 보존(§6-B)
             if capped {

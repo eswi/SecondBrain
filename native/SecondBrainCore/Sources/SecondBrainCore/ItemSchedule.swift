@@ -303,14 +303,20 @@ public enum ItemSchedule {
         case blocked(cap: String)
     }
 
-    /// "+7일 미루기"를 규칙 1 안에서 계산한다:
-    /// - 마감 없음/지남 → 오늘+7일 그대로(`capped:false`).
-    /// - 마감 하루 전이 아직 미래면 → 오늘+7일이 그 상한을 넘으면 상한까지 당겨서(`capped:true`), 안 넘으면 그대로.
-    /// - 마감 하루 전이 오늘이거나 지났으면 → `blocked`(미루지 않는다).
-    public static func deferSevenDays(due: String?, now: Date, resurfaceHasTime: Bool = false,
-                                      calendar: Calendar = .current) -> DeferOutcome {
+    /// **"N일 미루기"를 규칙 1 안에서 계산한다.** 1·3·7일이 **완전히 같은 길**을 탄다(2026-08-09) —
+    /// 갈리는 것은 **더하는 날 수 하나뿐**이고, 상한·차단·알림 판정은 전부 공유한다.
+    /// 버튼이 셋이 되어도 규칙이 셋으로 갈라지지 않게 하려고 여기 한 함수에 둔다.
+    ///
+    /// **기준은 언제나 「오늘」이다** — 지금 값 + N일이 아니라 **오늘 + N일**이다(옛 +7일과 같은 규약).
+    /// 미루기는 *"오늘부터 N일 뒤에 다시 보여줘"* 라는 뜻이지 *"지금 잡힌 날짜를 더 밀어라"* 가 아니다.
+    ///
+    /// - 마감 없음/지남 → 오늘+N일 그대로(`capped:false`).
+    /// - 마감 상한이 아직 미래면 → 오늘+N일이 그 상한을 넘으면 상한까지 당겨서(`capped:true`), 안 넘으면 그대로.
+    /// - 상한이 오늘이거나 지났으면 → `blocked`(미루지 않는다).
+    public static func deferBy(days n: Int, due: String?, now: Date, resurfaceHasTime: Bool = false,
+                               calendar: Calendar = .current) -> DeferOutcome {
         let today = calendar.startOfDay(for: now)
-        let target = calendar.date(byAdding: .day, value: 7, to: today) ?? today
+        let target = calendar.date(byAdding: .day, value: n, to: today) ?? today
         guard let ub = resurfaceUpperBound(due: due, now: now, resurfaceHasTime: resurfaceHasTime, calendar: calendar) else {
             return .deferred(to: dayString(target, calendar: calendar), capped: false)   // 마감 없음/지남
         }
@@ -321,5 +327,11 @@ public enum ItemSchedule {
             return .deferred(to: dayString(ub, calendar: calendar), capped: true)
         }
         return .deferred(to: dayString(target, calendar: calendar), capped: false)       // 상한 안 → 그대로
+    }
+
+    /// "+7일 미루기" — `deferBy(days: 7,…)`의 이름 있는 짝. 목록 스와이프 액션이 이 뜻으로 쓴다.
+    public static func deferSevenDays(due: String?, now: Date, resurfaceHasTime: Bool = false,
+                                      calendar: Calendar = .current) -> DeferOutcome {
+        deferBy(days: 7, due: due, now: now, resurfaceHasTime: resurfaceHasTime, calendar: calendar)
     }
 }
