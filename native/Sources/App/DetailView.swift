@@ -65,6 +65,11 @@ struct DetailView: View {
     /// 원문 편집 포커스. 원문 밖을 누르면 내리고(키보드 숨김), 원문을 다시 누르면 그 위치에 커서·키보드 복귀.
     @FocusState private var rawFocused: Bool
 
+    /// 시점 두 칸의 펼침 상태(압축, 2026-08-09). **기억하지 않는다** — `@State`라 화면과 함께 태어나고 죽는다.
+    /// 매번 접힌 채로 열리는 것이 결정이다(접어둔 것을 사람이 기억할 이유가 없다).
+    @State private var dueExpanded = false
+    @State private var resurfaceExpanded = false
+
     /// 원본 음성 "다시 듣기" 재생기(성역 카드).
     @StateObject private var audio = AudioPlayer()
 
@@ -403,12 +408,19 @@ struct DetailView: View {
             if usesDue || usesResurface {
                 VStack(alignment: .leading, spacing: 12) {
                     sectionLabel("시간 설정")
-                    if usesDue { timeRow(ClassRegistry.title(normalizedType, .due), value: $due, showDefer: false) }
+                    // **접힘 판정은 draft를 본다** — 편집기이므로(§0-A-2 닫힘 시험: 저장 없이 닫으면 뜻이 사라진다).
+                    // 배너 넷은 그대로 `saved`를 본다. 이번 압축은 **배치만** 바꾸고 판정 입력은 안 건드린다.
+                    let edited = changes                       // 한 번만 계산해 두 줄이 나눠 쓴다
+                    if usesDue {
+                        timeRow(ClassRegistry.title(normalizedType, .due), value: $due, showDefer: false,
+                                expanded: $dueExpanded, edited: edited["due"] != nil)
+                    }
                     if usesDue && usesResurface { Divider().overlay(Palette.border) }
                     if usesResurface {
                         // 규칙 1은 **여기서 안 막는다** — [저장]에서 저장될 최종 짝으로 검사한다(B, 2026-08-08).
                         // 두 칸이 같은 `timeRow`를 같은 인자로 쓴다 = 날짜와 시각이 같은 방식으로 다뤄진다.
-                        timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface, showDefer: true)
+                        timeRow(ClassRegistry.title(normalizedType, .resurface), value: $resurface, showDefer: true,
+                                expanded: $resurfaceExpanded, edited: edited["resurface"] != nil)
                     }
                 }
                 .padding(14).card()
@@ -416,22 +428,41 @@ struct DetailView: View {
         }
     }
 
+    /// **시점 한 칸 = 접이식 한 줄**(압축, 2026-08-09).
+    ///
+    /// **왜:** 「제목 줄 / 값 줄」이 칸마다 반복돼 시간 설정 카드만 **7줄 238pt**를 썼다(실측).
+    /// 접으면 **3줄 ~131pt**가 되고, 그것만으로 원문 아래가 한 화면에 들어온다(715 → ~608pt, 가용 694pt).
+    ///
+    /// **접힌 줄은 읽는 자리, 펼친 안이 누르는 자리다.** 그래서 「지우기·날짜 설정·+7일 미루기·시각 토글」은
+    /// 전부 안으로 넣었다 — 접힌 줄에 파괴적 버튼(「지우기」)을 두면 **한 줄에 표적이 둘**이 되어
+    /// 펼치려다 지우게 된다. 「날짜 설정」은 값이 없을 때만 나오고, 접힌 줄엔 「없음」이 대신 선다.
+    ///
+    /// **접힘은 기억하지 않는다** — 매번 접힌 채로 연다(부르는 쪽의 `@State`가 화면과 함께 태어난다).
+    ///
+    /// **`edited` = 그 칸에 저장 안 된 변경이 있나.** 부르는 쪽이 `changes`에서 뽑아 준다 —
+    /// **하단 「저장하지 않은 수정이 있어요」·[저장] 버튼과 같은 값**이라 셋이 어긋날 수 없다(새 판정 없음).
+    /// 접으면 안에 뭐가 들었는지 안 보이므로, 안 알리면 **고쳐놓고 접었다가 잊는다.**
     @ViewBuilder
-    private func timeRow(_ title: String, value: Binding<String?>, showDefer: Bool) -> some View {
+    private func timeRow(_ title: String, value: Binding<String?>, showDefer: Bool,
+                         expanded: Binding<Bool>, edited: Bool) -> some View {
         let hasDate = Self.isRealDate(value.wrappedValue)
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title).font(.callout).foregroundStyle(Palette.textPrimary)
-                Spacer()
-                if hasDate {
-                    Button("지우기") { value.wrappedValue = "none" }
-                        .font(.caption).tint(Palette.overdue)
-                } else {
-                    Button("날짜 설정") { value.wrappedValue = Self.fmt.string(from: Date()) }
-                        .font(.caption).tint(Palette.accent)
+            // 접힌 줄 — 제목 · 값 · 펼침 표시. 줄 전체가 펼치기 표적이다.
+            Button { expanded.wrappedValue.toggle() } label: {
+                HStack(spacing: 8) {
+                    Text(title).font(.callout).foregroundStyle(Palette.textPrimary)
+                    Spacer(minLength: 8)
+                    Text(hasDate ? korDateTime(value.wrappedValue ?? "") : "없음")
+                        .font(.callout).foregroundStyle(valueTint(edited: edited, hasDate: hasDate))
+                        .lineLimit(1)
+                    Image(systemName: expanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.caption2).foregroundStyle(Palette.textTertiary)
                 }
+                .contentShape(Rectangle())
             }
-            if hasDate {
+            .buttonStyle(.plain)
+
+            if expanded.wrappedValue, hasDate {
                 // ★ **범위 제한(`in: ...ub`)을 두지 않는다** — B, 2026-08-08. 규칙 1은 [저장]에서만 막는다.
                 //
                 // **왜 뺐나:** 범위를 주면 피커가 **값의 원천이 된다.** `dateBinding`의 setter는 피커가 뱉은 값을
@@ -457,17 +488,41 @@ struct DetailView: View {
                             .labelsHidden().datePickerStyle(.compact).tint(Palette.accent)
                     }
                 }
-            } else {
-                Text("없음")   // 시점 없음. (레거시 "weekly" 값도 여기로 — 반복 기능은 없었다: 날짜 없음의 동의어)
-                    .font(.caption).foregroundStyle(Palette.textTertiary)
             }
-            if showDefer {
-                Button { deferResurface(value) } label: {
-                    Label("+7일 미루기", systemImage: "clock")
+            // 액션 줄 — **펼쳤을 때만.** 값이 있으면 [지우기], 없으면 [날짜 설정], 오른쪽에 [+7일 미루기].
+            // 셋 다 옛 코드와 **같은 동작**이다(자리만 옮겼다). 「없음」은 접힌 줄이 이미 말하므로 여기선 뺀다.
+            if expanded.wrappedValue {
+                HStack(spacing: 8) {
+                    if hasDate {
+                        Button("지우기") { value.wrappedValue = "none" }
+                            .font(.caption).tint(Palette.overdue)
+                    } else {
+                        Button("날짜 설정") { value.wrappedValue = Self.fmt.string(from: Date()) }
+                            .font(.caption).tint(Palette.accent)
+                    }
+                    Spacer()
+                    if showDefer {
+                        Button { deferResurface(value) } label: {
+                            Label("+7일 미루기", systemImage: "clock")
+                        }
+                        .font(.caption).buttonStyle(.plain).foregroundStyle(Palette.accent)
+                    }
                 }
-                .font(.caption).buttonStyle(.plain).foregroundStyle(Palette.accent)
             }
         }
+    }
+
+    /// 접힌 줄 값의 색 — **저장 안 된 변경이 있으면 amber**(하단 「저장하지 않은 수정이 있어요」와 **같은 색**).
+    ///
+    /// **하단이 「있다」, 이 색이 「어디」다.** 하단 문장은 그대로 둔다 — 줄이 화면 밖으로 스크롤되면
+    /// 안 보이므로, 전체를 말하는 자리는 여전히 하단 하나뿐이다.
+    /// **접힘·펼침과 무관하게** 칠한다(펼쳐 놓고 스크롤하면 신호를 잃으면 안 된다).
+    ///
+    /// ⚠️ **후보 「나」(값 글자를 물들임)를 시험 중이다** — amber가 「늦음·지남」으로 읽히면
+    /// 후보 「가」(제목 왼쪽 amber 점)로 바꾼다. **바꿀 자리는 이 함수 하나다**(확인표 G-3).
+    private func valueTint(edited: Bool, hasDate: Bool) -> Color {
+        if edited { return Palette.today }
+        return hasDate ? Palette.textPrimary : Palette.textTertiary
     }
 
     /// +7일 미루기(상세 draft) — 규칙 1을 지켜 미리 알림 draft를 정한다. 위반 상태로 세팅하지 않는다.
