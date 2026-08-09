@@ -504,12 +504,18 @@ struct DetailView: View {
         // **amber = 「지금 값이 저장값과 다르다」.** 줄의 값 색·하단 문장·[저장] 버튼이 보는 그 `changes`를
         // 그대로 본다 — 대화상자 안팎이 같은 판정을 쓰므로 어긋날 수 없다(새 판정 없음).
         let edited = changes[field == .due ? "due" : "resurface"] != nil
+        // 「없음」으로 열렸는데 지금은 날짜가 있다 = 날짜 자체가 새로 생긴 것.
+        let cameFromEmpty = !Self.isRealDate(editingBackup) && Self.isRealDate(value.wrappedValue)
         StandardDialog(title: title) {
             VStack(spacing: 12) {
-                // 바뀐 날짜는 **선택 표시가 amber**로 물든다. 원래(저장값) 날짜로 돌아오면 색도 돌아온다.
+                // **날력은 평소 accent다.** `.tint`는 선택 표시뿐 아니라 **월 이동 < > 까지** 물들여서,
+                // 날짜를 고칠 때마다 화살표 색이 따라 바뀌면 시끄럽다(2026-08-09 정정).
+                // **딱 한 경우만 amber**: 「없음」이었다가 날짜가 생겼을 때 — 그때는 **어느 날이든 다 바뀐 것**이라
+                // 비교할 «전»이 화면에 없다. 날짜를 옮긴 경우는 옮긴 자리가 스스로 보이므로 색이 필요 없다.
                 DatePicker("", selection: dateBinding(value), displayedComponents: .date)
                     .datePickerStyle(.graphical).labelsHidden()
-                    .tint(edited ? Palette.today : Palette.accent)
+                    .tint(cameFromEmpty ? Palette.today : Palette.accent)
+                    .frame(height: 330)          // ← 높이 고정. 달마다 주 수(5·6주)가 달라 대화상자가 들썩였다.
                     .padding(.horizontal, 6)
                 // **미루기 셋 — 바로 위 날력에 결과가 나타난다.** 자리를 닫지 않는다:
                 // 눌러 보고 마음에 안 들면 다른 날 수를 누르거나 [취소]로 되돌릴 수 있어야 한다.
@@ -521,6 +527,8 @@ struct DetailView: View {
                                 .font(.callout).buttonStyle(.plain)
                                 .foregroundStyle(deferSelected(n, value: value.wrappedValue, edited: edited)
                                                  ? Palette.today : Palette.accent)
+                                .padding(.vertical, 7).padding(.horizontal, 9)
+                                .background(Palette.border, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             if n != 7 { Spacer(minLength: 0) }
                         }
                     }
@@ -541,17 +549,20 @@ struct DetailView: View {
                             .font(.callout).foregroundStyle(Palette.textPrimary.opacity(0.35))
                     }
                 }
+                .frame(height: 34)               // ← 켜짐(피커)·꺼짐(글자) 높이가 달라 들썩이던 자리
                 .padding(.horizontal, 16)
             }
             .padding(.vertical, 14)
             Divider().overlay(Palette.border)
             // [취소]는 **열 때의 값으로 되돌린다** — 「없음」이었으면 다시 「없음」이 된다.
             // [확인]은 닫기만 한다(편집은 이미 draft에 있다). 저장은 화면 아래 [저장]이 한다.
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 DialogButton(title: "취소") { value.wrappedValue = editingBackup; editingTime = nil }
-                Divider().overlay(Palette.border)
+                    .background(Palette.border, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 DialogButton(title: "확인", prominent: true) { editingTime = nil }
+                    .background(Palette.border, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
+            .padding(.horizontal, 12).padding(.bottom, 12).padding(.top, 4)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -746,16 +757,21 @@ struct DetailView: View {
                 sectionLabel("반복 설정")
                 completionRow          // "오늘 약 먹었나" — 이번 회차 완료·취소
                 Divider().overlay(Palette.border)
-                menuRow("반복 주기", value: Recurrence.Unit(rawValue: recurUnit ?? "")?.korean ?? "없음") {
-                    ForEach(Recurrence.Unit.allCases, id: \.self) { u in
-                        Button(u.korean) { recurUnit = u.rawValue }
+                // **주기와 자동 완성은 한 줄에 나란히**(압축, 2026-08-09). 실측으로 최악값
+                // (「당일 지나면」)까지 넣어도 **284pt / 342pt**라 여유 58pt다.
+                // ⚠️ **꺼두기는 못 합친다** — 셋을 한 줄에 두면 401pt로 **59pt 넘친다**(계산: 확인표 G-12).
+                //    제목을 「반복」·「자동」으로 줄이면 337pt로 겨우 들어가지만 글자 크기 한 단계에 깨진다.
+                HStack(spacing: 16) {
+                    menuRow("반복 주기", value: Recurrence.Unit(rawValue: recurUnit ?? "")?.korean ?? "없음") {
+                        ForEach(Recurrence.Unit.allCases, id: \.self) { u in
+                            Button(u.korean) { recurUnit = u.rawValue }
+                        }
+                        Button("없음") { recurUnit = nil }
                     }
-                    Button("없음") { recurUnit = nil }
-                }
-                Divider().overlay(Palette.border)
-                menuRow("자동 완성", value: Recurrence.AutoComplete(rawValue: recurAuto)?.korean ?? "없음") {
-                    ForEach(Recurrence.AutoComplete.allCases, id: \.self) { a in
-                        Button(a.korean) { recurAuto = a.rawValue }
+                    menuRow("자동 완성", value: Recurrence.AutoComplete(rawValue: recurAuto)?.korean ?? "없음") {
+                        ForEach(Recurrence.AutoComplete.allCases, id: \.self) { a in
+                            Button(a.korean) { recurAuto = a.rawValue }
+                        }
                     }
                 }
                 Divider().overlay(Palette.border)
@@ -818,10 +834,12 @@ struct DetailView: View {
 
     /// 라벨 + 오른쪽 Menu 한 줄(반복 설정 공용).
     @ViewBuilder
+    /// 라벨 + 오른쪽 Menu. **나란히 두 개를 한 줄에 놓을 수 있게** `Spacer(minLength:)`를 쓴다
+    /// (`Spacer()`만 두면 둘 중 하나가 폭을 다 먹는다).
     private func menuRow<Content: View>(_ title: String, value: String, @ViewBuilder menu: () -> Content) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(title).font(.callout).foregroundStyle(Palette.textPrimary)
-            Spacer()
+            Spacer(minLength: 4)
             Menu { menu() } label: {
                 HStack(spacing: 3) {
                     Text(value).font(.callout)
