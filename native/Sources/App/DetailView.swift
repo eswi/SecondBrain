@@ -512,27 +512,39 @@ struct DetailView: View {
                 // 날짜를 고칠 때마다 화살표 색이 따라 바뀌면 시끄럽다(2026-08-09 정정).
                 // **딱 한 경우만 amber**: 「없음」이었다가 날짜가 생겼을 때 — 그때는 **어느 날이든 다 바뀐 것**이라
                 // 비교할 «전»이 화면에 없다. 날짜를 옮긴 경우는 옮긴 자리가 스스로 보이므로 색이 필요 없다.
+                // **높이 고정 + 꽉 채우기.** 두 겹이 필요하다(2026-08-10):
+                // ① 바깥 `frame(height:)` — 대화상자가 안 들썩이게(달마다 주 수가 5·6주로 달라진다).
+                // ② 안쪽 `maxHeight: .infinity` — **틀만 주면 날력이 제 이상 크기(≈236pt)로 오그라들어
+                //    가운데 정렬**된다(실측: 위·아래에 빈 띠). 제안된 높이를 다 쓰라고 해야 꽉 찬다(≈304pt).
+                // 대화상자 크기는 두 경우가 **이미 같았다** — 구분선 실측이 248·604·664pt로 동일했다.
+                // 바뀌던 것은 **날력 내부**뿐이라, 고쳐야 할 자리도 여기다.
                 DatePicker("", selection: dateBinding(value), displayedComponents: .date)
                     .datePickerStyle(.graphical).labelsHidden()
                     .tint(cameFromEmpty ? Palette.today : Palette.accent)
-                    .frame(height: 330)          // ← 높이 고정. 달마다 주 수(5·6주)가 달라 대화상자가 들썩였다.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(height: 330)
                     .padding(.horizontal, 6)
                 // **미루기 셋 — 바로 위 날력에 결과가 나타난다.** 자리를 닫지 않는다:
                 // 눌러 보고 마음에 안 들면 다른 날 수를 누르거나 [취소]로 되돌릴 수 있어야 한다.
                 // **지금 값을 만든 버튼이 amber**로 켜진다(아래 `deferSelected`). 미리 알림에만 있다.
                 if field == .resurface {
+                    // **셋이 폭을 똑같이 나눈다.** 옛 코드는 각자 제 폭 + `Spacer`라 합이 대화상자(300pt)를
+                    // 넘어 **첫 버튼이 찌그러졌다**(실측: 글자 69.3 + 좌우 여백 18 = 87pt × 3 = 261pt에
+                    // 좌우 여백 32를 더하면 293pt로 268pt를 넘는다).
+                    // 이제 각 칸 = (300 − 24 − 간격 16) ÷ 3 ≈ **86.7pt**, 글자 69.3pt라 17pt 남는다.
                     HStack(spacing: 8) {
                         ForEach([1, 3, 7], id: \.self) { n in
                             Button("\(n)일 미루기") { deferResurface(value, days: n) }
                                 .font(.callout).buttonStyle(.plain)
+                                .lineLimit(1).minimumScaleFactor(0.85)
                                 .foregroundStyle(deferSelected(n, value: value.wrappedValue, edited: edited)
                                                  ? Palette.today : Palette.accent)
-                                .padding(.vertical, 7).padding(.horizontal, 9)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
                                 .background(Palette.border, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            if n != 7 { Spacer(minLength: 0) }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 12)
                 }
                 Divider().overlay(Palette.border)
                 HStack(spacing: 8) {
