@@ -171,7 +171,21 @@ struct DetailView: View {
         .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
         .overlay { if showDeleteConfirm { deleteDialog } }
         .overlay { if showDiscardConfirm { discardDialog } }
-        .overlay { if let f = editingTime { timeDialog(f) } }
+        // ★ **`ignoresSafeArea()`가 핵심이다**(2026-08-10 — 크기 변함의 진짜 원인).
+        //
+        // **원인은 달력이 아니라 하단 바였다.** 날짜를 처음 누르면 `dirty`가 켜지고 하단 바에
+        // 「저장하지 않은 수정이 있어요」 **줄이 하나 생긴다** → `safeAreaInset(edge:.bottom)`이 커진다 →
+        // **ScrollView가 쓸 수 있는 높이가 줄어든다** → 그 위에 얹힌 이 대화상자에게 주어지는 높이도 줄어
+        // **달력이 「채우기」를 포기하고 제 크기로 떨어진다.**
+        //
+        // **증거(스크린샷 두 장 실측):** 큰 달력 쪽엔 amber 띠가 **없고**, 작은 달력 쪽엔 **y 725~740pt에 있다.**
+        // 이 하나로 셋이 다 설명된다 — ⓐ 날짜를 누를 때만 생김(그때 `dirty`가 처음 켜짐)
+        // ⓑ 한 번 작아지면 그대로(`dirty`는 계속 켜져 있음) ⓒ 폭을 넓힐수록 변동이 작아짐
+        // (폭이 넓으면 «제 크기»가 «채운 크기»에 가까워 낙차가 작다).
+        //
+        // → **대화상자를 안전 영역 밖으로 빼서 하단 바와 무관하게 만든다.** 그러면 주어지는 높이가 안 변한다.
+        // (다른 대화상자들은 글자만 담아 높이가 안 흔들리므로 굳이 안 건드린다.)
+        .overlay { if let f = editingTime { timeDialog(f).ignoresSafeArea() } }
         .overlay { if let msg = noticeDialog { noticeDialogView(msg) } }
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
         .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
@@ -506,11 +520,13 @@ struct DetailView: View {
         let edited = changes[field == .due ? "due" : "resurface"] != nil
         // 「없음」으로 열렸는데 지금은 날짜가 있다 = 날짜 자체가 새로 생긴 것.
         let cameFromEmpty = !Self.isRealDate(editingBackup) && Self.isRealDate(value.wrappedValue)
-        // **폭 360pt** — 2026-08-10 사용자 결정 「나」(넷을 다 써 보고 고른 것).
-        // `.graphical` 달력의 **행 높이는 칸 너비를 따른다**: 폭 300 → 칸 41pt·행 34pt / 폭 360 → 칸 ≈50pt·행 ≈42pt.
-        // **늘리기 없이** 큰 달력을 얻는 유일한 손잡이가 폭이다. 화면이 402pt라 좌우 21pt씩 남는다.
+        // **폭 400pt** — 2026-08-10 확정.
+        // `.graphical` 달력의 **행 높이는 칸 너비를 따른다**: 폭 300 → 칸 41pt·행 34pt / 폭 400 → 칸 ≈56pt·행 ≈46pt.
+        // **늘리기 없이** 크기를 얻는 손잡이는 **폭**이다. 화면이 402pt라 좌우 1pt씩만 남는다.
+        // **글자 크기 줄이기(`dynamicTypeSize`)도 시험했다가 되돌렸다** — 이 달력만 기기의 글자 크기 설정을
+        // 안 따르게 되는데(접근성 손해), 그만한 값이 없었다.
         // **다른 대화상자는 그대로 300pt다**(`StandardDialog`의 기본값 — 부르는 쪽을 안 건드렸다).
-        StandardDialog(title: title, width: 360) {
+        StandardDialog(title: title, width: 400) {
             VStack(spacing: 12) {
                 // **달력은 평소 accent다.** `.tint`는 선택 표시뿐 아니라 **월 이동 < > 까지** 물들여서,
                 // 날짜를 고칠 때마다 화살표 색이 따라 바뀌면 시끄럽다(2026-08-09 정정).
