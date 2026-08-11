@@ -43,6 +43,14 @@ struct DetailView: View {
     /// 저장값으로 바꾸면 누른 즉시 반영이 사라져 **의도한 동작이 죽는다**(그래서 일부러 이렇게 뒀다).
     /// 판정 = `Recurrence.doneThisCycle`(마감 앵커 기준, 게이트와 동일 — 2026-08-03 #4).
     @State private var cycleDoneLocal: Bool
+
+    /// **성역·분류 접힘 상태 (2차 압축 1단계).** 성역 카드가 접혔나 — **분류 카드의 아이콘 크기도 이걸 본다**
+    /// (둘이 나란히 서므로 한 상태가 둘을 정한다). 기본 **접힘** — 압축이 목적이고 성역은 자주 보는 값이 아니다.
+    ///
+    /// **★ 이건 draft도 저장값도 아니다 — 화면 안에서만 뜻이 있는 표시 상태다.**
+    /// 저장 없이 닫으면 사라져야 맞다(사양서 §0-A-2 닫힘 시험: 닫아서 사라져도 거짓이 되는 말이 없다).
+    /// 그래서 `changes`에 안 들어가고 amber도 안 만든다. **저장 대상이 아니다.**
+    @State private var metaCollapsed = true
     /// **draft의 기준선 = "화면이 아는 저장값".** `EditDiff`가 이것과 draft를 비교해 바뀐 칸을 낸다.
     /// `item`(스냅숏)을 직접 쓰지 않는 이유: **완료·취소가 이 화면 안에서 저장값을 옮기기 때문**이다.
     /// 그때 draft만 옮기고 기준선을 안 옮기면 **누른 것만으로 "저장하지 않은 수정이 있어요"** 가 뜬다.
@@ -356,6 +364,13 @@ struct DetailView: View {
     // MARK: 분류 (미기억이면 "임시" 배지 + override)
 
     /// **편집 중인 분류**(draft). 편집기(분류 메뉴·시간 설정 노출·반복 설정)가 쓴다.
+    ///
+    /// **★ 2차 압축(2026-08-11)에서 지켜야 할 것 — `savedType`으로 바꾸지 말 것.**
+    /// 분류 카드를 성역과 나란히 옮기면서 입력을 `savedType`으로 바꾸고 싶어질 수 있다(옆에 선 성역이
+    /// 저장값 성격이라 딸려가기 쉽다). 바꾸면 **08-08의 닫힘 시험이 뒤집힌다** — 이 카드는 **편집기**라서
+    /// 분류를 골랐을 때 화면이 **고른 값**을 보여줘야 하고, 저장 없이 닫으면 되돌아가야 맞다.
+    /// `savedType`을 보면 고른 즉시 화면이 안 바뀌어 **"안 골라졌다"로 보인다.**
+    /// (사실을 말하는 배너는 반대다 — 아래 MARK 참조. **이 줄은 배너가 아니라 편집기다.**)
     private var normalizedType: String? { (type?.isEmpty ?? true) ? nil : type }
 
     // MARK: ★ 사실을 말하는 자리의 입력 — `saved` / `savedType` (2026-08-08 전수 점검)
@@ -391,13 +406,32 @@ struct DetailView: View {
                 Button { type = "" } label: { Label("미분류", systemImage: "questionmark.circle") }
                     .disabled(normalizedType == nil)
             } label: {
+                // **세로 배치 — 아이콘 위 · 이름 아래 (2차 압축 1단계, 2026-08-11).**
+                //
+                // **왜 세로인가 (계측):** 이 카드가 성역과 2:1로 나란히 서면 안쪽 폭이 **91.3pt**다
+                // (342가 아니다 — 402 − 바깥 16×2 − gap 12를 2:1로 나눈 뒤 카드 패딩 14×2를 또 뺀 값).
+                // 옛 가로 배치는 최소폭이 `심볼 + 이름 + chevron 11 + 간격 27`이라 **최악 「주차 위치」가 120.2pt** —
+                // 아홉 분류 중 **일곱이 안 들어갔다.** 세로로 세우면 폭 = `max(심볼, 이름+chevron)`이 되어
+                // **최악 77.2pt**(주차 위치 63.2 + 3 + 11)로 떨어진다 → 여유 14.1pt.
+                // ⚠️ **여유가 XXXL(20pt)에서 90.3pt로 1pt까지 좁아진다.** 더 필요하면 **chevron을 떼는 것**이 다음 지렛대다
+                // (63.2pt로 내려간다). 폰트를 줄이는 것보다 그쪽이 낫다 — 이름은 읽어야 하는 값이다.
+                //
+                // 아이콘 크기는 접힘 **17** / 펼침 **44**(상한 50). 펼침 44는 최악 심볼 `person.2.fill`이
+                // 69.9pt로 91.3 안에 든다. **가로↔세로로 모양을 바꾸지 않는다** — 크기만 바뀌므로 접었다 펴도
+                // 배치가 안 흔들린다(같은 이유로 성역도 접힘에서 폰트를 안 바꾼다 — G-11에서 지킨 원칙).
                 let m = ClassRegistry.meta(normalizedType)
-                HStack(spacing: 9) {
-                    Image(systemName: m.symbol).foregroundStyle(m.color)
-                    Text(m.label).foregroundStyle(Palette.textPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(Palette.textTertiary)
+                VStack(spacing: 6) {
+                    Image(systemName: m.symbol)
+                        .font(.system(size: metaCollapsed ? 17 : 44))
+                        .foregroundStyle(m.color)
+                    HStack(spacing: 3) {
+                        // `.body`(17pt)를 **명시**한다 — 옛 코드는 환경 폰트 상속에 기대고 있어서
+                        // 계측할 때 "이 줄이 몇 pt인가"를 코드에서 읽을 수 없었다.
+                        Text(m.label).font(.body).lineLimit(1).foregroundStyle(Palette.textPrimary)
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(Palette.textTertiary)
+                    }
                 }
+                .frame(maxWidth: .infinity)
             }
             .menuStyle(.button).buttonStyle(.plain)
             // Menu는 탭을 자기가 삼켜(메뉴 표시) 바깥 TapGesture가 안 걸린다 → touch-down에 걸리는
