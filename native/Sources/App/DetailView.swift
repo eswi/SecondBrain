@@ -530,11 +530,33 @@ struct DetailView: View {
 
     private var typeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                sectionLabel("분류")
-                Spacer()
-                if !isRemembered { ProvisionalBadge() }   // 기억하면 표시 없음(임시 배지 제거)
+            // **제목 줄 전체가 접기 표적** — 성역 카드의 머리 줄과 같은 규약(제목 줄 = 접기).
+            // **표시는 두 군데, 동작은 하나** — 여기를 눌러도 `toggleMeta()`라 성역과 **함께** 움직인다.
+            // 분류만 따로 접히지 않는다(두 카드가 나란히 서므로 상태가 갈리면 줄이 어긋난다).
+            //
+            // **표적: 90 × 33.2**(위 14 = 카드 여백 + 줄 14.2 + 아래 5). 1-B와 같은 기법 — 여백을 주고
+            // 표적을 잡은 뒤 같은 만큼 음수로 되돌려 **레이아웃은 안 움직인다.**
+            // ⚠️ **아래로 5만 쓴다** — `spacing 10`을 다 쓰면 아래 메뉴 표적(아이콘, 90 × 40)과 **맞닿는다.**
+            // 탭 튐 버그(2026-07-21)가 정확히 **인접 표적 오조작**이라 0pt는 피한다. → **사이 5pt.**
+            // 44pt엔 못 닿는데(위 14·아래 10밖에 없다) **접기는 대체 경로가 크다** —
+            // 접힘이면 **성역 카드 전체(92pt)** 가 같은 동작을 한다. 못 눌러도 잃는 게 없고,
+            // 잘못 눌러도 메뉴가 열릴 뿐이다.
+            //
+            // ⚠️ **미기억 항목은 이 줄이 빠듯하다** — 「분류」 20.8 + 임시 배지 31.1 + 접기 14 + 간격 ≈ **82 / 90**.
+            // 그래서 `spacing`을 8이 아니라 **4**로 뒀다(8이면 93.9로 넘친다). 실기기 확인 목록에 넣었다.
+            Button { toggleMeta() } label: {
+                HStack(spacing: 4) {
+                    sectionLabel("분류")
+                    Spacer(minLength: 4)
+                    if !isRemembered { ProvisionalBadge() }   // 기억하면 표시 없음(임시 배지 제거)
+                    Image(systemName: metaCollapsed ? "chevron.down" : "chevron.up")
+                        .font(.caption).foregroundStyle(Palette.textTertiary)
+                }
+                .padding(.top, 14).padding(.bottom, 5)
+                .contentShape(Rectangle())
+                .padding(.top, -14).padding(.bottom, -5)
             }
+            .buttonStyle(.plain)
             Menu {
                 ForEach(ClassRegistry.assignable) { m in    // 기본층 6 + 유연층(주차 위치)
                     Button { type = m.key } label: { Label(m.label, systemImage: m.symbol) }
@@ -557,16 +579,35 @@ struct DetailView: View {
                 // 아이콘 크기는 접힘 **17** / 펼침 **44**(상한 50). 펼침 44는 최악 심볼 `person.2.fill`이
                 // 69.9pt로 91.3 안에 든다. **가로↔세로로 모양을 바꾸지 않는다** — 크기만 바뀌므로 접었다 펴도
                 // 배치가 안 흔들린다(같은 이유로 성역도 접힘에서 폰트를 안 바꾼다 — G-11에서 지킨 원칙).
+                // **접힘: 아이콘만 크게(30pt) · 펼침: 아이콘(44pt) + 이름.**
+                //
+                // **왜 30이고 40 이상이 아닌가 — 키우려던 것을 줄이는 게 답이었다.**
+                // 이름이 빠져 폭은 넉넉하다(최악 `person.2.fill`이 50pt에서도 79/90). **높이가 먼저 걸린다:**
+                // 접힘 카드 = 28(여백) + 14.2(제목 줄) + 10(spacing) + 아이콘 프레임.
+                // 프레임 40이면 **92.2pt** = 성역 접힘 **92pt**와 맞고, 행 높이가 **97 → 92로 5pt 더 줄어든다.**
+                // 프레임 52(=아이콘 40pt)면 104.2로 **지금보다 7pt 커져** 압축을 되돌린다.
+                //
+                // ⚠️ **프레임 높이를 고정하는 이유 — 심볼마다 높이가 다르다.** @40pt에서
+                // `mappin.and.ellipse` 52 · `lightbulb.fill` 51 · `person.2.fill` 43 —
+                // 안 고정하면 **분류 카드 높이가 항목마다 9pt씩 달라진다.**
+                // (펼침은 고정하지 않았다 — 거기선 성역이 훨씬 커서 행 높이를 정하므로 영향이 없다.)
+                //
+                // **메뉴 chevron(`chevron.up.chevron.down`)을 뗐다.** 이유 둘:
+                // ⓐ 제목 줄에 **접기 chevron이 생겨** 90pt 카드 안에 chevron이 둘이면 헷갈린다.
+                // ⓑ **Dynamic Type 여유를 산다** — 「주차 위치」+chevron은 **XXL(21pt)에서 이미 91.6/90으로 넘쳤다.**
+                //    떼면 XXXL(23pt)에서 84.8/90으로 **여유 5.2pt.**
+                // ⚠️ **대가: 메뉴임을 알리는 표시가 없어진다**(자리로만 안다). 실기기에서 보고 필요하면 다시 넣는다 —
+                //    확인 목록에 있다.
                 let m = ClassRegistry.meta(normalizedType)
                 VStack(spacing: 6) {
                     Image(systemName: m.symbol)
-                        .font(.system(size: metaCollapsed ? 17 : 44))
+                        .font(.system(size: metaCollapsed ? 30 : 44))
                         .foregroundStyle(m.color)
-                    HStack(spacing: 3) {
+                        .frame(height: metaCollapsed ? 40 : nil)
+                    if !metaCollapsed {
                         // `.body`(17pt)를 **명시**한다 — 옛 코드는 환경 폰트 상속에 기대고 있어서
                         // 계측할 때 "이 줄이 몇 pt인가"를 코드에서 읽을 수 없었다.
                         Text(m.label).font(.body).lineLimit(1).foregroundStyle(Palette.textPrimary)
-                        Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(Palette.textTertiary)
                     }
                 }
                 .frame(maxWidth: .infinity)
