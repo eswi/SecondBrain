@@ -604,6 +604,9 @@ struct DetailView: View {
                         .font(.system(size: metaCollapsed ? 30 : 44))
                         .foregroundStyle(m.color)
                         .frame(height: metaCollapsed ? 40 : nil)
+                        // 접힘에서 카드가 성역 높이로 늘어나므로(아래 `typeSection` 주석) 남는 공간 **가운데**에 둔다.
+                        // 메뉴 표적도 이만큼 커진다 — 접기 표적과의 5pt 간격이 그만큼 안전해진다.
+                        .frame(maxHeight: metaCollapsed ? .infinity : nil)
                     if !metaCollapsed {
                         // `.body`(17pt)를 **명시**한다 — 옛 코드는 환경 폰트 상속에 기대고 있어서
                         // 계측할 때 "이 줄이 몇 pt인가"를 코드에서 읽을 수 없었다.
@@ -613,12 +616,27 @@ struct DetailView: View {
                 .frame(maxWidth: .infinity)
             }
             .menuStyle(.button).buttonStyle(.plain)
+            // (아래 `.frame(maxHeight:)`가 접힘에서 이 카드를 성역 높이에 맞춘다 — `typeSection` 끝 주석 참조)
             // Menu는 탭을 자기가 삼켜(메뉴 표시) 바깥 TapGesture가 안 걸린다 → touch-down에 걸리는
             // DragGesture(0)로 메뉴 여는 순간 키보드를 내린다. simultaneous라 메뉴 동작은 그대로.
             .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in
                 if rawFocused { rawFocused = false }
             })
         }
+        // **접힘에서만 성역 카드 높이에 맞춘다 (2026-08-12).**
+        //
+        // **왜 필요한가:** 픽셀 실측으로 접힘이 **성역 95.0 / 분류 91.7 = 3.3pt 차이**였다.
+        // 나란히 선 두 카드의 밑변이 어긋나 눈에 바로 걸린다.
+        //
+        // **왜 숫자로 안 맞추나 — 한 크기에서만 맞는다.** 성역 접힘 높이는 **시각·기기 = `.callout`** 이 정하므로
+        // **Dynamic Type에 따라 커지고**(XXXL에서 ~108pt), 분류는 **아이콘 `.system(size: 30)`** 이라 **고정**이다.
+        // 프레임을 43으로 바꾸면 Large에서만 맞고 XXXL에서 16pt 이상 벌어진다.
+        //
+        // **왜 접힘에만 늘리나 — 「그 상태에 무엇이 들어 있나」 (세 번째로 같은 규칙):**
+        // 접힘은 두 카드 차이가 **3.3pt**라 늘려도 빈칸이 사실상 없다. 펼침은 **17.7pt**(사진 없음)에서
+        // 사진·지도가 있으면 **최대 ~495pt**까지 벌어진다 — 거기서 늘리면 거대한 빈칸이 생긴다.
+        // → **`metaTypeRow`의 「빈칸을 안 채운다」 결정은 그대로다.** 그 판단은 펼침의 495pt를 두고 한 것이었다.
+        .frame(maxHeight: metaCollapsed ? .infinity : nil)
         .padding(14).card()
     }
 
