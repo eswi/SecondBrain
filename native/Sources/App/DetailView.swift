@@ -51,6 +51,10 @@ struct DetailView: View {
     /// 저장 없이 닫으면 사라져야 맞다(사양서 §0-A-2 닫힘 시험: 닫아서 사라져도 거짓이 되는 말이 없다).
     /// 그래서 `changes`에 안 들어가고 amber도 안 만든다. **저장 대상이 아니다.**
     @State private var metaCollapsed = true
+
+    /// `metaTypeRow`의 실제 폭 — 분류 칸을 1/3로 묶는 데만 쓴다(위 `classColumnWidth`).
+    /// **표시 상태이지 데이터가 아니다** — `changes`와 무관하고 amber도 안 만든다.
+    @State private var metaTypeRowWidth: CGFloat = 0
     /// **draft의 기준선 = "화면이 아는 저장값".** `EditDiff`가 이것과 draft를 비교해 바뀐 칸을 낸다.
     /// `item`(스냅숏)을 직접 쓰지 않는 이유: **완료·취소가 이 화면 안에서 저장값을 옮기기 때문**이다.
     /// 그때 draft만 옮기고 기준선을 안 옮기면 **누른 것만으로 "저장하지 않은 수정이 있어요"** 가 뜬다.
@@ -141,14 +145,17 @@ struct DetailView: View {
                 // simultaneousGesture라 컨트롤 동작과 **함께** 발화하고(버튼은 정상 동작), rawSection은
                 // 이 그룹 밖이라 원문 탭은 방해받지 않는다(탭하면 그 위치에 커서·키보드 복귀 — .focused 바인딩).
                 VStack(alignment: .leading, spacing: 14) {
+                    // **★ 배너 다섯은 2차 압축이 건드릴 자리가 아니다 (2026-08-11).**
+                    // 압축은 **성역·분류 두 카드의 배치**만 바꾼다. 이 다섯은 그 두 카드 **안에 없고**
+                    // 전부 `saved`/`savedType`을 본다(아래 MARK의 규약). 계측 단계에서 다섯을 하나씩 확인했다 —
+                    // 옮기지도, 입력을 바꾸지도 말 것. **G-7이 검사하는 것이 정확히 이 다섯의 입력이다.**
                     pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
                     missedBanner   // N일 놓침 주의(§4)
                     overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
                     anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
                     leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
-                    metaSection
+                    metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C)
                     if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
-                    typeSection
                     if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
                     timeSection          // '시간 설정'(기준 날짜) — 위 (첫 카드 위치 통일)
                     recurrenceSection    // '반복 설정'(주기·자동완성·꺼두기) — 아래
@@ -232,6 +239,39 @@ struct DetailView: View {
             }
         }
         .padding(14).card()
+    }
+
+    // MARK: 성역 + 분류 나란히 (2차 압축 1-C)
+
+    /// **성역 2/3 · 분류 1/3을 한 줄에.** 위 정렬로 붙이고 **각자 자연 높이**를 갖는다.
+    ///
+    /// **왜 `HStack(alignment: .top)`이고 빈칸을 안 채우나 (계측):** 두 카드의 크기 관계가 **상태에 따라 뒤집힌다.**
+    /// 성역 접힘 ~92pt vs 분류 접힘 ~95pt → **분류가 크다.** 성역 펼침은 사진·지도가 있으면 **최대 ~617pt**
+    /// vs 분류 펼침 ~122pt → **성역이 495pt 크다.** 어느 쪽에 맞춰 늘리든 **반대 상태에서 깨진다.**
+    /// → 빈칸은 "채워야 할 것"이 아니다. (2단계로 사진·지도가 「수집 원본 자료」로 빠지면 빈칸이 499 → 48pt로 줄어든다.)
+    ///
+    /// **왜 카드 둘(A 틀)이고 한 카드 좌우 분할(B 틀)이 아닌가:** B가 폭을 18.7pt 더 주지만 **살 것이 없다** —
+    /// 세로 배치 분류는 최악 「주차 위치」가 77.2pt(화면 실측 ~80.3)이고 A가 이미 **91.3pt**를 준다.
+    /// 그리고 **탭 표적이 카드 경계로 갈린다** — 성역 카드 = 접힘 토글, 분류 카드 = 메뉴. B는 한 카드가
+    /// 좌·우에서 다르게 반응한다. 탭 튐 버그(2026-07-21)가 인접 표적 오조작이었다. 게다가 2단계의
+    /// 「수집 원본 자료」는 A면 **카드 하나 추가**로 끝난다.
+    ///
+    /// **비율은 폭을 재서 나눈다** — `.padding(16)`이 `ScrollView` 안쪽에 있어 `containerRelativeFrame`은
+    /// 컨테이너를 402pt로 잡아 어긋난다. 그래서 이 줄의 실제 폭을 읽어 `(폭 − 12) / 3`을 분류 칸에 준다.
+    /// `card()`가 이미 `maxWidth: .infinity`라 성역은 남은 폭을 저절로 채운다(안 묶으면 1:1로 갈린다).
+    private var metaTypeRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            metaSection
+            typeSection.frame(width: classColumnWidth)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { metaTypeRowWidth = $0 }
+    }
+
+    /// 분류 칸 폭 = (줄 폭 − 간격 12) / 3. **재기 전(0)에는 안 묶는다** — `nil`이면 `frame(width:)`가
+    /// 제약을 안 걸어 첫 프레임에 카드가 찌그러지지 않는다(그 한 프레임만 1:1로 보이고 곧 자리를 잡는다).
+    private var classColumnWidth: CGFloat? {
+        guard metaTypeRowWidth > 0 else { return nil }
+        return (metaTypeRowWidth - 12) / 3
     }
 
     // MARK: 메타 — 최초 수집 정보(불변 성역, §4-1·§7). 언제·기기·방식.
