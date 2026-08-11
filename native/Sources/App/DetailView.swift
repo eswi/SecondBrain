@@ -239,20 +239,72 @@ struct DetailView: View {
     /// **⚠️ 2026-08-08 전수 점검에서 「안 고침」** — 스냅숏 `item`을 읽지만 여기 나오는 것은
     /// 캡처 시각·방식·기기·음성·사진처럼 **어떤 편집으로도 안 바뀌는 필드**다(화면이 그렇게 말하고도 있다).
     /// 낡을 여지가 없으므로 `saved`로 옮길 이유가 없다.
+    ///
+    /// **★ 2차 압축(2026-08-11)에서 지켜야 할 것 — `saved`로 바꾸지 말 것. 접힘 줄도 `item`을 읽는다.**
+    /// 이 카드를 접고 나중에 사진·지도를 「수집 원본 자료」로 떼어내면, 옆에 선 분류 카드가 draft를 보는 것과
+    /// 대비돼 "여기도 최신값을 봐야 하지 않나"는 생각이 들기 쉽다. **바꾸면 「성역」이라는 말이 거짓이 된다** —
+    /// 불변인 값을 **가변 출처**로 읽는 것이고, 화면은 바로 아래에서 *"이 값은 어떤 편집으로도 바뀌지 않아요"*
+    /// 라고 말하고 있다. 위 2026-08-08 판단이 그대로 유효하다. **접힘 머리 줄의 종류 아이콘도 같은 이유로 `item`.**
     private var metaSection: some View {
         let when = "\(item.date ?? "") \(item.time ?? "")".trimmingCharacters(in: .whitespaces)
         let device = CaptureDevice.label(source: item.source, createdDeviceId: item.createdHLC.deviceId,
                                          stored: item.fields["device"])
         return VStack(alignment: .leading, spacing: 7) {
-            sectionLabel("최초 수집 · 성역")
-            metaRow("clock", when.isEmpty ? "(시각 없음)" : when)                    // 언제
-            metaRow("iphone", device)                                               // 기기
-            metaRow(SourceIcon.symbol(item.source), Self.sourceLabel(item.source))   // 방식
-            if item.fields["audio"] != nil { audioRow }                              // 원본 음성(있으면)
-            if item.fields["photo"] != nil { photoRow }                              // 원본 사진(있으면)
-            Text("이 값은 어떤 편집으로도 바뀌지 않아요").font(.caption2).foregroundStyle(Palette.textTertiary)
+            metaHeader                                                              // 제목 + (접힘) 종류 아이콘 + 펼침 표시
+            metaRow("clock", when.isEmpty ? "(시각 없음)" : when)                    // 언제 — 접혀도 보인다
+            metaRow("iphone", device)                                               // 기기 — 접혀도 보인다
+            if !metaCollapsed {
+                metaRow(SourceIcon.symbol(item.source), Self.sourceLabel(item.source))   // 방식
+                if item.fields["audio"] != nil { audioRow }                              // 원본 음성(있으면)
+                if item.fields["photo"] != nil { photoRow }                              // 원본 사진(있으면)
+                Text("이 값은 어떤 편집으로도 바뀌지 않아요").font(.caption2).foregroundStyle(Palette.textTertiary)
+            }
         }
         .padding(14).card()
+    }
+
+    /// **접힘/펼침 머리 줄 (2차 압축 1단계).** 제목 · (접힘일 때) 종류 아이콘 요약 · 펼침 표시.
+    ///
+    /// **접힘은 세 줄이다** — 이 머리 줄 + 시각 + 기기. **시각·기기의 폰트를 안 줄인다**(둘 다 `.callout` 16).
+    /// 두 줄로 줄이려면 시각·기기를 @12로 내려야 하는데(계측 194.1pt), 그러면 ⓐ 수집 시각이 읽기 어려워지고
+    /// ⓑ **같은 값이 접으면 12pt·펴면 16pt로 크기가 변한다.** G-11에서 지킨 원칙(화면이 보여준 값과 붙는 값이
+    /// 같아야 한다)과 인접한 불일치다. 그리고 ⓒ **줄여서 아낀 30.6pt 중 6.1pt는 애초에 못 쓴다** —
+    /// 나란히 서면 행 높이가 `max(성역, 분류)`이고 두 줄안에서는 **분류(72.3)가 높이를 정해버린다.**
+    /// 접기의 실익은 사진 있는 항목(616.8 → 96.8 = **520pt**)에서 나오고, 24.5pt는 그 옆에서 5%다.
+    ///
+    /// **왜 카드 전체가 아니라 이 줄만 누를 수 있나:** 펼치면 카드 안에 **원본 음성 재생 버튼·지도 열기 버튼**이
+    /// 들어온다. 카드 전체를 표적으로 잡으면 그것들과 겹쳐 **우발적으로 눌린다** —
+    /// 탭 튐 버그(2026-07-21)가 바로 인접한 다른 표적이 스치며 눌리는 문제였다. 표적은 좁고 분명한 쪽이 안전하다.
+    /// 애니메이션은 **의도한 탭**에만 붙는다(그 버그의 「우발적 선택 무애니메이션」과 구분되는 자리다).
+    private var metaHeader: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) { metaCollapsed.toggle() }
+        } label: {
+            HStack(spacing: 8) {
+                sectionLabel("최초 수집 · 성역")
+                if metaCollapsed { metaKindIcons }
+                Spacer(minLength: 4)
+                Image(systemName: metaCollapsed ? "chevron.down" : "chevron.up")
+                    .font(.caption).foregroundStyle(Palette.textTertiary)
+            }
+            .contentShape(Rectangle())   // Spacer 빈칸까지 표적에 넣는다(줄 전체가 눌린다)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 접힘일 때만 보이는 **종류 요약** — 접어서 감춘 줄들이 "무엇이 있었나"를 아이콘으로 남긴다. **최대 3개.**
+    /// (조건부인 것은 `audio`·`photo` 둘이고 방식은 항상 1개다 — 계측에서 최대 3개로 확정.)
+    ///
+    /// **뜻이 겹치지 않게 골랐다:** 방식은 `SourceIcon`(음성 수집이면 `waveform`)이고 **원본 음성 보관은 `mic.fill`**이다.
+    /// 둘은 다른 사실이다 — *"음성으로 들어왔다"* 와 *"녹음 파일이 남아 있다"*. 펼치면 각각 제 줄로 나뉘므로
+    /// 머리 줄에서는 아이콘으로만 요약하고, **펼침에서는 이 요약을 안 보여준다**(아래에 방식 줄이 따로 있어 중복이다).
+    @ViewBuilder private var metaKindIcons: some View {
+        HStack(spacing: 4) {
+            Image(systemName: SourceIcon.symbol(item.source))
+            if item.fields["audio"] != nil { Image(systemName: "mic.fill") }
+            if item.fields["photo"] != nil { Image(systemName: "photo.fill") }
+        }
+        .font(.caption).foregroundStyle(Palette.textTertiary)
     }
 
     private func metaRow(_ symbol: String, _ text: String) -> some View {
