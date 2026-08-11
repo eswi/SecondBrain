@@ -249,8 +249,8 @@ struct DetailView: View {
         let when = "\(item.date ?? "") \(item.time ?? "")".trimmingCharacters(in: .whitespaces)
         let device = CaptureDevice.label(source: item.source, createdDeviceId: item.createdHLC.deviceId,
                                          stored: item.fields["device"])
-        return VStack(alignment: .leading, spacing: 7) {
-            metaHeader                                                              // 제목 + (접힘) 종류 아이콘 + 펼침 표시
+        let card = VStack(alignment: .leading, spacing: 7) {
+            metaHeaderRow(asButton: !metaCollapsed)                                 // 제목 + (접힘) 종류 아이콘 + 펼침 표시
             metaRow("clock", when.isEmpty ? "(시각 없음)" : when)                    // 언제 — 접혀도 보인다
             metaRow("iphone", device)                                               // 기기 — 접혀도 보인다
             if !metaCollapsed {
@@ -261,6 +261,19 @@ struct DetailView: View {
             }
         }
         .padding(14).card()
+
+        // **접힘이면 카드 전체가 표적, 펼침이면 머리 줄만** — 아래 `metaHeaderRow` 주석의 경위 참조.
+        return Group {
+            if metaCollapsed {
+                Button { toggleMeta() } label: { card }.buttonStyle(.plain)
+            } else {
+                card
+            }
+        }
+    }
+
+    private func toggleMeta() {
+        withAnimation(.easeInOut(duration: 0.18)) { metaCollapsed.toggle() }
     }
 
     /// **접힘/펼침 머리 줄 (2차 압축 1단계).** 제목 · (접힘일 때) 종류 아이콘 요약 · 펼침 표시.
@@ -272,24 +285,57 @@ struct DetailView: View {
     /// 나란히 서면 행 높이가 `max(성역, 분류)`이고 두 줄안에서는 **분류(72.3)가 높이를 정해버린다.**
     /// 접기의 실익은 사진 있는 항목(616.8 → 96.8 = **520pt**)에서 나오고, 24.5pt는 그 옆에서 5%다.
     ///
-    /// **왜 카드 전체가 아니라 이 줄만 누를 수 있나:** 펼치면 카드 안에 **원본 음성 재생 버튼·지도 열기 버튼**이
-    /// 들어온다. 카드 전체를 표적으로 잡으면 그것들과 겹쳐 **우발적으로 눌린다** —
-    /// 탭 튐 버그(2026-07-21)가 바로 인접한 다른 표적이 스치며 눌리는 문제였다. 표적은 좁고 분명한 쪽이 안전하다.
-    /// 애니메이션은 **의도한 탭**에만 붙는다(그 버그의 「우발적 선택 무애니메이션」과 구분되는 자리다).
-    private var metaHeader: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) { metaCollapsed.toggle() }
-        } label: {
-            HStack(spacing: 8) {
-                sectionLabel("최초 수집 · 성역")
-                if metaCollapsed { metaKindIcons }
-                Spacer(minLength: 4)
-                Image(systemName: metaCollapsed ? "chevron.down" : "chevron.up")
-                    .font(.caption).foregroundStyle(Palette.textTertiary)
+    /// **표적은 상태에 따라 다르다 — 접힘: 카드 전체 · 펼침: 이 줄만.** 그래서 접힘에서는 이 줄이
+    /// **버튼이 아니라 그림**이다(안에 버튼을 또 두면 바깥 표적과 겹친다).
+    ///
+    /// **★ 처음 판단을 계측이 뒤집었다 (2026-08-11, 지우지 말 것).**
+    /// 처음엔 *"두 상태에서 표적이 같아야 예측 가능하다"* 는 **일관성**을 이유로 **머리 줄만** 표적으로 잡았다.
+    /// 그런데 접근성 좌표로 재 보니 이 줄이 **342 × 14pt**였다 — 애플 권장 최소 44pt에 한참 못 미치고,
+    /// 바로 아래 시각 줄과 붙어 있어 **스치면 옆이 눌린다**(탭 튐 버그 2026-07-21이 정확히 그 문제였다).
+    /// 여백으로 44pt를 만들면 카드가 **30pt 커져 압축을 되돌린다.**
+    ///
+    /// **계측이 공짜 답을 알려줬다:** **접힘 상태의 카드 안에는 누를 것이 하나도 없다** —
+    /// 원본 음성 재생·지도 열기 버튼은 **펼침에서만** 나타난다. 그래서 접힘에서는 카드 전체(**~92pt**)를
+    /// 표적으로 줘도 **겹칠 대상이 없고 높이 대가가 0이다.** 펼침에서는 안에 버튼이 있으니 이 줄만 쓴다.
+    ///
+    /// **비대칭이 방향에도 맞다** — 펼치기는 자주 하고 표적이 크며, 접기는 드물게 하고 신중해진다.
+    /// → **교훈: 표적 크기는 「일관성」보다 「그 상태에 무엇이 들어 있나」가 정한다.** 재 보기 전엔 안 보였다.
+    ///
+    /// 애니메이션은 **의도한 탭**에만 붙는다(탭 튐 버그의 「우발적 선택 무애니메이션」과 구분되는 자리다).
+    /// **펼침 표적도 재서 고쳤다 (2026-08-11).** 이 줄의 실제 높이는 **14pt**다(접근성 좌표 `342 × 14`) —
+    /// 접힘을 카드 전체로 바꿔도 **펼침에서 접는 표적은 그대로 14pt**로 남는다. 44pt에 한참 못 미친다.
+    ///
+    /// **여백으로 키우면 카드가 30pt 커진다**(압축을 되돌린다). 그래서 **레이아웃은 그대로 두고 표적만** 키웠다 —
+    /// 위아래 여백 15를 주고 그 크기로 표적을 잡은 뒤 **같은 만큼 음수 여백으로 되돌린다.**
+    /// → 표적 **342 × 44**, 카드 높이 증가 **0pt**.
+    ///
+    /// **왜 안전한가 — 접힘에서와 같은 근거다.** 늘어난 표적이 덮는 위쪽 15pt는 **카드 자신의 여백**(14)이고,
+    /// 아래쪽 15pt는 **시각·기기 줄**인데 그 둘은 `metaRow` = **그냥 글자**다(누를 것이 아니다).
+    /// 펼침에서 실제로 누를 수 있는 것(원본 음성 재생·지도 열기)은 **한참 아래**에 있어 겹치지 않는다.
+    /// → **표적 크기는 「그 자리에 무엇이 들어 있나」가 정한다**는 같은 규칙이 두 번째로 답을 줬다.
+    @ViewBuilder private func metaHeaderRow(asButton: Bool) -> some View {
+        if asButton {
+            Button { toggleMeta() } label: {
+                metaHeaderLabel
+                    .padding(.vertical, 15)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -15)
             }
-            .contentShape(Rectangle())   // Spacer 빈칸까지 표적에 넣는다(줄 전체가 눌린다)
+            .buttonStyle(.plain)
+        } else {
+            metaHeaderLabel
         }
-        .buttonStyle(.plain)
+    }
+
+    private var metaHeaderLabel: some View {
+        HStack(spacing: 8) {
+            sectionLabel("최초 수집 · 성역")
+            if metaCollapsed { metaKindIcons }
+            Spacer(minLength: 4)
+            Image(systemName: metaCollapsed ? "chevron.down" : "chevron.up")
+                .font(.caption).foregroundStyle(Palette.textTertiary)
+        }
+        .contentShape(Rectangle())   // Spacer 빈칸까지 표적에 넣는다(줄 전체가 눌린다)
     }
 
     /// 접힘일 때만 보이는 **종류 요약** — 접어서 감춘 줄들이 "무엇이 있었나"를 아이콘으로 남긴다. **최대 3개.**
