@@ -155,24 +155,31 @@ struct InboxView: View {
         if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
             Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
         }
-        Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
+        // **임시(미확정)면 미루기를 안 그린다** (edit-policy §1-A) — 시점은 기억하기 뒤에만 정한다.
+        // 완료·삭제는 그대로 둔다(§3이 미기억 항목에도 명시 허용).
+        // ⚠️ 자동 분류가 due를 붙이면 미확정 항목이 '지금 챙길 것'에 상시로 오므로 이 갈림이 실제로 쓰인다.
+        if item.confirmed {
+            Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
+        }
     }
     /// 시점 있는 항목(지금 챙길 것) 컨텍스트: 완료·미루기·삭제.
     @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
         if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
             Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
         }
-        Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
+        if item.confirmed {   // 임시면 미루기 없음 (edit-policy §1-A) — 위 doneDeferActions와 같은 이유
+            Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
+        }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
     /// 새 기억(미확정) 컨텍스트: 확정을 맨 앞에.
-    /// 미루기는 미리 알림을 쓰는 분류에서만 — 정보·아이디어는 미리 알림을 안 써 미루기가 무의미하므로 뺀다
-    /// (§7(a): 못 쓰는 칸은 회색으로 두지 않고 없앤다). 그래도 기억하기·완료·삭제가 남아 메뉴가 비지 않는다.
+    ///
+    /// **★ 「미루기 (시점 붙임)」을 없앴다 (2026-08-14, 사용자 결정).** 이 섹션은 **전부 임시**이고
+    /// 임시 항목에 시점을 붙이는 것이 정확히 `edit-policy.md` §1-A가 금지한 것이라, 남겨두면
+    /// **절대 눌리지 않는 메뉴**가 된다(§7(a): 못 쓰는 칸은 회색으로 두지 않고 없앤다 — 같은 규칙의 적용).
+    /// 시점을 붙이려면 먼저 [기억하기]를 누른다. 기억하기·완료·삭제가 남아 메뉴는 비지 않는다.
     @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
         Button { model.confirm(item) } label: { Label("기억하기 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
-        if ClassSpecCatalog.uses(item.type, .resurface) {
-            Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
-        }
         if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
             Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
         }

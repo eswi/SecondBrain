@@ -44,6 +44,11 @@ struct SourceBadge: View {
 // MARK: - 종류 아이콘 (버튼 → 분류 변경 메뉴)
 
 /// 항목의 종류를 나타내는 아이콘. 탭하면 종류 선택 메뉴가 떠서 분류를 바꾼다(엔진 재사용).
+///
+/// **임시(미확정) 항목에서는 회색으로 다운되고 안 열린다** (edit-policy.md §1-A, 2026-08-14).
+/// 분류는 기억하기 뒤에만 정할 수 있다. **값(아이콘)은 그대로 보인다** — 자동이 붙여 둔 제안을
+/// 보고 [기억하기]로 수락하는 흐름이라(`memory-philosophy.md` §2-1-A) 숨기면 안 된다.
+/// **안내 문구는 붙이지 않는다**(2026-08-14 사용자 결정 — 회색만).
 struct TypeMenuButton: View {
     let item: ResolvedItem
     let onChange: (String) -> Void
@@ -68,6 +73,7 @@ struct TypeMenuButton: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .disabled(!item.confirmed)   // 임시면 회색·안 열림 (edit-policy §1-A)
     }
 }
 

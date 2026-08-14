@@ -114,6 +114,12 @@ struct DetailView: View {
     private var changes: [String: String] {
         var c = EditDiff.changes(type: type, due: due, resurface: resurface, raw: raw, from: baseline)
         foldRecurChanges(into: &c)   // 되풀이 설정도 같은 [저장] 이벤트에 묶는다(새 필드).
+        // **⛔ 임시(미확정)면 원문·분류만 커밋 대상이다** (edit-policy.md §1-A, 2026-08-14).
+        // 둘 다 **식별** 층이라 열려 있고, 활용(시점·반복)은 화면에 아예 안 그려진다.
+        // 카드를 안 그리므로 다른 칸이 담길 일은 없지만, **`dirty` 판정도 이걸 본다** —
+        // 안 걸러내면 "화면에 없는 칸 때문에 나갈 때 경고가 뜬다"가 날 수 있다(예: 자동 분류가
+        // 붙인 값이 draft 초기값과 어긋나는 경우).
+        if !isRemembered { c = c.filter { $0.key == "raw" || $0.key == "type" } }
         return c
     }
 
@@ -149,17 +155,35 @@ struct DetailView: View {
                     // 압축은 **성역·분류 두 카드의 배치**만 바꾼다. 이 다섯은 그 두 카드 **안에 없고**
                     // 전부 `saved`/`savedType`을 본다(아래 MARK의 규약). 계측 단계에서 다섯을 하나씩 확인했다 —
                     // 옮기지도, 입력을 바꾸지도 말 것. **G-7이 검사하는 것이 정확히 이 다섯의 입력이다.**
-                    pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
-                    missedBanner   // N일 놓침 주의(§4)
-                    overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
-                    anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
-                    leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
-                    metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C)
-                    if !isRemembered { rememberButton }   // 기본정보 아래 — 아직 안 한 기억에만
+                    // **★ 임시(미확정)면 「판단에 필요한 것」만 그린다** (edit-policy.md §1-A, 2026-08-14).
+                    //
+                    // 회색으로 다운시키지 않고 **아예 안 그린다** — 사용자 결정. 그래서
+                    // 「어느 제목을 회색으로 할까」·「분류가 정하는 제목을 임시엔 무엇으로 할까」가
+                    // **원천적으로 사라진다**(분류마다 제목이 다르다: 마감/언제/일시 — `ClassRegistry.title`).
+                    //
+                    // **보이는 것:** 원문(위) · 성역(음성·사진·지도·수집 시각·기기·방식) · 분류 · 재확인 질문.
+                    // **안 보이는 것:** 배너 다섯 · 시간 설정 · 반복 설정(→ **이번 회차 완료도 함께 사라진다**) ·
+                    //   수정 이력 · 하단 필수 바(`bottomBar`는 `safeAreaInset`에서 갈린다).
+                    //
+                    // ⚠️ **배너 다섯은 G-7이 검사하는 자리다**(아래 MARK 규약) — 입력을 바꾸지 않고
+                    // **그릴지 말지만** 갈랐다. 확정 항목에서는 다섯이 그대로 같은 입력(`saved`)을 본다.
+                    if isRemembered {
+                        pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
+                        missedBanner   // N일 놓침 주의(§4)
+                        overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
+                        anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
+                        leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
+                    }
+                    metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
+                    // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
                     if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
-                    timeSection          // '시간 설정'(기준 날짜) — 위 (첫 카드 위치 통일)
-                    recurrenceSection    // '반복 설정'(주기·자동완성·꺼두기) — 아래
-                    historyRow
+                    if isRemembered {
+                        timeSection          // '시간 설정'(기준 날짜) — 위 (첫 카드 위치 통일)
+                        recurrenceSection    // '반복 설정'(주기·자동완성·꺼두기) — 아래
+                        historyRow
+                    } else {
+                        decideRow            // [삭제하기] · [기억하기] — 살릴지 버릴지 결정을 내민다
+                    }
                 }
                 .contentShape(Rectangle())
                 .simultaneousGesture(TapGesture().onEnded { rawFocused = false })
@@ -168,7 +192,10 @@ struct DetailView: View {
             .padding(.bottom, 8)
         }
         .background(Palette.bg.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        // **임시(미확정)면 하단 필수 바를 아예 안 그린다** (edit-policy §1-A) — 그 자리 대신
+        // 본문 안에 `decideRow`([삭제하기]·[기억하기])가 들어간다. [저장]이 없으므로 「저장하지 않은
+        // 수정이 있어요」 줄도 함께 사라진다(그 뜻은 `backTapped()`의 확인 대화상자가 맡는다).
+        .safeAreaInset(edge: .bottom) { if isRemembered { bottomBar } }
         .navigationTitle("기억")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -501,17 +528,32 @@ struct DetailView: View {
         }
     }
 
-    // MARK: 기억하기 버튼 (기본정보 아래 — 최소 필터링 관문, 단방향)
+    // MARK: 결정 줄 — 임시 항목에서 하단 필수 바를 대신한다 (edit-policy §1-A, 2026-08-14)
 
-    private var rememberButton: some View {
-        Button { showRememberConfirm = true } label: {
-            Label("기억하기", systemImage: "checkmark.seal.fill")
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
+    /// **[삭제하기] · [기억하기] 둘만.** 임시 항목에서 사람이 할 일은 **살릴지 버릴지 정하는 것** 하나이므로
+    /// 화면이 그 둘만 내민다. `bottomBar`([삭제하기]·[취소]·[저장])는 임시일 때 아예 안 그린다.
+    ///
+    /// **[취소]가 없는 이유:** 임시에는 커밋할 [저장]이 없어 「수정을 버린다」가 독립 행동으로 성립하지 않는다.
+    /// 나가려면 `<`를 누르고, 고친 것이 있으면 `backTapped()`의 확인 대화상자가 재확인한다.
+    ///
+    /// 삭제·기억하기 **둘 다 공용 재확인 대화상자를 거친다** — 둘 다 무게가 큰 결정이라 그대로 둔다.
+    private var decideRow: some View {
+        HStack(spacing: 10) {
+            Button(role: .destructive) { showDeleteConfirm = true } label: {
+                barLabel("삭제하기", "trash")
+            }
+            .buttonStyle(.bordered).tint(Palette.overdue)
+
+            Button { showRememberConfirm = true } label: {
+                Label("기억하기", systemImage: "checkmark.seal.fill")
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.borderedProminent).tint(Palette.today)
+            .disabled(rawEmpty)   // 본문 전부 지운 상태면 기억할 것이 없다(내용 없는 기억 방지 — bottomBar와 같은 규약)
         }
-        .buttonStyle(.borderedProminent).tint(Palette.today)
-        // 재확인 대화상자는 화면 전체 오버레이(rememberDialog)로 띄운다 — 제목을 크게 하려고 커스텀.
+        // 재확인 대화상자는 화면 전체 오버레이(rememberDialog·deleteDialog)로 띄운다.
     }
 
     // MARK: 분류 (미기억이면 "임시" 배지 + override)
@@ -631,6 +673,10 @@ struct DetailView: View {
                 .frame(maxWidth: .infinity)
             }
             .menuStyle(.button).buttonStyle(.plain)
+            // **임시(미확정)에서도 분류는 고칠 수 있다** (edit-policy.md §1-A, 2026-08-14).
+            // 분류는 **활용이 아니라 식별**이다 — 사람이 밟는 순서가 원문 고치기 → 분류 고르기 → 기억하기다
+            // (`memory-philosophy.md` §2-1-A). 임시에는 [저장]이 없으므로 **[기억하기]가 함께 커밋한다.**
+            // (⚠️ **목록의 종류 글리프는 막혀 있다** — 거기선 누르면 즉시 커밋이라 뜻이 갈린다. `TypeMenuButton`.)
             // (아래 `.frame(maxHeight:)`가 접힘에서 이 카드를 성역 높이에 맞춘다 — `typeSection` 끝 주석 참조)
             // Menu는 탭을 자기가 삼켜(메뉴 표시) 바깥 TapGesture가 안 걸린다 → touch-down에 걸리는
             // DragGesture(0)로 메뉴 여는 순간 키보드를 내린다. simultaneous라 메뉴 동작은 그대로.
@@ -1296,7 +1342,19 @@ struct DetailView: View {
         }
         // 미기억 항목을 원칙으로 지정한 채 저장하면 → 기억하기로 자동 결정(원칙은 살아있는 기억).
         // 먼저 안내 팝업을 띄우고, 확인 시 저장 + 자동 기억하기.
-        if !isRemembered && normalizedType == "principle" {
+        //
+        // **★ 판정을 draft(`normalizedType`)에서 「이번 저장이 실제로 쓰는 값」(`saving`)으로 바꿨다
+        // (2026-08-14).** 옛 조건은 *"지금 화면의 분류가 원칙인가"*였는데, §1-A로 임시일 때 분류를 못
+        // 바꾸게 되자 **이미 `principle`인 임시 항목**(자동 분류가 붙일 수 있다)에서 **원문만 고쳐 저장해도**
+        // 이 팝업이 떠서 **자동으로 확정되는** 길이 열렸다. `edit-policy.md` §1의
+        // *"기억하기는 절대 자동으로 일어나지 않는다"*를 정면으로 깨는 자리다.
+        //
+        // `saving`은 §1-A에 따라 임시면 `raw`만 남으므로 `saving["type"]`은 절대 안 담긴다
+        // → **임시 항목에서 이 경로는 도달 불가**가 된다. 분류를 원칙으로 바꾸는 것 자체가
+        // 기억하기 뒤에만 가능하므로, 그때는 이미 확정이라 자동 확정할 것도 없다.
+        // **즉 이 조항은 §1-A로 사실상 은퇴한다** — 지우지 않고 남기는 이유는 조건이 왜 이 모양인지가
+        // 이 주석으로만 보이기 때문이다.
+        if !isRemembered && saving["type"] == "principle" {
             showPrincipleAutoRemember = true
             return
         }
@@ -1312,11 +1370,21 @@ struct DetailView: View {
         dismiss()
     }
 
-    /// [기억하기] — 기억하기 처리만(§3 단방향). 화면은 닫지 않는다. 로컬 상태로 버튼/배지를 비운다.
-    /// 미저장 편집은 draft에 그대로 남아 [저장]으로 반영할 수 있다(수정 ≠ 기억하기, §2 — 서로 독립).
-    /// 엔진은 그대로 `model.confirm` 재사용(개념·이름만 "기억하기").
+    /// [기억하기] — **수정 커밋 + 기억하기를 함께** 한다 (edit-policy §1-A·§2 예외, 2026-08-14).
+    /// 화면은 닫지 않는다. 로컬 상태로 버튼/배지를 비우고 **정상 상세 화면으로 바뀐다.**
+    ///
+    /// **왜 커밋을 겸하나:** 임시 화면에는 [저장]이 없다(하단 필수 바를 안 그린다). 그래서
+    /// **원문·분류를 고쳤다면 여기서 반영된다** — 안 그러면 고친 것이 조용히 사라진다.
+    /// §2의 *"[저장]과 [기억하기]를 절대 섞지 않는다"*는 **확정 뒤**의 규칙으로 좁혀졌다.
+    ///
+    /// **순서: 커밋 → 확정.** 두 이벤트로 나눠 붙인다(제어 필드 `confirmed`는 편집 이벤트에 섞지 않는다는
+    /// 규약을 지킨다 — `EditDiff`가 그것을 보장하고 `MergeEngine`이 별도 OR-머지로 읽는다).
+    /// `commitEdits`가 임시일 때 `raw`·`type`만 통과시키므로 활용 칸이 새 들어갈 여지도 없다.
     private func remember() {
+        let saving = changes
+        if !saving.isEmpty { model.commitEdits(item, changes: saving) }
         model.confirm(item)
+        baseline = baseline.applying(saving)   // 기준선을 옮겨 dirty를 비운다(안 옮기면 나갈 때 경고가 뜬다)
         isRemembered = true
     }
 

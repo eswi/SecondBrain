@@ -297,6 +297,10 @@ final class InboxModel: ObservableObject {
     ///   여기서도 조용히 막는다(휴면 값이 써지지 않게). 근거: §7(a) — 못 쓰는 칸은 회색으로 두지 않고 없앤다.
     func defer7(_ item: ResolvedItem) {
         guard ClassSpecCatalog.uses(item.type, .resurface) else { return }   // 안전망(액션 숨김이 1차)
+        // **⛔ 임시(미확정)면 미루지 않는다** (edit-policy.md §1-A, 2026-08-14) — 미루기는 미리 알림을
+        // 새로 정하는 것이고, 시점은 기억하기 뒤에만 정할 수 있다. 화면에서도 액션을 빼지만(1차)
+        // 여기서도 막는다 — 경로가 셋(새 기억들 컨텍스트·지금 챙길 것 스와이프·지금 챙길 것 컨텍스트)이다.
+        guard (current(item.id) ?? item).confirmed else { return }
         switch ItemSchedule.deferSevenDays(due: item.due, now: Date(), resurfaceHasTime: ItemSchedule.timeOfDay(item.resurface ?? "") != nil) {
         case .deferred(let day, let capped):
             // 미루기는 날짜만 새로 정하고, 원래 미리 알림의 **시각은 보존**한다(§6-B). 시각 없던 값은 날짜만.
@@ -324,8 +328,14 @@ final class InboxModel: ObservableObject {
 
     /// 분류(종류) 변경. 레거시(legacy: id) 항목에서도 같은 경로(=set type= 이벤트)로 동작.
     /// **override는 확정이 아니다**(edit-policy §2 귀결) — 여긴 confirm을 안 건다.
+    ///
+    /// **⛔ 임시(미확정) 항목은 분류를 바꿀 수 없다** (edit-policy.md §1-A, 2026-08-14).
+    /// 분류는 "이 기억을 어떻게 쓸 것인가"를 정하는 일이고, 아직 기억할지 정하지 않은 조각에는
+    /// 정할 자격이 없다(`memory-philosophy.md` §2-1-A). **화면에서도 회색으로 막지만 여기서도 막는다** —
+    /// 경로가 여럿(상세 메뉴·새 기억들 글리프·지금 챙길 것 글리프)이라 화면만 막으면 새 경로가 샌다.
     func changeType(_ item: ResolvedItem, to type: String) {
         guard type != item.type else { return }
+        guard (current(item.id) ?? item).confirmed else { return }   // 임시면 무시(안전망)
         append(.edit(id: item.id, hlc: tick(), ["type": type]))
     }
 
@@ -338,7 +348,19 @@ final class InboxModel: ObservableObject {
 
     /// 상세 화면 draft 커밋(edit-policy §2 [저장]). 바뀐 필드를 **이벤트 1개**(단일 HLC)로 붙인다
     /// → "[저장] 한 번 = 이력 한 묶음". `changes`엔 confirmed가 없다(수정 ≠ 기억하기) — EditDiff가 보장.
+    ///
+    /// **⛔ 임시(미확정) 항목은 `raw`(원문)·`type`(분류)만 커밋된다** (edit-policy.md §1-A, 2026-08-14).
+    /// 둘만 열린 이유: **식별**이다 — 원문을 못 읽으면 기억할지 판단할 수 없고(STT 오인식),
+    /// 분류는 사람이 밟는 순서(원문 → 분류 → 기억하기)에서 판단의 일부다(`memory-philosophy.md` §2-1-A).
+    /// 나머지(시점·반복)는 **버린다** — 화면에 아예 안 그려지므로 여기 오면 안 되지만 오더라도
+    /// 조용히 떨어뜨린다(안전망). **성역은 애초에 `EditDiff`가 안 낸다**(`RawEditTests`).
+    ///
+    /// ⚠️ 임시 항목의 이 커밋은 **[기억하기]가 부른다**(상세에 [저장]이 없다 — §2 예외). `DetailView.remember()`.
     func commitEdits(_ item: ResolvedItem, changes: [String: String]) {
+        var changes = changes
+        if !(current(item.id) ?? item).confirmed {
+            changes = changes.filter { $0.key == "raw" || $0.key == "type" }
+        }
         guard !changes.isEmpty else { return }
         append(.edit(id: item.id, hlc: tick(), changes))
     }
