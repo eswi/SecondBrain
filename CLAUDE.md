@@ -8,6 +8,21 @@
 
 ## 작업 기기
 - 집에서 사용하는 컴퓨터는 **맥미니(mac mini)**, 회사에서 사용하는 컴퓨터는 **맥북(맥북프로, macbook pro)**. 항상 인지하고 내 지시에 따라야 함.
+- **두 기기가 `main`을 번갈아 pull한다.** 작업 시작 전 `git pull` 필수. **재개점 정본은 worklog다** — 메모리와 어긋나면 문서가 맞다.
+- ⚠️ **`~/.claude` 메모리는 기기별로 갈린다.** 한쪽에서 배운 것을 메모리에만 적으면 **다른 기기는 모른다**(2026-08-14에 실제로 그래서 아래 `--package-path` 함정을 다시 밟았다). **기기를 넘어야 하는 것은 메모리가 아니라 여기(또는 `docs/`)에 적는다.**
+
+## 빌드·테스트 (함정이 있다 — 매번 여기를 보고 시작한다)
+```sh
+git pull
+cd native && xcodegen generate          # .xcodeproj는 gitignore 생성물 — 매번 재생성
+swift test --package-path SecondBrainCore   # ← 322개. 경로 빼면 실패한다(아래 ①)
+xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
+  -destination 'id=<UDID>' build          # ← 이름 말고 UDID(아래 ③)
+```
+1. **`--package-path SecondBrainCore`를 빼면 안 된다.** `Package.swift`는 `native/`가 아니라 **`native/SecondBrainCore/`**에 있어서, `native/`에서 그냥 `swift test`를 돌리면 `Could not find Package.swift`가 난다. **2026-08-13(맥미니)·08-14(맥북) 이틀 연속 밟았다.**
+2. **프로젝트 이름 ≠ 스킴 이름.** 프로젝트는 `SecondBrain.xcodeproj`, 스킴은 **`SecondBrainApp-iOS`**. 자주 헛짚는다.
+3. **시뮬 대상은 `name=`이 아니라 `id=<UDID>`로 지정한다.** 같은 이름의 시뮬이 둘 이상 있을 수 있고(맥미니에 「iPhone 16 Pro」가 둘이었다), `name=`은 **조용히 엉뚱한 기기로** 간다. UDID가 틀리면 `EXIT=64`로 죽어 바로 안다. `xcrun simctl list devices available`로 확인.
+4. **빌드 결과는 `|tail`로 판정하지 말 것** — 파이프가 exit code를 가린다. `> log 2>&1; echo "EXIT=$?"; grep -c 'error:' log`로 본다.
 
 ## 항시 규칙
 1. **사양서 우선 · 즉흥 금지** — 전략·방향 결정을 즉흥으로 하지 않는다. Claude 챗에서 정해진 방향을
