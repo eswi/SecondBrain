@@ -406,6 +406,13 @@ struct UpcomingCard: View {
                             // 캡션 색 = 원문과 같은 textPrimary(밝게). 크기(.caption)로 이미 비중을 죽이므로 색만 올린다.
                             // 지금 챙길 것: 수집 시각은 빼고(상세에 남음) 스케줄 위주 + 연도 생략 — 미리 알림 시각까지 한 줄에 보이게.
                             Text(itemCaption(entry.item, showCaptureTime: false)).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                            // **「임시」는 이 캡션 줄에 붙인다 (2026-08-18 사용자 결정) — 검색·새 기억들과 같은 자리.**
+                            // **이 섹션에 미확정이 들어온다** — `InboxModel.partition`이 시점 있는 항목을 **확정 무관**으로
+                            // 여기로 보낸다. 그런데 표시가 없어서 **같은 미확정 항목이 화면마다 달라 보였다**
+                            // (`2026-08-14-macbook.md` §14-3에서 걸린 구멍 — 시뮬 4개가 전부 미확정인데 표시가 없었다).
+                            // **★ 앞으로 늘어나는 자리다** — 자동 분류가 `due`를 붙이면 미확정이 여기로 온다.
+                            // 원문 줄(`lineLimit(3)`)은 안 건드린다.
+                            if !entry.item.confirmed { ProvisionalBadge() }
                         }
                     }
                     Spacer(minLength: 4)
@@ -457,21 +464,41 @@ struct MemoryRow: View {
         HStack(spacing: 10) {
             TypeMenuButton(item: item) { model.changeType(item, to: $0) }   // 글리프 탭 = 인라인 분류변경
             NavigationLink(value: item) {                                    // 나머지 탭 = 상세 화면
-                HStack(spacing: 10) {
-                    Text(item.raw ?? "(내용 없음)")
-                        .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)   // 원문 2줄까지(넘치면 …)
-                    Spacer(minLength: 4)
-                    // 상태 칩(§4 + D) — 완료 후 살아있는 기억으로 와도 "완료"/"N일 놓침"이 보이고,
-                    // **늦었는데 숨겨진 것**은 여기서 「8/14에 다시 · 7일 늦음」(amber)으로 드러난다.
-                    // ⚠️ `.fixedSize` — 이 칩은 최장 114pt로 기존(≤47pt)의 두 배가 넘어, 안 붙이면
-                    //    원문이 긴 줄에서 **SwiftUI가 원문 대신 칩을 줄인다.** 잘리는 쪽은 언제나 원문이어야 한다.
-                    if let rc = statusChip(item) {
-                        Text(rc.text).font(.caption2.weight(.semibold))
-                            .foregroundStyle(rc.tint)
-                            .fixedSize(horizontal: true, vertical: false)
+                // **★ 두 줄 구조로 바꿨다 (2026-08-18 사용자 결정) — 원문 줄 + 캡션 줄.**
+                //
+                // **왜:** 「임시」 배지와 `SourceBadge`가 **원문과 같은 줄에서 폭을 나눠 쓰고 있었다.**
+                // 원문은 `lineLimit(2)`라 **잘리는 쪽이 언제나 원문**이다 → 배지를 아래 캡션 줄로 내려
+                // **원문 폭을 되찾았다.** 동시에 **수집 날짜가 이 목록에도 생긴다** — 검색·보관·지금 챙길 것에는
+                // 이미 있던 것이라 **화면끼리 일관해진다**(사용자: *"원문 공간을 추가 확보하고, 일관성 유지에도 좋을 듯"*).
+                //
+                // **캡션 = 수집 시각만 나온다.** 이 행이 쓰이는 두 섹션(**새 기억들 · 살아있는 기억**)은 둘 다
+                // **정의상 「시점 없음」**이라(`InboxModel.partition`) `itemCaption`의 마감·미리 알림 조각이 비어 있다.
+                //
+                // ⚠️ **`MemoryRow`는 살아있는 기억도 쓴다**(`LivingView.swift:43`) — **그 화면에도 날짜 줄이 함께 생긴다.**
+                //    일관성 쪽으로 판단했다. 새 기억들만 원하면 `provisional`처럼 플래그로 가르면 된다.
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 10) {
+                        Text(item.raw ?? "(내용 없음)")
+                            .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)   // 원문 2줄까지(넘치면 …)
+                        Spacer(minLength: 4)
+                        // 상태 칩(§4 + D) — 완료 후 살아있는 기억으로 와도 "완료"/"N일 놓침"이 보이고,
+                        // **늦었는데 숨겨진 것**은 여기서 「8/14에 다시 · 7일 늦음」(amber)으로 드러난다.
+                        // ⚠️ `.fixedSize` — 이 칩은 최장 114pt로 기존(≤47pt)의 두 배가 넘어, 안 붙이면
+                        //    원문이 긴 줄에서 **SwiftUI가 원문 대신 칩을 줄인다.** 잘리는 쪽은 언제나 원문이어야 한다.
+                        // (**이 칩은 안 내렸다** — 상태는 「지금 이 항목이 어떤가」라 원문과 같은 눈높이에 있어야 한다.)
+                        if let rc = statusChip(item) {
+                            Text(rc.text).font(.caption2.weight(.semibold))
+                                .foregroundStyle(rc.tint)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
                     }
-                    if provisional { ProvisionalBadge() }
-                    SourceBadge(source: item.source)
+                    // 캡션 줄 — `UpcomingCard`·`SearchView`와 **같은 배치**(출처 · 날짜 · 임시).
+                    HStack(spacing: 6) {
+                        SourceBadge(source: item.source)
+                        Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                        if provisional { ProvisionalBadge() }
+                        Spacer(minLength: 0)
+                    }
                 }
                 .contentShape(Rectangle())
             }

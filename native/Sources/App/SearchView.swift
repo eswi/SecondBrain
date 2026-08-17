@@ -63,7 +63,23 @@ struct SearchView: View {
                         TypeGlyph(type: item.type)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.raw ?? "").font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)
-                            Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                            // **「임시」는 캡션 줄(날짜) 오른쪽에 붙인다 (2026-08-18 사용자 결정).**
+                            //
+                            // **왜 원문 줄이 아닌가:** 검색 결과는 **확정된 기억이 훨씬 많다**
+                            // (실데이터 189개 중 미확정 74개, 그중 66개는 이미 완료·삭제된 것).
+                            // 「새 기억들」(`MemoryRow`)처럼 원문 줄에 붙이면 **소수를 위해 다수의 원문 자리를**
+                            // 깎는다 — 그 줄은 `lineLimit(2)`라 잘리는 쪽이 언제나 원문이다.
+                            // 캡션 줄은 날짜 한 조각뿐이라 **남는 폭이 크다.**
+                            //
+                            // **검색에 표시가 필요한 이유:** 검색은 `liveNonDone + doneItems` **전체**를 훑어
+                            // **미확정도 걸린다.** 같은 항목이 「새 기억들」에는 배지와 함께 뜨는데
+                            // 여기서는 표시 없이 떠서 **같은 것이 두 화면에서 달라 보였다**
+                            // (`2026-08-14-macbook.md` §14-3·§14-4에서 걸린 구멍).
+                            HStack(spacing: 6) {
+                                Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                                if !item.confirmed { ProvisionalBadge() }
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
                 }
