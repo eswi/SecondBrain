@@ -113,8 +113,14 @@ final class InboxModel: ObservableObject {
     /// 미확정인데 시점을 가진 항목이 실제로 존재할 수 있다. 그것을 「지금 챙길 것」에 올리면
     /// **아무것도 안 보고 처리하라고 내미는 것**이 되므로, 확정 전에는 「새 기억들」에 남긴다.
     ///
-    /// ⚠️ **`notifiable`과 조건이 같아야 한다** — 화면에서 뺐는데 알림은 울리면 반쪽이 된다.
-    /// 둘 다 `confirmed` 하나만 본다. 한쪽만 고치지 말 것.
+    /// ⚠️⚠️ **「확정 축」 게이트는 셋이다 — 한쪽만 고치지 말 것.** 셋 다 `confirmed` 하나만 본다:
+    /// | 자리 | 무엇을 막나 | 깨지면 |
+    /// |---|---|---|
+    /// | **`partition`** (여기) | **보여주기** — 「지금 챙길 것」에 안 올린다 | 화면이 이상해진다 |
+    /// | **`notifiable`** | **알리기** — 알림을 안 건다 | 안 울려야 할 알림이 울린다 |
+    /// | **`catchUpRecurrence`** | **필드 쓰기** — 회차를 안 전진시킨다 | **데이터가 조용히 바뀐다** ← 가장 위험 |
+    /// 하나만 고치면 이 과제(「임시는 기억하기 전까지 아무것도 하지 않는다」)가 반쪽이 된다.
+    /// 뜻의 정본은 `memory-philosophy.md` §2-1-B.
     struct Partition {
         var upcoming: [UpcomingEntry]
         var newMemories: [ResolvedItem]   // 미확정 전부(시점 유무 무관), 오래된 순
@@ -139,8 +145,9 @@ final class InboxModel: ObservableObject {
     /// 직교하고, 그 직교를 깨면 헬퍼 기본값이 `confirmed: false`인 기존 시험이 무더기로 깨진다.
     /// 그래서 **게이트를 앱 레이어 한 곳**에 둔다.
     ///
-    /// ⚠️ **`partition`의 `upcoming`과 같은 조건이다** — 「지금 챙길 것」에서 뺀 것이 알림으로 새어나가면
-    /// 이 과제(「임시는 기억하기 전까지 아무것도 안 한다」)가 반쪽이 된다. **한쪽만 고치지 말 것.**
+    /// ⚠️⚠️ **「확정 축」 게이트 셋 중 하나다 — `partition`(보여주기) · 이것(알리기) ·
+    /// `catchUpRecurrence`(필드 쓰기). 셋이 같은 조건을 봐야 한다.** 표는 `partition`의 주석에 있다.
+    /// **한쪽만 고치지 말 것.**
     ///
     /// **§7 폴백(`ClassSpecCatalog.uses` = 정의 없는 분류는 전부 씀)과 부딪히지 않는다 — 축이 다르다.**
     /// §7은 **분류가 안 붙었다는 이유로** 사람이 적어둔 날짜를 버리지 말라는 것이고, 이것은
@@ -242,10 +249,20 @@ final class InboxModel: ObservableObject {
     ///
     /// 한 항목에 둘이 겹치면 **이번 로드는 1만** 한다 — 둘 다 같은 옛 마감에서 전진량을 계산하므로
     /// 합치면 이중 전진이 된다. 1을 반영한 재로드에서 2가 갱신된 마감으로 다시 계산해 이어받는다.
+    ///
+    /// **★ 확정된 것만 전진시킨다 (2026-08-18).** 근거는 `memory-philosophy.md` **§2-1-B** —
+    /// *시점을 정하는 것은 결정이고, 결정은 [기억하기]로 한다. 따라서 미확정 항목에는 시점이 붙지 않는다.*
+    /// 옛 코드는 `liveNonDone where type == "recurrence"`만 보고 **`confirmed`를 안 봤다.**
+    ///
+    /// **⚠️ 이 자리는 「확정 축」 게이트 셋 중 성격이 다르다 — 여기는 필드를 쓴다.**
+    /// `partition`은 **보여주기**를, `notifiable`은 **알리기**를 막는다. 둘은 깨져도 화면·알림이 이상해질 뿐
+    /// **데이터는 그대로**다. **이 자리가 깨지면 사람이 안 본 사이에 마감·미리 알림이 조용히 전진한다** —
+    /// 앱을 열기만 해도 일어나고, 되돌릴 단추가 없다. **셋 중 가장 조용히 틀리는 자리다.**
     private func catchUpRecurrence() {
         let now = Date()
         var edits: [Event] = []
-        for it in liveNonDone where it.type == "recurrence" {
+        // `confirmed`: 확정 축 게이트 셋 중 **필드를 쓰는** 자리(위 주석). `partition`·`notifiable`과 같은 조건.
+        for it in liveNonDone where it.type == "recurrence" && it.confirmed {
             if let resume = Recurrence.resumeChanges(it, now: now) {     // 켠 직후 보정이 우선
                 edits.append(.edit(id: it.id, hlc: tick(), resume)); continue
             }
