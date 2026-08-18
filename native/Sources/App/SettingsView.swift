@@ -25,6 +25,8 @@ struct SettingsView: View {
     #endif
     @State private var apiKeyInput = ""
     @State private var keySaved = KeychainStore.hasKey
+    /// 자동 분류 일시 중지 안내(2026-08-18). `ClassifyPause` 참조.
+    @State private var showClassifyPaused = false
 
     var body: some View {
         NavigationStack {
@@ -97,8 +99,15 @@ struct SettingsView: View {
                             } label: { Text("키 지우기") }
                             .listRowBackground(Palette.surface)
                         }
+                        // **일시 중지됐다** (2026-08-18 · `ClassifyPause`). 옛 동작:
+                        // `Task { await model.classifyUnclassified() }`. **호출만 막는다** — 기능은 살아 있다.
+                        //
+                        // ⚠️ **`.disabled(...)`를 뗐다.** 옛 조건(키 없음·미분류 0·진행 중)으로 회색이 되면
+                        // **눌러도 안내가 안 뜬다** — "왜 안 되나"를 사람이 알 길이 없어진다. 지금은
+                        // 눌리는 것이 안내를 내미는 유일한 길이므로 열어 둔다.
+                        // 진행 표시(`classifyPhase == .running`) 가지는 남겼다 — 재개할 때 그대로 쓴다.
                         Button {
-                            Task { await model.classifyUnclassified() }
+                            showClassifyPaused = true
                         } label: {
                             HStack {
                                 if case .running = model.classifyPhase {
@@ -111,9 +120,6 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        .disabled(!keySaved || model.unclassifiedItems.isEmpty || {
-                            if case .running = model.classifyPhase { return true } else { return false }
-                        }())
                         .listRowBackground(Palette.surface)
                     } header: { header("지능 (자동 분류)") } footer: {
                         Text(classifyFooter).font(.caption2).foregroundStyle(Palette.textTertiary)
@@ -139,11 +145,17 @@ struct SettingsView: View {
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
         }
+        // 자동 분류 일시 중지 안내(2026-08-18) — 문구는 `ClassifyPause` 한 곳에 둔다(당겨서 분류와 공유).
+        .alert(ClassifyPause.title, isPresented: $showClassifyPaused) {
+            Button("확인", role: .cancel) {}
+        }
     }
 
     /// 자동 분류 안내 + 마지막 실행 결과. 키는 이 기기 Keychain에만 저장(§7).
     private var classifyFooter: String {
-        let base = "미분류를 Claude가 종류·시점으로 분류합니다. 키는 이 기기 Keychain에만 저장되고 파일·iCloud엔 안 담깁니다. \"새로운 기억\" 화면을 아래로 당겨도 분류할 수 있습니다."
+        // **문구는 사용자가 정한다**(2026-08-18). 옛 마지막 문장 *"「새로운 기억」 화면을 아래로 당겨도
+        // 분류할 수 있습니다"*는 **1-D가 그 경로를 막아 사실이 아니게 됐다** → 중지 안내로 갈았다.
+        let base = "미분류를 Claude가 종류·시점으로 분류합니다. 키는 이 기기 Keychain에만 저장되고 파일·iCloud엔 안 담깁니다. 자동 분류는 다시 만드는 중이라 지금은 멈춰 있어요."
         switch model.classifyPhase {
         case .done(let n):     return n > 0 ? "\(base)\n방금 \(n)개를 분류했습니다." : base
         case .failed(let msg): return "\(base)\n실패: \(msg)"

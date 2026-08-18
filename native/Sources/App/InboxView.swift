@@ -24,6 +24,8 @@ struct InboxView: View {
     // "새 기억들" 표시 순서 뒤집기 토글. **세션 한정**(탭 전환엔 유지, 앱 재실행 시 기본=오래된 순).
     // 데이터·성역은 불변 — model.newTab.newMemories는 늘 오래된 순(선입선출)이고, 여기서 보기 순서만 뒤집는다.
     @State private var reverseNewOrder = false
+    /// 자동 분류 일시 중지 안내(2026-08-18). `ClassifyPause` 참조.
+    @State private var showClassifyPaused = false
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
     var body: some View {
@@ -121,9 +123,13 @@ struct InboxView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg)
-        // 화면을 아래로 당기면 미분류를 분류(pull-to-classify, §0-A). 진행은 네이티브 새로고침
-        // 스피너가 표시하고(그래서 runningToast:false), 결과·실패·"없음"은 중앙 토스트로 알린다.
-        .refreshable { await model.classifyUnclassified(auto: true, runningToast: false) }
+        // **당겨서 분류(pull-to-classify)는 일시 중지됐다** (2026-08-18 사용자 결정 — `ClassifyPause`).
+        // 옛 동작: `await model.classifyUnclassified(auto: true, runningToast: false)`.
+        // **호출만 막는다** — `classifyUnclassified`는 그대로 살아 있다(재개발 예정).
+        .refreshable { showClassifyPaused = true }
+        .alert(ClassifyPause.title, isPresented: $showClassifyPaused) {
+            Button("확인", role: .cancel) {}
+        }
     }
 
     // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
@@ -151,38 +157,52 @@ struct InboxView: View {
     @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
+    /// 「지금 챙길 것」 왼쪽 스와이프: 완료(했어요)·미루기.
+    ///
+    /// **★ 완료·미루기 둘 다 확정 항목에만 그린다 (2026-08-18 사용자 결정).**
+    /// 옛 주석은 *"완료·삭제는 그대로 둔다(§3이 미기억 항목에도 명시 허용)"* 였다. **그 근거가 바뀌었다** —
+    /// `edit-policy.md` §3이 **[삭제]만 허용하는 것으로 좁혀졌다.** 임시 항목은 **상세에서 원문·성역·분류를
+    /// 보고 판단한 뒤** [기억하기]를 누르는 구조인데, 목록에서 바로 완료가 되면 **아무것도 안 보고 처리**하게 된다.
+    /// **버릴 길은 [삭제]가 지킨다** — 그건 미확정에도 남는다.
+    ///
+    /// ⚠️ **이건 방어선이다.** `InboxModel.partition`이 미확정을 「지금 챙길 것」에서 빼므로(2026-08-18)
+    /// 정상 경로로는 미확정 항목이 여기 도달하지 않는다. 파티션이 바뀌어도 이 자리가 홀로 새지 않게 둔다.
     @ViewBuilder private func doneDeferActions(_ item: ResolvedItem) -> some View {
-        if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+        if item.confirmed, !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
             Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
         }
-        // **임시(미확정)면 미루기를 안 그린다** (edit-policy §1-A) — 시점은 기억하기 뒤에만 정한다.
-        // 완료·삭제는 그대로 둔다(§3이 미기억 항목에도 명시 허용).
-        // ⚠️ 자동 분류가 due를 붙이면 미확정 항목이 '지금 챙길 것'에 상시로 오므로 이 갈림이 실제로 쓰인다.
+        // 시점은 기억하기 뒤에만 정한다 (edit-policy §1-A).
         if item.confirmed {
             Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
         }
     }
     /// 시점 있는 항목(지금 챙길 것) 컨텍스트: 완료·미루기·삭제.
+    /// **완료·미루기는 확정 항목만** — 근거·방어선 설명은 위 `doneDeferActions`와 같다.
     @ViewBuilder func itemActions(_ item: ResolvedItem) -> some View {
-        if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
+        if item.confirmed, !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
             Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
         }
-        if item.confirmed {   // 임시면 미루기 없음 (edit-policy §1-A) — 위 doneDeferActions와 같은 이유
+        if item.confirmed {   // 임시면 미루기 없음 (edit-policy §1-A)
             Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
         }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
-    /// 새 기억(미확정) 컨텍스트: 확정을 맨 앞에.
+    /// 새 기억(미확정) 컨텍스트: **기억하기 · 삭제 둘뿐.**
     ///
     /// **★ 「미루기 (시점 붙임)」을 없앴다 (2026-08-14, 사용자 결정).** 이 섹션은 **전부 임시**이고
     /// 임시 항목에 시점을 붙이는 것이 정확히 `edit-policy.md` §1-A가 금지한 것이라, 남겨두면
     /// **절대 눌리지 않는 메뉴**가 된다(§7(a): 못 쓰는 칸은 회색으로 두지 않고 없앤다 — 같은 규칙의 적용).
-    /// 시점을 붙이려면 먼저 [기억하기]를 누른다. 기억하기·완료·삭제가 남아 메뉴는 비지 않는다.
+    ///
+    /// **★ 「완료」도 뺐다 (2026-08-18, 사용자 결정).** 임시 항목에서 사람이 할 일은 **살릴지 버릴지 정하는 것**
+    /// 하나다. 목록에서 완료가 되면 **아무것도 안 보고 처리**하게 되고, 상세가 [삭제하기]·[기억하기] 둘만
+    /// 내밀어 결정을 강요하는 구조를 목록이 우회한다.
+    ///
+    /// **⚠️ 이 변경으로 임시 항목을 완료할 길이 아예 없어진다.** 상세에도 없다 — 상세의 완료(`completionRow`)는
+    /// **되풀이 분류 + 확정** 둘 다여야 그려진다(`DetailView.swift`의 `recurrenceSection`).
+    /// **사용자가 그 편의를 포기하기로 정했다**(2026-08-18). `edit-policy.md` §3을 그에 맞춰 좁혔다.
+    /// 버릴 길은 [삭제]가 지키고, 완료하려면 먼저 [기억하기]를 누른다.
     @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
         Button { model.confirm(item) } label: { Label("기억하기 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
-        if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
-            Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
-        }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
     }
 

@@ -101,26 +101,52 @@ final class InboxModel: ObservableObject {
 
     // MARK: 세 영역 분할 (memory-philosophy.md §5)
 
-    /// **시점(Due/Resurface) 유무가 최상위 축.** 배타적·중복 없음:
-    /// - 시점 있음 → **지금 챙길 것** (확정 무관 — 현실의 사건은 완료되면 보관으로 흐름)
-    /// - 시점 없음 + 미확정 → **새 기억들** (오래된 순 = 선입선출, 묻히지 않게)
-    /// - 시점 없음 + 확정 → **살아있는 기억** (시점 없는 것만이 살아있는 기억의 몫)
+    /// **확정(`confirmed`)이 최상위 축, 그 아래가 시점(Due/Resurface).** 배타적·중복 없음:
+    /// - **미확정 → 새 기억들** (시점이 있든 없든. 오래된 순 = 선입선출, 묻히지 않게)
+    /// - 확정 + 시점 있음 → **지금 챙길 것** (완료되면 보관으로 흐름)
+    /// - 확정 + 시점 없음 → **살아있는 기억** (시점 없는 것만이 살아있는 기억의 몫)
     /// 원칙(principle)은 어디에도 안 들어가고 별도 ambient 띠(`principles`).
+    ///
+    /// **★ 축이 바뀌었다 (2026-08-18).** 옛 규칙은 *"시점 있음 → 지금 챙길 것 (확정 무관)"* 이었다.
+    /// **시점을 정하는 것은 결정이고 결정은 [기억하기]로 한다** → 미확정 항목에는 시점이 붙지 않는다
+    /// (`memory-philosophy.md`). 그런데 **자동 분류가 붙인 시점**과 **레거시 웹 v0가 남긴 값**이 있어
+    /// 미확정인데 시점을 가진 항목이 실제로 존재할 수 있다. 그것을 「지금 챙길 것」에 올리면
+    /// **아무것도 안 보고 처리하라고 내미는 것**이 되므로, 확정 전에는 「새 기억들」에 남긴다.
+    ///
+    /// ⚠️ **`notifiable`과 조건이 같아야 한다** — 화면에서 뺐는데 알림은 울리면 반쪽이 된다.
+    /// 둘 다 `confirmed` 하나만 본다. 한쪽만 고치지 말 것.
     struct Partition {
         var upcoming: [UpcomingEntry]
-        var newMemories: [ResolvedItem]   // 시점 없음 + 미확정, 오래된 순
+        var newMemories: [ResolvedItem]   // 미확정 전부(시점 유무 무관), 오래된 순
         var living: [ResolvedItem]         // 시점 없음 + 확정 (필터 전)
     }
 
     private var partition: Partition {
         let nonPrinciple = liveNonDone.filter { $0.type != "principle" }
         let base = InboxSectionizer.split(nonPrinciple, now: Date())
-        let newMems = base.recent
-            .filter { !$0.confirmed }
+        // 시점이 있어도 미확정이면 「지금 챙길 것」에서 빼 「새 기억들」로 보낸다(위 규칙).
+        let upcoming = base.upcoming.filter { $0.item.confirmed }
+        let unconfirmedScheduled = base.upcoming.filter { !$0.item.confirmed }.map(\.item)
+        let newMems = (base.recent.filter { !$0.confirmed } + unconfirmedScheduled)
             .sorted { a, b in a.createdHLC != b.createdHLC ? a.createdHLC < b.createdHLC : a.id < b.id }
         let living = base.recent.filter { $0.confirmed }   // recent는 MergeEngine 최신순 유지
-        return Partition(upcoming: base.upcoming, newMemories: newMems, living: living)
+        return Partition(upcoming: upcoming, newMemories: newMems, living: living)
     }
+
+    /// **알림 대상 = 확정된 것만** (2026-08-18 · 방법 「나」).
+    ///
+    /// **왜 여기서 거르나:** `NotificationPlanner`(Core)는 `confirmed`를 안 본다 — Core에서 완료·확정 두 축은
+    /// 직교하고, 그 직교를 깨면 헬퍼 기본값이 `confirmed: false`인 기존 시험이 무더기로 깨진다.
+    /// 그래서 **게이트를 앱 레이어 한 곳**에 둔다.
+    ///
+    /// ⚠️ **`partition`의 `upcoming`과 같은 조건이다** — 「지금 챙길 것」에서 뺀 것이 알림으로 새어나가면
+    /// 이 과제(「임시는 기억하기 전까지 아무것도 안 한다」)가 반쪽이 된다. **한쪽만 고치지 말 것.**
+    ///
+    /// **§7 폴백(`ClassSpecCatalog.uses` = 정의 없는 분류는 전부 씀)과 부딪히지 않는다 — 축이 다르다.**
+    /// §7은 **분류가 안 붙었다는 이유로** 사람이 적어둔 날짜를 버리지 말라는 것이고, 이것은
+    /// **사람이 아직 승인하지 않은 동안** 알리지 않는다는 것이다. 값은 안 지운다 — [기억하기] 한 번으로
+    /// 알림이 살아난다(**버림이 아니라 유보**). 자세한 것은 `memory-philosophy.md`.
+    var notifiable: [ResolvedItem] { liveNonDone.filter { $0.confirmed } }
 
     /// 새로운 기억 탭: 지금 챙길 것 + 새 기억들. (필터 미적용 — 필터는 살아있는 기억 탭 몫)
     var newTab: (upcoming: [UpcomingEntry], newMemories: [ResolvedItem]) {
@@ -235,7 +261,9 @@ final class InboxModel: ObservableObject {
     private func scheduleNotifications() {
         // 실제 폴더(진실원)가 있을 때만. 샘플/시뮬레이터(폴더 없음)에선 알림 요청·스케줄 안 함.
         guard FragmentFolder.hasFolder else { return }
-        let result = NotificationPlanner.planned(items: liveNonDone, now: Date())
+        // **확정된 것만 알린다**(`notifiable` — 2026-08-18). `liveNonDone`을 그대로 넘기면
+        // 「지금 챙길 것」에서 뺀 미확정 항목이 알림으로 새어나간다.
+        let result = NotificationPlanner.planned(items: notifiable, now: Date())
         // **잘린 것이 보여야 한다**(5-B) — 알림은 안 오는 것을 눈치채기 어려워 특히 위험하다.
         // 확인 경로는 여기 하나로 모은다: 상태(`notifyBudget`, 나중에 디버그 화면이 읽으면 됨) + 콘솔 로그.
         // 사용자에게 어떻게 보여줄지는 아직 안 정했다 — 지금은 "확인이 가능하다"까지만.
