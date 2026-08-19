@@ -549,7 +549,7 @@ struct DetailView: View {
                                         span: MKCoordinateSpan(latitudeDelta: 0.003, longitudeDelta: 0.003))
         VStack(alignment: .leading, spacing: 6) {
             Map(initialPosition: .region(region), interactionModes: []) {
-                Marker("촬영 위치", coordinate: coord)
+                Marker(MediaMigrationText.photoPinName, coordinate: coord)
             }
             .frame(height: 150)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
