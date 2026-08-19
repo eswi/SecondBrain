@@ -42,8 +42,17 @@ enum FragmentFolder {
     }
 
     /// 보안 스코프를 열고 폴더 URL로 작업. 폴더 미선택이면 nil.
-    /// ⚠️ **스코프는 이 함수가 돌아올 때 닫힌다** — 돌려받은 URL을 나중에 읽는 것은 보장되지 않는다
-    /// (설계 `media-icloud-design.md` §2-A 미결).
+    ///
+    /// ## ⚠️ 스코프는 이 함수가 돌아올 때 닫힌다 — **URL을 내보내지 말 것**
+    ///
+    /// 돌려받은 URL을 **나중에** 읽는 것은 보장되지 않는다. 그래서 규칙이 하나 있다:
+    /// **`body`는 값을 돌려준다 — URL이 아니라 내용·사실·성패를.**
+    /// (`read()`는 `String`을, `cloudFacts`는 `Bool` 둘을, `adopt`는 `Bool`을 돌려준다.)
+    ///
+    /// **2026-08-20에 이 규칙을 어긴 자리 하나를 없앴다** — `MediaCloud.readableURL`이
+    /// **iCloud URL을 돌려주고 있었다.** 지금은 `MediaCloud.adopt`가 **스코프 안에서 로컬로 복사**하고,
+    /// 화면은 **로컬 URL만** 본다(설계 §2-A C안).
+    /// **훑어서 확인했다(2026-08-20): 지금 `withFolder` 호출 일곱 개 중 URL을 내보내는 것은 0개다.**
     static func withFolder<T>(_ body: (URL) throws -> T) rethrows -> T? {
         guard let folder = resolve() else { return nil }
         let accessed = folder.startAccessingSecurityScopedResource()

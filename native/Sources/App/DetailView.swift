@@ -2,9 +2,6 @@ import SwiftUI
 import SecondBrainCore
 import MapKit
 import CoreLocation
-#if os(iOS)
-import UIKit
-#endif
 
 /// 상세 화면 — "편집의 무대" (memory-philosophy.md §6, 정책 정본 = edit-policy.md).
 ///
@@ -506,14 +503,25 @@ struct DetailView: View {
     }
 
     /// 원본 사진 — 이 기기에 파일이 있으면 이미지(+ EXIF 위치 지도), 없으면 안내. audioRow 미러.
+    ///
+    /// ## ✅ macOS에서도 보인다 (§7 · 2026-08-20 · 단계 5)
+    ///
+    /// 옛 코드는 이 줄 **전체**를 `#if os(iOS)`로 감싸고 `#else`에서 **무조건 「이 기기엔 없음」**을 보였다.
+    /// **파일이 Mac에 실제로 도착해 있는데도 없다고 말했다 — iOS의 미다운로드와 달리 영구히 틀린다.**
+    ///
+    /// **막고 있던 것은 판정이 아니라 타입 둘뿐이었다**(`UIImage`·`UIApplication`) → `PlatformMedia`로 갈랐고
+    /// **이 함수에는 `#if`가 없어졌다.** 판정(세 갈래)·문구·배치는 **두 플랫폼이 같은 코드**를 쓴다 —
+    /// 갈라 두면 한쪽만 고치는 일이 생긴다.
+    ///
+    /// ⚠️ **촬영은 여전히 iOS 전용이다**(이번 범위 밖 — §7).
     @ViewBuilder private var photoRow: some View {
-        #if os(iOS)
         Group {
             switch photoFetch.state {
             case .here:
-                if let url = PhotoStore.url(forId: item.id), let img = UIImage(contentsOfFile: url.path) {
+                if let url = PhotoStore.url(forId: item.id),
+                   let img = PlatformMedia.image(contentsOfFile: url.path) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Image(uiImage: img)
+                        img
                             .resizable().scaledToFit()
                             .frame(maxWidth: .infinity)
                             .frame(maxHeight: 260)
@@ -532,14 +540,10 @@ struct DetailView: View {
             }
         }
         .task(id: item.id) { photoFetch.start(.photo, id: item.id) }
-        #else
-        // ⏸ macOS는 **단계 5**에서 켠다(§7) — `UIImage` 대신 이미지 로딩 갈래가 필요하다.
-        photoMissingRow
-        #endif
     }
 
-    #if os(iOS)
     /// 사진 EXIF 좌표를 작은 지도로(비상호작용) + 지도 앱 열기. 좌표는 사진 안에만 있음(그릇 X).
+    /// **여는 일만** `PlatformMedia`가 갈라 한다 — URL 꼴은 두 플랫폼이 같다.
     @ViewBuilder private func photoMap(_ coord: CLLocationCoordinate2D) -> some View {
         let region = MKCoordinateRegion(center: coord,
                                         span: MKCoordinateSpan(latitudeDelta: 0.003, longitudeDelta: 0.003))
@@ -551,16 +555,13 @@ struct DetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
             Button {
-                if let u = URL(string: "http://maps.apple.com/?ll=\(coord.latitude),\(coord.longitude)") {
-                    UIApplication.shared.open(u)
-                }
+                PlatformMedia.openInMaps(coord)
             } label: {
                 Label("지도 앱에서 열기", systemImage: "map").font(.caption)
             }
             .buttonStyle(.plain).foregroundStyle(Palette.accent)
         }
     }
-    #endif
 
     private var photoMissingRow: some View {
         HStack(spacing: 8) {

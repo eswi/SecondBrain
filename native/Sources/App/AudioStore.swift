@@ -44,7 +44,11 @@ enum AudioStore {
     static func localFiles() -> [URL] {
         guard let dir = localAudioDir() else { return [] }
         let e = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        return e.filter { $0.pathExtension == "m4a" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        // ⚠️ **확장자가 여기서 두 번째 일을 한다** — 들여오기 임시 파일(`sb-adopting-<id>.m4a.part`)을
+        // 걸러내는 것도 이 필터다(`MediaAdoptNaming`의 ⛔ 참고: 걸리면 업로더가 임시 파일을 올려 고아를 만든다).
+        // 접두사 검사를 **함께** 두는 이유: 나중에 이 필터를 손대는 사람이 그 연결을 모를 수 있다.
+        return e.filter { $0.pathExtension == "m4a" && !MediaAdoptNaming.isPartName($0.lastPathComponent) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     // MARK: 임시(캡처 중) — 시트 세션 동안 이어 쓰다가 [저장] 때 확정
@@ -79,7 +83,19 @@ enum AudioStore {
         }
     }
 
-    /// 이 기기에서 재생 가능한 음성 파일 URL. nil이면 다른 기기에서 녹음됨(미동기화).
+    /// 이 기기에서 재생 가능한 음성 파일 URL. **로컬만 본다.**
+    ///
+    /// ## ⛔ iCloud URL을 돌려주지 않는다 (§2-A C안 · 2026-08-20)
+    ///
+    /// 여기엔 `MediaCloud.readableURL(.audio, id:)` 폴백이 있었다. **iCloud 쪽 URL을 돌려주는데
+    /// 돌려받은 쪽이 읽을 때는 보안 스코프가 닫혀 있었다.** C안으로 닫았다 —
+    /// **바이트가 있으면 `adoptFromCloudIfNeeded`가 로컬로 옮기고, 그 뒤엔 아래 로컬 조회가 그냥 찾는다.**
+    ///
+    /// **그래서 이 함수는 순수한 로컬 조회다.** 화면이 쓰기 전에 `MediaFetch`가 들여오기를 끝내 둔다
+    /// (`MediaFetch.availability`가 **메인 밖에서** 먼저 부른다 — 화면 그리는 중에 파일 복사를 하지 않는다).
+    ///
+    /// ⚠️ **nil의 뜻이 좁아졌다:** 「이 기기 로컬에 없다」다. iCloud에 있는지는 **이 함수가 답하지 않는다** —
+    /// 그것은 `availability(forId:)`의 일이다(§4의 세 갈래).
     static func url(forId id: String) -> URL? {
         let name = filename(forId: id)
         let fm = FileManager.default
@@ -87,8 +103,21 @@ enum AudioStore {
             let u = dir.appendingPathComponent(name)
             if fm.fileExists(atPath: u.path) { return u }   // 로컬은 dataless가 없다 = 있으면 곧 바이트가 있다
         }
-        // 로컬에 없으면 iCloud — **바이트가 있는 것만** 돌려준다(§0-B의 「이름만 있는 파일」을 걸러낸다).
-        return MediaCloud.readableURL(.audio, id: id)
+        return nil
+    }
+
+    /// **iCloud에 바이트가 있고 로컬에 없으면 로컬로 들여온다**(§2-A C안). 들여왔으면 true.
+    ///
+    /// **로컬에 이미 있으면 iCloud I/O를 아예 안 한다** — 폰의 정상 경로에서 비용이 0이다(§5).
+    /// 실제로 도는 것은 **Mac**과 나중의 두 번째 기기다.
+    @discardableResult
+    static func adoptFromCloudIfNeeded(forId id: String) -> Bool {
+        let fm = FileManager.default
+        let name = filename(forId: id)
+        let localExists = searchDirs().contains { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }
+        guard !localExists, let dir = localAudioDir() else { return false }
+        MediaCloud.sweepAdoptLeftovers(in: dir)
+        return MediaCloud.adopt(.audio, id: id, intoDir: dir)
     }
 
     /// **세 갈래 판정** (§4) — 「여기 있다」 · 「아직 안 받았다」 · 「어디에도 없다」.

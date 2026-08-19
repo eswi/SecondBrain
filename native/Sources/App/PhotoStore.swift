@@ -48,7 +48,9 @@ enum PhotoStore {
     static func localFiles() -> [URL] {
         guard let dir = localPhotoDir() else { return [] }
         let e = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        return e.filter { $0.pathExtension == "jpg" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        // ⚠️ 확장자 필터가 들여오기 임시 파일(`.part`)도 걸러낸다 — `AudioStore.localFiles()`의 주석 참고.
+        return e.filter { $0.pathExtension == "jpg" && !MediaAdoptNaming.isPartName($0.lastPathComponent) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     // MARK: 임시(캡처 중) — 촬영 시 임시 저장 → [저장] 때 확정 / [취소] 때 삭제
@@ -83,7 +85,8 @@ enum PhotoStore {
         }
     }
 
-    /// 이 기기에서 볼 수 있는 사진 파일 URL. nil이면 다른 기기에서 촬영됨(미동기화).
+    /// 이 기기에서 볼 수 있는 사진 파일 URL. **로컬만 본다.** `AudioStore.url(forId:)`의 미러 —
+    /// **iCloud URL을 돌려주지 않는 이유는 그쪽 주석에 있다**(§2-A C안 · 2026-08-20).
     static func url(forId id: String) -> URL? {
         let name = filename(forId: id)
         let fm = FileManager.default
@@ -91,8 +94,18 @@ enum PhotoStore {
             let u = dir.appendingPathComponent(name)
             if fm.fileExists(atPath: u.path) { return u }   // 로컬은 dataless가 없다 = 있으면 곧 바이트가 있다
         }
-        // 로컬에 없으면 iCloud — **바이트가 있는 것만** 돌려준다(§0-B의 「이름만 있는 파일」을 걸러낸다).
-        return MediaCloud.readableURL(.photo, id: id)
+        return nil
+    }
+
+    /// **iCloud에 바이트가 있고 로컬에 없으면 로컬로 들여온다**(§2-A C안). `AudioStore`의 미러.
+    @discardableResult
+    static func adoptFromCloudIfNeeded(forId id: String) -> Bool {
+        let fm = FileManager.default
+        let name = filename(forId: id)
+        let localExists = searchDirs().contains { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }
+        guard !localExists, let dir = localPhotoDir() else { return false }
+        MediaCloud.sweepAdoptLeftovers(in: dir)
+        return MediaCloud.adopt(.photo, id: id, intoDir: dir)
     }
 
     /// **세 갈래 판정** (§4) — 「여기 있다」 · 「아직 안 받았다」 · 「어디에도 없다」.

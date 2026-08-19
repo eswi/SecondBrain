@@ -94,17 +94,77 @@ enum MediaCloud {
         return f ?? (false, false)
     }
 
-    /// **지금 읽을 수 있는** iCloud 쪽 URL(바이트가 있는 것만). 없으면 nil.
+    // MARK: 들여오기 (§2-A C안) — **iCloud 쪽 URL을 밖으로 내보내지 않는다**
+
+    /// **iCloud 쪽 실체를 로컬로 들여온다.** 들여왔으면 true.
     ///
-    /// ⚠️ **돌려준 뒤에는 보안 스코프가 닫혀 있다** — 이 URL을 실제로 읽는 것은 **§2-A 미결**(단계 5).
-    /// 폰에서는 로컬 사본이 먼저 잡혀 여기까지 오지 않는다(§5). **Mac에서만 문제가 된다.**
-    static func readableURL(_ kind: MediaKind, id: String) -> URL? {
-        let u: URL?? = FragmentFolder.withFolder { folder -> URL? in
+    /// ## ⛔ 왜 URL을 돌려주지 않나 — 옛 `readableURL`이 있던 자리다
+    ///
+    /// 여기엔 `readableURL(_:id:)`가 있었다. **바이트가 있는 iCloud URL을 돌려주는** 함수였고,
+    /// 주석이 스스로 미결을 적어 뒀다: *"돌려준 뒤에는 보안 스코프가 닫혀 있다."*
+    /// **2026-08-20에 C안으로 닫았다**(설계 §2-A) — **URL을 내보내지 않고, 바이트를 로컬로 옮긴다.**
+    /// 그러면 **스코프 밖에서 읽는 코드가 아예 없어진다.**
+    ///
+    /// **유지되는 것:** 찾는 순서 `[로컬, iCloud]`(§4) · 중복 허용(write-once라 내용이 같다) ·
+    /// 포인터 필드 불변 · 확정 목적지는 로컬(§3-①).
+    ///
+    /// **원자성 — §3 업로더와 같은 패턴이다:** 로컬 디렉터리 안에 임시 이름(`sb-adopting-…part`)으로
+    /// 복사한 뒤 **같은 폴더에서 rename.** 반대로 목적지에 바로 복사하면, 도중에 죽었을 때
+    /// **온전한 것처럼 보이는 반쪽 파일**이 로컬에 남고 — 그 순간
+    /// **「로컬은 바이트가 보장된 층」이라는 §4의 전제가 거짓이 된다.** 그게 거짓이면 찾는 순서가 무의미해진다.
+    ///
+    /// ⚠️ **이 함수만 로컬 쪽에 쓴다**(다른 `MediaCloud` 함수는 iCloud만 만진다).
+    /// 여기 있는 이유는 **보안 스코프를 여는 자리가 여기**라서다 — 읽기와 쓰기가 한 스코프 안에서 끝나야 한다.
+    @discardableResult
+    static func adopt(_ kind: MediaKind, id: String, intoDir localDir: URL) -> Bool {
+        let ok: Bool? = FragmentFolder.withFolder { folder in
             let fm = FileManager.default
-            return candidates(kind, id: id, folder: folder)
-                .first { fm.fileExists(atPath: $0.path) && hasBytes($0, fm) }
+            // 바이트가 **실제로 있는** 것만. 이름만 있는 것(dataless)을 복사하면 빈 파일이 된다(§0-B).
+            guard let src = candidates(kind, id: id, folder: folder)
+                    .first(where: { fm.fileExists(atPath: $0.path) && hasBytes($0, fm) })
+            else { return false }
+
+            let part = localDir.appendingPathComponent(MediaAdoptNaming.partName(kind: kind, id: id))
+            let dest = localDir.appendingPathComponent("\(id).\(kind.ext)")
+            var copied = false
+
+            let coord = NSFileCoordinator()
+            var cerr: NSError?
+            coord.coordinate(readingItemAt: src, options: [], error: &cerr) { r in
+                do {
+                    if fm.fileExists(atPath: part.path) { try fm.removeItem(at: part) }
+                    try fm.copyItem(at: r, to: part)
+                    copied = true
+                } catch {
+                    try? fm.removeItem(at: part)   // 찌꺼기를 남기지 않는다
+                }
+            }
+            guard copied, cerr == nil else {
+                try? fm.removeItem(at: part)
+                return false
+            }
+            do {
+                if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }   // 방어(멱등)
+                try fm.moveItem(at: part, to: dest)
+                return true
+            } catch {
+                try? fm.removeItem(at: part)
+                return false
+            }
         }
-        return u ?? nil
+        return ok ?? false
+    }
+
+    /// 들여오다 만 찌꺼기 청소 — **로컬** 디렉터리. 업로더의 `sweepLeftovers`와 같은 모양이다(§3).
+    ///
+    /// ⚠️ 이 찌꺼기는 `localFiles()`의 확장자 필터에 **안 걸리므로 기능을 깨뜨리지 않는다**
+    /// (그래서 `.part`를 쓴다 — `MediaAdoptNaming` 참고). 다만 **쌓이면 자리를 차지하므로** 치운다.
+    static func sweepAdoptLeftovers(in localDir: URL) {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: localDir.path) else { return }
+        for n in names where MediaAdoptNaming.isPartName(n) {
+            try? fm.removeItem(at: localDir.appendingPathComponent(n))
+        }
     }
 
     /// **실체가 내려와 있나.** ⚠️ `fileExists`로는 절대 못 잰다(§0-B: dataless도 true).
