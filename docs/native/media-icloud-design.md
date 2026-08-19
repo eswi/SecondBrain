@@ -238,6 +238,27 @@ if let audioTemp, let name = AudioStore.finalize(temp: audioTemp, forId: id) {
 **포인터 필드는 안 건드린다.** `audio:`/`photo:`는 create 블록에 찍힌 **성역**이고,
 파일명이 `<id>.m4a`로 그대로이므로 **값이 안 바뀐다.**
 
+### 구현됨 (2026-08-19 · 단계 2) — 그리고 **예고와 달라진 것 하나**
+
+| 자리 | 무엇 |
+|---|---|
+| `MediaAvailability` + `MediaAvailabilityJudge` (Core) | 세 갈래 판정. 시험 7개 |
+| `MediaCloud.cloudFacts`/`readableURL`/`candidates` (App) | 사실 수집 — 이름이 있나 · **바이트가 있나** |
+| `AudioStore.availability(forId:)` · `PhotoStore.availability(forId:)` | 세 갈래를 화면에 줄 자리(화면 연결은 단계 4) |
+| `url(forId:)` | 로컬 → **바이트가 있는 iCloud**. 이름만 있는 파일은 안 돌려준다 |
+
+> ### ⚠️ **iCloud는 `searchDirs()`에 안 들어갔다** — 옛 예고가 뒤집혔다
+> `AudioStore`/`PhotoStore`의 머리주석과 이 문서 §0-B는 *"iCloud를 `searchDirs()`에 더하는 순간"* 이라고
+> 적고 있었다. **그 방식으로는 안 된다:** iCloud 쪽은 **보안 스코프를 열어야** 보이고
+> **자리(하위 폴더/루트)를 먼저 계산**해야 해서 **URL 목록에 담기지 않는다.**
+> 그래서 `searchDirs()`는 **로컬 전용으로 남고**, iCloud는 `MediaCloud`가 따로 본다.
+> **유지되는 것:** 찾는 순서 **[로컬, iCloud]** · 로컬 우선의 이유 · 중복 허용 · **포인터 필드 불변.**
+> (코드 머리주석 둘도 같은 날 「뒤집혔다」로 고쳤다 — 지우지 않고 옛 서술과 함께 남겼다.)
+
+**바이트가 있나를 어떻게 재나:** `ubiquitousItemDownloadingStatus`가 `.notDownloaded`가 **아닌지**로 본다.
+키가 없으면(iCloud 항목이 아니면) `totalFileAllocatedSize > 0`으로 본다 — §0-B에서 dataless는 **0**이었다.
+⚠️ **`fileExists`로는 절대 못 잰다**(§0-B: dataless도 true).
+
 ---
 
 ## 5. 기존 131개 — 별도 이관 코드가 없다
@@ -407,7 +428,7 @@ if let audioTemp, let name = AudioStore.finalize(temp: audioTemp, forId: id) {
 
 1. **하위 폴더 생성 확인** (§2) — 되면 `audio/`·`photo/`, 안 되면 루트 폴백 + **기록**(§2-A)
    → **코드 완료 2026-08-19. 답은 기기 설치 뒤 `.sb-media.log`에서 읽는다**(§2-A의 「세 상태를 읽는 법」)
-2. 찾기를 세 갈래로 (§4)
+2. 찾기를 세 갈래로 (§4) → **완료 2026-08-19**(Core 시험 7개 · `searchDirs()` 예고는 뒤집혔다 — §4)
 3. 업로더 (§3) — 이것이 곧 131개 이관 (§5)
 4. 받는 중·받기 실패 화면 (§6·§8)
 5. Mac 사진 보기 (§7)

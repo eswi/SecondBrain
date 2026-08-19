@@ -1,4 +1,5 @@
 import Foundation
+import SecondBrainCore
 import CoreLocation
 import ImageIO
 import UniformTypeIdentifiers
@@ -11,8 +12,12 @@ import UIKit
 /// 사진의 "원본"은 **캡처 시 1회 리사이즈·압축한 그 파일**이다(무손실 아님 — 설계
 /// `docs/native/photo-capture-design.md` §4-④). 한 번 확정하면 다신 안 건드린다.
 ///
-/// **기본은 기기에만**(앱 샌드박스). GPS는 사진 EXIF에만 두고 그릇엔 안 박아 iCloud 누출을 막는다(§5, Stage 3).
-/// 저장 위치는 `searchDirs()`로 추상화 → 나중 항목별 iCloud 옵트인을 표시에 자동 반영(§7, 음성과 동형).
+/// **확정은 지금도 로컬에만 한다**(앱 샌드박스). GPS는 사진 EXIF에만 두고 그릇엔 안 박아 누출을 막는다(§5, Stage 3).
+///
+/// ⚠️ **옛 서술이 뒤집혔다 (2026-08-19)** — `AudioStore` 머리주석과 같은 내용이다.
+/// *"`searchDirs()`로 추상화 → 나중 iCloud를 표시에 자동 반영"* 은 안 된다(보안 스코프·자리 계산).
+/// iCloud는 `MediaCloud`가 따로 보고 찾는 순서가 **[로컬, iCloud]**로 갈렸다(설계 §4).
+/// **유지되는 것:** 확정 목적지는 로컬 · 포인터 필드 `photo:`는 파일명만 담는 성역.
 enum PhotoStore {
     /// 포인터 필드 값 = 파일명. 항목 id와 1:1(결정적). 지금은 한 장(`<id>.jpg`).
     static func filename(forId id: String) -> String { "\(id).jpg" }
@@ -29,8 +34,11 @@ enum PhotoStore {
         return dir
     }
 
-    /// id로 사진을 찾을 때 탐색할 위치들(순서대로). 지금은 로컬만.
-    /// **향후(§7):** iCloud 폴더의 `photo/`를 여기 더하면 항목별 동기화가 표시에 자동 반영된다.
+    /// id로 사진을 찾을 때 탐색할 **로컬** 위치들.
+    ///
+    /// ⚠️ **iCloud는 여기 들어오지 않는다** — 보안 스코프와 자리 계산이 필요해 URL 목록으로 안 담긴다.
+    /// iCloud 쪽은 `MediaCloud`가 따로 본다(설계 §4 · 2026-08-19). 음성과 동형.
+    /// **찾는 순서 = [로컬, iCloud]** — 로컬이 바이트가 반드시 있는 층이라 먼저다.
     private static func searchDirs() -> [URL] {
         [localPhotoDir()].compactMap { $0 }
     }
@@ -73,9 +81,25 @@ enum PhotoStore {
         let fm = FileManager.default
         for dir in searchDirs() {
             let u = dir.appendingPathComponent(name)
-            if fm.fileExists(atPath: u.path) { return u }
+            if fm.fileExists(atPath: u.path) { return u }   // 로컬은 dataless가 없다 = 있으면 곧 바이트가 있다
         }
-        return nil
+        // 로컬에 없으면 iCloud — **바이트가 있는 것만** 돌려준다(§0-B의 「이름만 있는 파일」을 걸러낸다).
+        return MediaCloud.readableURL(.photo, id: id)
+    }
+
+    /// **세 갈래 판정** (§4) — 「여기 있다」 · 「아직 안 받았다」 · 「어디에도 없다」.
+    /// `url(forId:)`는 「볼 수 있나」만 답하므로 **뒤의 둘을 못 가른다.** 화면이 그 둘을 갈라 말해야 한다.
+    static func availability(forId id: String) -> MediaAvailability {
+        let fm = FileManager.default
+        let name = filename(forId: id)
+        // 로컬이 먼저 — 여기서 잡히면 iCloud I/O를 **아예 하지 않는다**(폰의 정상 경로).
+        if searchDirs().contains(where: { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }) {
+            return .here
+        }
+        let c = MediaCloud.cloudFacts(.photo, id: id)
+        return MediaAvailabilityJudge.status(localExists: false,
+                                            cloudNameExists: c.nameExists,
+                                            cloudBytesPresent: c.bytesPresent)
     }
 
     // MARK: 촬영 이미지 저장 (음성엔 없던 것 — 리사이즈·압축 + EXIF GPS)

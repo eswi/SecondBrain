@@ -58,6 +58,67 @@ enum MediaCloud {
         folder.appendingPathComponent(MediaPlaceJudge.relativePath(kind: kind, id: id, place: place))
     }
 
+    // MARK: 찾기 (§4) — 판정은 Core(`MediaAvailabilityJudge`), 사실 수집만 여기
+
+    /// **지금 자리** — 만들지도 적지도 않고 **읽기만** 한다(`prepare()`가 만들고 적는 쪽).
+    /// 상태를 저장하지 않는다 — **자리도 iCloud 폴더를 보고 매번 안다.**
+    static func currentPlace(_ kind: MediaKind, folder: URL) -> MediaPlace {
+        MediaPlaceJudge.place(subdirReady: isDirectory(folder.appendingPathComponent(kind.subdir,
+                                                                                    isDirectory: true),
+                                                       FileManager.default))
+    }
+
+    /// 그 id를 찾아볼 iCloud 쪽 자리들 — **지금 자리 먼저, 그다음 다른 자리.**
+    /// ⚠️ 둘 다 보는 이유: **폴백을 한 번 쓴 뒤 나중에 하위 폴더가 되면 두 자리에 흩어져 있을 수 있다.**
+    /// 한쪽만 보면 이미 올라간 파일을 「없다」로 읽고 **다시 올린다.**
+    static func candidates(_ kind: MediaKind, id: String, folder: URL) -> [URL] {
+        let now = currentPlace(kind, folder: folder)
+        let other: MediaPlace = now == .subdir ? .root : .subdir
+        return [now, other].map { fileURL(kind, id: id, place: $0, folder: folder) }
+    }
+
+    /// iCloud 쪽 사실 둘. 폴더 미선택·못 열면 **둘 다 false**(= 판정은 「어디에도 없다」).
+    /// - `nameExists`: 이름이라도 있나. ⚠️ **dataless에도 true다**(§0-B) — 이것만으로 「여기 있다」를 못 준다.
+    /// - `bytesPresent`: 실체가 내려와 있나.
+    static func cloudFacts(_ kind: MediaKind, id: String) -> (nameExists: Bool, bytesPresent: Bool) {
+        let f: (Bool, Bool)? = FragmentFolder.withFolder { folder in
+            let fm = FileManager.default
+            var nameExists = false
+            for u in candidates(kind, id: id, folder: folder) {
+                guard fm.fileExists(atPath: u.path) else { continue }
+                nameExists = true
+                if hasBytes(u, fm) { return (true, true) }   // 첫 히트를 쓴다(중복은 정상 — write-once)
+            }
+            return (nameExists, false)
+        }
+        return f ?? (false, false)
+    }
+
+    /// **지금 읽을 수 있는** iCloud 쪽 URL(바이트가 있는 것만). 없으면 nil.
+    ///
+    /// ⚠️ **돌려준 뒤에는 보안 스코프가 닫혀 있다** — 이 URL을 실제로 읽는 것은 **§2-A 미결**(단계 5).
+    /// 폰에서는 로컬 사본이 먼저 잡혀 여기까지 오지 않는다(§5). **Mac에서만 문제가 된다.**
+    static func readableURL(_ kind: MediaKind, id: String) -> URL? {
+        let u: URL?? = FragmentFolder.withFolder { folder -> URL? in
+            let fm = FileManager.default
+            return candidates(kind, id: id, folder: folder)
+                .first { fm.fileExists(atPath: $0.path) && hasBytes($0, fm) }
+        }
+        return u ?? nil
+    }
+
+    /// **실체가 내려와 있나.** ⚠️ `fileExists`로는 절대 못 잰다(§0-B: dataless도 true).
+    /// 다운로드 상태를 먼저 보고, iCloud 항목이 아니어서 그 키가 없으면 **할당된 바이트**로 본다
+    /// (§0-B에서 dataless의 `totalFileAllocatedSize`는 **0**이었다).
+    private static func hasBytes(_ url: URL, _ fm: FileManager) -> Bool {
+        guard let v = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey,
+                                                        .totalFileAllocatedSizeKey]) else { return false }
+        if let st = v.ubiquitousItemDownloadingStatus {
+            return st != .notDownloaded     // `.current`/`.downloaded`를 이름으로 안 쓴다(하나는 deprecated)
+        }
+        return (v.totalFileAllocatedSize ?? 0) > 0
+    }
+
     // MARK: 자리 로그 — `.sb-media.log`
 
     /// **바뀐 것만** append. 정상이면 두 줄(audio·photo)로 영원히 끝난다(사용자 결정 2026-08-19).
