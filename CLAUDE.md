@@ -22,6 +22,12 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
 1. **`--package-path SecondBrainCore`를 빼면 안 된다.** `Package.swift`는 `native/`가 아니라 **`native/SecondBrainCore/`**에 있어서, `native/`에서 그냥 `swift test`를 돌리면 `Could not find Package.swift`가 난다. **2026-08-13(맥미니)·08-14(맥북) 이틀 연속 밟았다.**
 2. **프로젝트 이름 ≠ 스킴 이름.** 프로젝트는 `SecondBrain.xcodeproj`, 스킴은 **`SecondBrainApp-iOS`**. 자주 헛짚는다.
 3. **시뮬 대상은 `name=`이 아니라 `id=<UDID>`로 지정한다.** 같은 이름의 시뮬이 둘 이상 있을 수 있고(맥미니에 「iPhone 16 Pro」가 둘이었다), `name=`은 **조용히 엉뚱한 기기로** 간다. UDID가 틀리면 `EXIT=64`로 죽어 바로 안다. `xcrun simctl list devices available`로 확인.
+   - ⚠️ **겹침은 「기기가 둘」만이 아니라 「런타임이 둘」로도 온다.** 2026-08-20 맥미니 실측:
+     **iOS 26.2에 `iPhone 16 Pro`**(`734ABE20-…`) · **iOS 26.5에 `iPhone 16 Pro (26.5)`**(`34A5033B-…`).
+     **26.5 쪽만 이름 끝에 `(26.5)`가 붙어 있어서** `name=iPhone 16 Pro`로 쓰면 **26.2로 간다.**
+   - ⛔ **이 오작동은 `EXIT=0`으로 끝난다** — 빌드가 성공하므로 **로그로는 알 수 없다.**
+     UDID 오타(`EXIT=64`)와 **반대 성질**이다: 틀린 UDID는 시끄럽게 죽고, `name=`은 **조용히 다른 데서 돈다.**
+     그래서 「빌드 성공」을 「의도한 런타임에서 성공」으로 읽으면 안 된다.
 4. **빌드 결과는 `|tail`로 판정하지 말 것** — 파이프가 exit code를 가린다. `> log 2>&1; echo "EXIT=$?"; grep -c 'error:' log`로 본다.
 
 ## 항시 규칙
@@ -173,6 +179,28 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
   (*"기억하기 전에도 … 알림이 울릴 수 있다"* — 같은 날 만든 `notifiable`이 금지한 것).
   **별도 지시가 있어서 잡혔다** — 그래서 규칙으로 올린다.
 - 근거·전말: `docs/lessons/2026-08-18-canon-sweep-after-axis-change.md`
+
+## 세션 시작 절차 (읽기 **전에** 당긴다)
+
+**`git pull`은 「작업 시작 전」이 아니라 「문서를 읽기 전」이다.** 순서를 뒤바꾸면 **낡은 문서를 정본으로 읽는다.**
+
+1. **`git pull` — 제일 먼저. 파일 하나라도 열기 전에.**
+2. **`git status -sb`로 확인** — clean인가 · 원격과 `0 0`인가.
+3. 그다음에 HANDOFF·worklog·정본을 읽는다.
+4. 기기가 바뀌었으면 `cd native && xcodegen generate` (`.xcodeproj`는 gitignore 생성물).
+5. 시뮬 UDID를 `xcrun simctl list devices available`로 **그 기기에서 다시 읽는다** (위 ③ — 이름으로 쓰지 않는다).
+6. 종료 명령 안내 (아래 종료 절차 7).
+
+> ### ⚠️ 왜 절차로 올렸나 — 문장으로는 이미 있었는데 안 걸렸다 (2026-08-20)
+> 「작업 시작 전 `git pull` 필수」는 **이 문서 위쪽에 이미 적혀 있었다.** 그런데 그날 맥미니 세션은
+> **9커밋 뒤처진 채로 문서를 읽기 시작했다.** 「작업」을 **코드 만지는 것**으로 읽어서
+> **읽기는 작업이 아니라고** 넘어간 것이다.
+> **대가:** 사용자가 읽으라고 지정한 파일 둘이 그 HEAD에 **아예 없었다**
+> (`docs/worklog/2026-08-19-macbook.md` · `media-icloud-design.md` **§12**).
+> **없는 것을 「없다」로 답했으면 사용자의 기억이 틀린 것으로 만들었을 것이다** — 실제로는 저장소가 뒤처진 것이었다.
+> ⛔ **뒤처진 HEAD는 조용하다.** 파일이 없으면 그나마 드러나지만, **낡은 내용이 들어 있으면 아무 신호도 없다.**
+
+---
 
 ## 세션 종료 절차
 사용자가 **"정리하자 / 종료하자 / 마무리하자 / 세션 종료"** 하면 아래 체크리스트를 밟는다:
