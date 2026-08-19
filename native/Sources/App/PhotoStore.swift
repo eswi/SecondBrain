@@ -43,6 +43,14 @@ enum PhotoStore {
         [localPhotoDir()].compactMap { $0 }
     }
 
+    /// 로컬에 있는 확정 사진 파일 전부 — **업로더의 차집합 왼쪽**(§3·§5).
+    /// 임시 파일은 여기 안 들어온다(그쪽은 `temporaryDirectory`에 있다).
+    static func localFiles() -> [URL] {
+        guard let dir = localPhotoDir() else { return [] }
+        let e = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return e.filter { $0.pathExtension == "jpg" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     // MARK: 임시(캡처 중) — 촬영 시 임시 저장 → [저장] 때 확정 / [취소] 때 삭제
 
     /// 새 캡처 세션용 임시 파일 URL.

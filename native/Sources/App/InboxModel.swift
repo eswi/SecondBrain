@@ -41,6 +41,20 @@ final class InboxModel: ObservableObject {
     }
     @Published var autoToast: ClassifyToast?
 
+    /// **자료를 iCloud로 옮기는 중** — 목록 위 배너(설계 `media-icloud-design.md` §8).
+    /// nil이면 배너가 없다. 문구는 `MediaMigrationText`(Core)에 있다 — **사용자가 고른 말이라 임의 변경 금지.**
+    struct MediaMigration: Equatable, Sendable {
+        /// 실제로 옮긴 개수. **실패는 안 센다** — 「12개 옮겼다」가 사실이어야 한다.
+        let moved: Int
+        /// 차집합 전체(배너의 분모).
+        let total: Int
+        /// 첫 실행 한도에서 멈췄다 → 완료 문구로 바뀌고 **몇 초 뒤 사라진다**(§5).
+        let cappedDone: Bool
+    }
+    @Published var mediaMigration: MediaMigration?
+    /// 겹쳐 도는 것을 막는다 — `reload()`는 포그라운드 복귀·행동마다 불린다.
+    private var migrating = false
+
     let deviceId: String
     private var clock: HLCClock
     private var loadGen = 0        // 비동기 로드 세대 — 늦게 끝난 낡은 로드 결과를 버리기 위한 가드
@@ -211,16 +225,56 @@ final class InboxModel: ObservableObject {
             return
         }
         resolve(events)
+        await migrateMedia()
     }
+
+    /// **자료를 iCloud로** (설계 §3·§5) — 자리 준비 + 올리기. 매 로드마다 돌고 **멱등**이다.
+    ///
+    /// 대상이 없으면 **화면에 아무것도 안 생긴다**(대개의 실행). 그래서 배너는 이관 중에만 보인다.
+    /// I/O는 전부 메인 밖 — 돌려받는 것은 순수 값(`Plan`·`Bool`)뿐이다(`readAndParse`와 같은 규칙).
+    private func migrateMedia() async {
+        // 폴더를 쓸 수 없으면 아무것도 안 한다 — 그 상태에선 텍스트도 안 되므로 앱이 이미 안내 화면을 띄운다(§3).
+        guard folderLink.canCapture, !migrating else { return }
+        migrating = true
+        defer { migrating = false }
+
+        // ㉠ 자리 계산 + 자리 로그(§2-A)는 **올릴 것이 없어도** 돈다 — 첫 실행에 답이 남아야 한다.
+        let plan = await Task.detached(priority: .utility) { () -> MediaUploader.Plan? in
+            MediaCloud.prepare()
+            return MediaUploader.plan()
+        }.value
+        guard let plan, !plan.pending.isEmpty else { return }
+
+        mediaMigration = MediaMigration(moved: 0, total: plan.total, cappedDone: false)
+        var moved = 0
+        for item in plan.pending {
+            let ok = await Task.detached(priority: .utility) { MediaUploader.upload(item) }.value
+            if ok { moved += 1 }
+            mediaMigration = MediaMigration(moved: moved, total: plan.total, cappedDone: false)
+        }
+
+        guard plan.capped else {
+            mediaMigration = nil     // 끝나면 사라진다(§5)
+            return
+        }
+        // 한도에서 멈췄다 — **끝났다는 것과 아직 남았다는 것을 둘 다** 말하고 몇 초 뒤 사라진다.
+        // (「다음 실행까지 남긴다」로 하면 수명이 **다음 포그라운드 복귀까지**가 되어 5초일 수도 하루일 수도 있다 —
+        //  수명이 예측 안 되는 상태 표시는 좋지 않다. 사용자 결정 2026-08-19.)
+        let shown = MediaMigration(moved: moved, total: plan.total, cappedDone: true)
+        mediaMigration = shown
+        try? await Task.sleep(for: .seconds(Self.cappedBannerSeconds))
+        if mediaMigration == shown { mediaMigration = nil }
+    }
+
+    /// 한도 완료 배너가 머무는 시간. 기존 자동 소멸 토스트는 **1.5초**인데(`RootView`),
+    /// 그쪽은 사용자가 **직접 누른 직후** 떠서 이미 보고 있다. 이 배너는 **앱을 켜는 중**에 떠서
+    /// 딴 데 보고 있을 수 있고 **한 번만 보이므로 놓치면 다시 안 온다** → 두 배로 잡았다.
+    static let cappedBannerSeconds: Double = 3
 
     /// 폴더의 조각을 읽고 파싱 — 전부 **메인 밖**(Task.detached). 순수 값(Event·FolderLink: Sendable)만 돌려준다.
     private static func readAndParse() async -> ([Event], FolderLink, String) {
         await Task.detached(priority: .userInitiated) {
             let (frags, status, name) = FragmentFolder.read()
-            // 자료의 iCloud 자리 준비(설계 §2). **폴더를 쓸 수 있을 때만** 돈다 —
-            // 미선택·못 연다·받는 중에는 텍스트도 안 되므로 앱이 이미 안내 화면을 띄운다(§3).
-            // 단계 3의 업로더가 여기에 붙는다.
-            if status.canCapture { MediaCloud.prepare() }
             var events: [Event] = []
             for f in frags { events.append(contentsOf: EventLog.parse(f.text)) }
             return (events, status, name)

@@ -138,12 +138,24 @@ enum MediaCloud {
             }
         }
         guard !add.isEmpty else { return }
+        append(add, in: folder)
+    }
 
+    /// 업로드 **실패** 한 줄(§5 — 성공은 안 적는다). 자리 로그와 **같은 파일**을 쓴다.
+    static func appendUploadFailure(kind: MediaKind, id: String, err: String?, in folder: URL) {
+        append(MediaUploadLog.failureLine(at: timestamp(), device: DeviceStore.deviceId,
+                                          kind: kind, id: id, err: err), in: folder)
+    }
+
+    /// `.sb-media.log`에 append. 실패해도 조용히 지나간다 —
+    /// **로그를 못 써서 자료를 못 올리게 되면 목적이 뒤집힌다.**
+    private static func append(_ text: String, in folder: URL) {
+        let target = folder.appendingPathComponent(MediaPlaceLog.fileName)
         let fm = FileManager.default
         let coord = NSFileCoordinator()
         var cerr: NSError?
         coord.coordinate(writingItemAt: target, options: [], error: &cerr) { w in
-            let data = Data(add.utf8)
+            let data = Data(text.utf8)
             if fm.fileExists(atPath: w.path), let h = try? FileHandle(forWritingTo: w) {
                 defer { try? h.close() }
                 _ = try? h.seekToEnd()
@@ -152,6 +164,54 @@ enum MediaCloud {
                 try? data.write(to: w, options: .atomic)
             }
         }
+    }
+
+    // MARK: 업로더가 쓰는 사실들 (§3·§5)
+
+    /// 그 id가 **iCloud에 이름이라도 있나** — 업로더의 「이미 올렸나」 판정.
+    ///
+    /// ⚠️ **바이트를 보지 않는다.** iCloud가 실체를 걷어낸(evict) 파일도 **올라간 것**이다.
+    /// 바이트로 판정하면 맥에서 evict된 순간 **131개를 영원히 다시 올린다.**
+    static func cloudNameExists(_ kind: MediaKind, id: String, folder: URL) -> Bool {
+        let fm = FileManager.default
+        return candidates(kind, id: id, folder: folder).contains { fm.fileExists(atPath: $0.path) }
+    }
+
+    /// iCloud 폴더에 있는 **자료 파일 수**. 「첫 실행인가」를 이 수로 안다(§5 — 상태 저장 0).
+    /// 하위 폴더 둘 + 루트 폴백(`sb-<id>.<ext>`)을 센다. **올리다 만 찌꺼기(`sb-uploading-`)는 안 센다.**
+    static func cloudMediaCount(folder: URL) -> Int {
+        let fm = FileManager.default
+        var n = 0
+        for kind in MediaKind.allCases {
+            let sub = folder.appendingPathComponent(kind.subdir, isDirectory: true)
+            if let e = try? fm.contentsOfDirectory(atPath: sub.path) {
+                n += e.filter { ($0 as NSString).pathExtension == kind.ext }.count
+            }
+        }
+        if let e = try? fm.contentsOfDirectory(atPath: folder.path) {
+            n += e.filter { name in
+                guard name.hasPrefix("sb-"), !name.hasPrefix(leftoverPrefix) else { return false }
+                return MediaKind.allCases.contains { (name as NSString).pathExtension == $0.ext }
+            }.count
+        }
+        return n
+    }
+
+    /// 올리다 만 파일의 이름 접두사. **제 이름으로 안 보이게** 하는 것이 목적이다(§3 원자성).
+    static let leftoverPrefix = "sb-uploading-"
+
+    /// 안 내려온 자료 받기 시작(§6). 성공/실패만 돌려준다.
+    /// 텍스트가 이미 쓰는 API와 **같은 것**이다(`FragmentFolder.read()`) — 다른 것은 **시점**뿐.
+    @discardableResult
+    static func startDownload(_ kind: MediaKind, id: String) -> Bool {
+        let ok: Bool? = FragmentFolder.withFolder { folder in
+            let fm = FileManager.default
+            for u in candidates(kind, id: id, folder: folder) where fm.fileExists(atPath: u.path) {
+                if (try? fm.startDownloadingUbiquitousItem(at: u)) != nil { return true }
+            }
+            return false
+        }
+        return ok ?? false
     }
 
     /// 로그를 읽는다. 없으면 빈 문자열. iCloud에서 안 내려왔으면 당겨오기를 시도한다

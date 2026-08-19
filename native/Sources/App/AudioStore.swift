@@ -39,6 +39,14 @@ enum AudioStore {
         [localAudioDir()].compactMap { $0 }
     }
 
+    /// 로컬에 있는 확정 음성 파일 전부 — **업로더의 차집합 왼쪽**(§3·§5).
+    /// 임시 파일은 여기 안 들어온다(그쪽은 `temporaryDirectory`에 있다).
+    static func localFiles() -> [URL] {
+        guard let dir = localAudioDir() else { return [] }
+        let e = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return e.filter { $0.pathExtension == "m4a" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     // MARK: 임시(캡처 중) — 시트 세션 동안 이어 쓰다가 [저장] 때 확정
 
     /// 새 캡처 세션용 임시 파일 URL(파일 생성은 녹음기가 한다).

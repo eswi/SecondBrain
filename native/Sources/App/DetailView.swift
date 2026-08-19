@@ -24,6 +24,9 @@ import UIKit
 /// - **[취소]** = 수정 전부 버리고 닫기(아무것도 반영 안 됨).
 /// - **[삭제하기]** = 기억 자체 삭제(tombstone, 보관함서 복구 가능).
 struct DetailView: View {
+    /// 자료 받아오기(§6) — 상세를 열 때 그 항목 것 **하나만** 받는다. 음성·사진 각각.
+    @StateObject private var audioFetch = MediaFetch()
+    @StateObject private var photoFetch = MediaFetch()
     let item: ResolvedItem
     @ObservedObject var model: InboxModel
     @Environment(\.dismiss) private var dismiss
@@ -442,22 +445,62 @@ struct DetailView: View {
         }
     }
 
-    /// 원본 음성 "다시 듣기" — 이 기기에 파일이 있으면 재생 버튼, 없으면(다른 기기 녹음) 안내.
+    /// 원본 음성 — **세 갈래**(§4·§6): 여기 있다 / 아직 안 받았다 / 어디에도 없다.
+    ///
+    /// ⚠️ **뒤의 둘을 한 문구로 뭉치면 안 된다.** 파일은 iCloud에 그대로 있는데 사람은 그것을 알 방법이
+    /// 없어진다 — `FolderLink`가 세운 원칙(*"연결이 끊긴 것과 비어 있는 것을 절대 같게 보이지 않는다"*)의 적용이다.
     @ViewBuilder private var audioRow: some View {
-        if let url = AudioStore.url(forId: item.id) {
-            Button { audio.toggle(url: url) } label: {
+        Group {
+            switch audioFetch.state {
+            case .here:
+                if let url = AudioStore.url(forId: item.id) {
+                    Button { audio.toggle(url: url) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: audio.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                                .font(.callout).foregroundStyle(Palette.accent).frame(width: 16)
+                            Text(audio.isPlaying ? "정지" : "원본 음성 다시 듣기")
+                                .font(.callout).foregroundStyle(Palette.accent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    audioMissingRow      // 판정과 파일이 어긋난 순간(evict 직후 등) — 거짓 버튼을 안 만든다
+                }
+            case .notDownloaded:
+                fetchingRow(.audio, symbol: "mic.fill", fetch: audioFetch)
+            case .absent:
+                audioMissingRow
+            }
+        }
+        .task(id: item.id) { audioFetch.start(.audio, id: item.id) }
+    }
+
+    private var audioMissingRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mic.slash").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
+            Text("원본 음성 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
+        }
+    }
+
+    /// 「받는 중」과 「아직 못 받았어요 · 다시 시도」 — 문구는 `MediaMigrationText`(Core)에서 온다.
+    /// **원인을 짚지 않는다**(§8) — 오류와 원인의 대응이 문서로 보장되지 않아 추측은 틀린 안내가 된다.
+    @ViewBuilder private func fetchingRow(_ kind: MediaKind, symbol: String,
+                                         fetch: MediaFetch) -> some View {
+        if fetch.timedOut {
+            Button { fetch.retry(kind, id: item.id) } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: audio.isPlaying ? "stop.circle.fill" : "play.circle.fill")
-                        .font(.callout).foregroundStyle(Palette.accent).frame(width: 16)
-                    Text(audio.isPlaying ? "정지" : "원본 음성 다시 듣기")
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption).foregroundStyle(Palette.accent).frame(width: 16)
+                    Text(MediaMigrationText.downloadFailed)
                         .font(.callout).foregroundStyle(Palette.accent)
                 }
             }
             .buttonStyle(.plain)
         } else {
             HStack(spacing: 8) {
-                Image(systemName: "mic.slash").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
-                Text("원본 음성 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
+                ProgressView().controlSize(.small).frame(width: 16)
+                Text(MediaMigrationText.downloading(kind))
+                    .font(.callout).foregroundStyle(Palette.textSecondary)
             }
         }
     }
@@ -465,20 +508,32 @@ struct DetailView: View {
     /// 원본 사진 — 이 기기에 파일이 있으면 이미지(+ EXIF 위치 지도), 없으면 안내. audioRow 미러.
     @ViewBuilder private var photoRow: some View {
         #if os(iOS)
-        if let url = PhotoStore.url(forId: item.id), let img = UIImage(contentsOfFile: url.path) {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(uiImage: img)
-                    .resizable().scaledToFit()
-                    .frame(maxWidth: .infinity)
-                    .frame(maxHeight: 260)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
-                if let coord = PhotoStore.coordinate(forId: item.id) { photoMap(coord) }  // 사진 EXIF의 촬영 위치
+        Group {
+            switch photoFetch.state {
+            case .here:
+                if let url = PhotoStore.url(forId: item.id), let img = UIImage(contentsOfFile: url.path) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(uiImage: img)
+                            .resizable().scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .frame(maxHeight: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Palette.border))
+                        if let coord = PhotoStore.coordinate(forId: item.id) { photoMap(coord) }
+                    }
+                } else {
+                    photoMissingRow
+                }
+            case .notDownloaded:
+                fetchingRow(.photo, symbol: "photo.fill", fetch: photoFetch)
+            case .absent:
+                photoMissingRow
             }
-        } else {
-            photoMissingRow
         }
+        .task(id: item.id) { photoFetch.start(.photo, id: item.id) }
         #else
+        // ⏸ macOS는 **단계 5**에서 켠다(§7) — `UIImage` 대신 이미지 로딩 갈래가 필요하다.
         photoMissingRow
         #endif
     }

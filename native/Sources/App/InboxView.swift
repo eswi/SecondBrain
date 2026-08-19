@@ -32,6 +32,7 @@ struct InboxView: View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 headerRow
+                mediaMigrationBanner        // 자료를 iCloud로 옮기는 중(§8) — 목록 위. 없으면 자리도 안 차지한다
                 if model.needsFolder {
                     folderPrompt
                     Spacer(minLength: 0)
@@ -49,6 +50,29 @@ struct InboxView: View {
             if case .success(let url) = result { model.setFolder(url) }
         }
         .sheet(isPresented: $showCapture) { CaptureSheet(model: model) }
+    }
+
+    /// **자료 옮기기 배너** — 설계 `media-icloud-design.md` §8. **자리는 목록 위**(사용자가 고른 자리).
+    ///
+    /// 문구는 `MediaMigrationText`(Core)에서 온다 — **사용자가 고른 말이라 여기서 짓지 않는다.**
+    /// 대개의 실행에서는 `mediaMigration`이 nil이라 **아무것도 안 보인다.**
+    @ViewBuilder private var mediaMigrationBanner: some View {
+        if let m = model.mediaMigration {
+            HStack(spacing: 8) {
+                if m.cappedDone {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.accent)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+                Text(m.cappedDone ? MediaMigrationText.cappedDone(moved: m.moved)
+                                  : MediaMigrationText.progress(moved: m.moved, total: m.total))
+                    .font(.callout).foregroundStyle(Palette.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(Palette.surface2)
+            .transition(.opacity)
+        }
     }
 
     private var content: some View {
