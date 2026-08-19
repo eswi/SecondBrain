@@ -42,7 +42,9 @@ enum FragmentFolder {
     }
 
     /// 보안 스코프를 열고 폴더 URL로 작업. 폴더 미선택이면 nil.
-    private static func withFolder<T>(_ body: (URL) throws -> T) rethrows -> T? {
+    /// ⚠️ **스코프는 이 함수가 돌아올 때 닫힌다** — 돌려받은 URL을 나중에 읽는 것은 보장되지 않는다
+    /// (설계 `media-icloud-design.md` §2-A 미결).
+    static func withFolder<T>(_ body: (URL) throws -> T) rethrows -> T? {
         guard let folder = resolve() else { return nil }
         let accessed = folder.startAccessingSecurityScopedResource()
         defer { if accessed { folder.stopAccessingSecurityScopedResource() } }

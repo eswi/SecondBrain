@@ -217,6 +217,10 @@ final class InboxModel: ObservableObject {
     private static func readAndParse() async -> ([Event], FolderLink, String) {
         await Task.detached(priority: .userInitiated) {
             let (frags, status, name) = FragmentFolder.read()
+            // 자료의 iCloud 자리 준비(설계 §2). **폴더를 쓸 수 있을 때만** 돈다 —
+            // 미선택·못 연다·받는 중에는 텍스트도 안 되므로 앱이 이미 안내 화면을 띄운다(§3).
+            // 단계 3의 업로더가 여기에 붙는다.
+            if status.canCapture { MediaCloud.prepare() }
             var events: [Event] = []
             for f in frags { events.append(contentsOf: EventLog.parse(f.text)) }
             return (events, status, name)
