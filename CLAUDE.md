@@ -97,6 +97,11 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    - `swift native/tools/measure-text.swift text "주차 위치" 17 19 21 23` — 글자 폭·줄높이
    - `swift native/tools/measure-text.swift symbol mappin.and.ellipse 30 40` — 심볼 **폭 x 높이**
    - `swift native/tools/measure-ui.swift <스크린샷.png> <x열…>` — **카드·블록 경계**(결론을 닫는 자리)
+   - `swift native/tools/measure-icloud-download.swift <표본목록>` — **iCloud 다운로드 시간**
+     (2026-08-20 실측 **526~924ms** · 유선 850Mbps). ⚠️ **상태를 바꾼다** — 받은 파일은 dataless가 아니게 된다.
+     **자료 확장 ②에서 다시 잴 때 새로 쓰지 말 것** — 새로 쓰면 오늘 값과 비교가 안 된다.
+   - `swift native/tools/probe-security-scope.swift` — **샌드박스 없는 프로세스의 보안 스코프**
+     (설계 `media-icloud-design.md` §2-A의 「쟀다」 표가 이 출력이다). 상태를 안 바꾼다.
    ⚠️ 시뮬레이터 **접근성 좌표**(AppleScript)도 쓸 수 있지만 **창이 움직이면 통째로 어긋나고 읽기가 자주 실패**한다.
    **픽셀 측정이 안정적이다.** 좌표를 쓸 때는 **기기 화면 원점을 매번 다시 읽을 것.**
 6. **Dynamic Type는 단계를 바꿔 실제로 잰다** — `xcrun simctl ui booted content_size <단계>` 뒤 스크린샷을 측정.
@@ -127,6 +132,14 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
 - 근거·전말: **`docs/lessons/2026-08-12-measure-then-use.md`** — 네 번의 어긋남과 위 조항의 1:1 대응
   (worklog: `2026-08-10-macmini.md` 정정 블록 · `2026-08-11-macmini.md` §8 · `2026-08-12-macmini.md` §2·§6·§9)
   · **#7의 「목록·소속·이름」 확장은 `2026-08-13-macmini.md` §10**(표본 오판의 경위와 1:1 대응)
+
+## ⚠️ 기기별로 갈리는 값 — 다른 기기 값을 그대로 믿지 말 것
+**iCloud 파일의 「받아졌나/dataless냐」는 기기마다 따로다.** 한 기기에서 받아도 **다른 기기는 그대로 dataless다**
+(evict 상태가 기기별이다). 그래서 **「dataless 116개」 같은 수는 그것을 잰 기기의 값**이다.
+- 계기(2026-08-20 맥미니): 표본 16개를 받아 **135 → dataless 116**이 됐다. **맥북에서 세면 다르다** —
+  맥북은 08-19에 **135개 전부 `NotDownloaded`**로 봤고 그 뒤 맥북에서 받은 것이 없다.
+- ⛔ **그래서 「줄어 있어야 하는데 안 줄었다」를 회귀로 읽으면 안 된다.** 수를 적을 때 **어느 기기에서 쟀는지** 함께 적는다.
+- 같은 이유로 **로컬 사본**(`Application Support/SecondBrain/`)도 기기별이다 — 동기화되지 않는다.
 
 ## 기록 규칙 (조작은 그 자리에서 적는다)
 **조작은 폰에 남고 기록은 문서에 남는데, 다음 세션이 먼저 읽는 것은 문서다.**
