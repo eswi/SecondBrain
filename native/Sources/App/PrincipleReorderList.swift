@@ -60,9 +60,13 @@ struct PrincipleReorderList: UIViewRepresentable {
 
         // 줄 모양은 SwiftUI 그대로 — 여기서 다시 만들지 않는다.
         let reg = UICollectionView.CellRegistration<UICollectionViewListCell, ResolvedItem> { cell, indexPath, item in
-            let active = indexPath.item < context.coordinator.parent.activeCount
+            // ★ **자료의 자리가 아니라 「지금 눈에 보이는 자리」로 정한다.**
+            // 끌고 있는 동안 자료 순서는 아직 안 바뀌어서, `indexPath`를 그대로 쓰면
+            // **번호와 바탕색이 옛 자리에 남는다**(2026-08-20 사용자가 화면으로 잡았다).
+            let visual = context.coordinator.visualIndex(indexPath.item)
+            let active = visual < context.coordinator.parent.activeCount
             cell.contentConfiguration = UIHostingConfiguration {
-                PrincipleReorderRow(item: item, number: indexPath.item + 1, active: active)
+                PrincipleReorderRow(item: item, number: visual + 1, active: active)
             }
             // ★ **세로 여백 = 카드 사이 간격.** 원칙 영역(`InboxView`의 카드 묶음)이 카드 사이를
             // **6pt**로 두므로 여기도 **3+3 = 6**으로 맞췄다(사용자 결정 2026-08-20).
@@ -92,6 +96,12 @@ struct PrincipleReorderList: UIViewRepresentable {
             // 안 그러면 모델 → `updateUIView`에서 같은 순서를 **한 번 더** 넣는다.
             coord.appliedIDs = ordered.map(\.id)
             coord.appliedSig = Coordinator.signature(ordered, activeCount: coord.parent.activeCount)
+            // ⛔ **끌기 상태를 먼저 지운다** — 이제 자료의 자리가 곧 보이는 자리다.
+            coord.dragFrom = nil; coord.dragTo = nil
+            // ⚠️ **여기서 다시 그리지 않으면 번호·바탕색이 옛 자리에 남는다.**
+            // 위에서 `appliedIDs`를 갱신했으므로 `apply`는 아무것도 안 한다 —
+            // **되울림을 막는 그 장치가 재구성까지 막는다.** 그래서 직접 부른다.
+            coord.reconfigureAll()
             coord.parent.onReorder(ordered)
         }
         context.coordinator.dataSource = ds
@@ -128,6 +138,32 @@ struct PrincipleReorderList: UIViewRepresentable {
 
         init(_ p: PrincipleReorderList) { parent = p }
 
+        /// 끌기가 시작된 **자료상의 자리**. 끌고 있지 않으면 nil.
+        var dragFrom: Int?
+        /// 지금 **놓이려는 자리**. `targetIndexPathForMoveOf…`가 손이 움직일 때마다 갱신한다.
+        var dragTo: Int?
+
+        /// ★ **끌고 있는 동안 「눈에 보이는 자리」.** 자료 순서는 아직 안 바뀌었다 —
+        /// `dragFrom`을 빼고 `dragTo`에 끼운 배열에서 이 항목이 몇 번째인가를 계산한다.
+        /// 끌고 있지 않으면 자료의 자리가 곧 보이는 자리다.
+        func visualIndex(_ dataIndex: Int) -> Int {
+            guard let f = dragFrom, let t = dragTo, f != t else { return dataIndex }
+            if dataIndex == f { return t }
+            var i = dataIndex
+            if dataIndex > f { i -= 1 }     // 뽑아낸 자리만큼 당겨진다
+            if i >= t { i += 1 }            // 끼워 넣은 자리만큼 밀린다
+            return i
+        }
+
+        /// 번호·바탕색만 다시 그린다(셀을 새로 만들지 않는다).
+        func reconfigureAll() {
+            guard let ds = dataSource else { return }
+            var snap = ds.snapshot()
+            guard !snap.itemIdentifiers.isEmpty else { return }
+            snap.reconfigureItems(snap.itemIdentifiers)
+            ds.apply(snap, animatingDifferences: false)
+        }
+
         /// 순서 + 문장 + 동작 개수를 한 줄로 — 이것이 달라졌을 때만 화면을 건드린다.
         static func signature(_ items: [ResolvedItem], activeCount: Int) -> String {
             items.map { "\($0.id)\u{1}\($0.raw ?? "")" }.joined(separator: "\u{2}") + "\u{3}\(activeCount)"
@@ -158,6 +194,7 @@ struct PrincipleReorderList: UIViewRepresentable {
             case .began:
                 guard let ip = cv.indexPathForItem(at: p) else { return }
                 isMoving = cv.beginInteractiveMovementForItem(at: ip)
+                if isMoving { dragFrom = ip.item; dragTo = ip.item }
             case .changed:
                 guard isMoving else { return }
                 cv.updateInteractiveMovementTargetPosition(p)
@@ -169,7 +206,25 @@ struct PrincipleReorderList: UIViewRepresentable {
                 guard isMoving else { return }
                 cv.cancelInteractiveMovement()
                 isMoving = false
+                dragFrom = nil; dragTo = nil
+                reconfigureAll()          // 되돌아왔으니 번호·색도 되돌린다
             }
+        }
+
+        /// ★ **끌고 있는 도중 「지금 어디에 놓이려는가」를 알려주는 유일한 신호.**
+        /// 손이 움직여 자리가 바뀔 때마다 불린다 — `didReorder`는 **손을 뗀 뒤**에야 온다.
+        /// 사용자 요구(2026-08-20): *"드래그하는 중간에 위치가 바뀌면, 아직 드롭은 안 했어도
+        /// 번호와 바탕색이 바뀌는 걸 말하는거야."* → 여기서 다시 그린다.
+        func collectionView(_ collectionView: UICollectionView,
+                            targetIndexPathForMoveOfItemFromOriginalIndexPath original: IndexPath,
+                            atCurrentIndexPath current: IndexPath,
+                            toProposedIndexPath proposed: IndexPath) -> IndexPath {
+            if dragFrom == nil { dragFrom = original.item }
+            if dragTo != proposed.item {
+                dragTo = proposed.item
+                reconfigureAll()
+            }
+            return proposed
         }
 
         func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
