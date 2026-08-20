@@ -136,16 +136,23 @@ struct PrincipleListView: View {
                 .foregroundStyle(TypeCatalog.meta("principle").color.opacity(0.55))
                 .padding(.top, 3)
         }
-        .padding(.vertical, dragging ? 9 : 5)
-        .padding(.horizontal, dragging ? 11 : 0)
+        // ⛔ **여백을 끌 때만 바꾸면 안 된다** (2026-08-20 사용자:
+        // *"테두리를 그리면 공간의 크기가 변해서 그런지 안의 텍스트가 줄바꿈이 일어나네"*).
+        // 옛 코드는 `dragging ? 11 : 0`으로 **좌우 22pt를 뺏어** 글자 폭을 줄였고,
+        // 그래서 **집는 순간 줄바꿈 자리가 달라졌다.**
+        // → **여백은 고정하고 테두리만 바깥에 그린다**(아래 음수 padding). 글자 폭이 안 변한다.
+        .padding(.vertical, 5)
         // **테두리는 끌리는 그 줄에만, 끄는 동안만**(사용자 요구 2026-08-20).
         // ⛔ 한 번은 이것을 **모든 줄에 항상**으로 만들었다 — 감지가 안 되니까
         // 감지 없이 되는 쪽으로 바꿔 놓고 **요구가 그것이라고 스스로 고쳐 읽었다.**
         // ⚠️ 할 수 있는 것에 맞춰 요구를 줄이지 않는다 — 못 하면 못 한다고 말한다.
         .overlay(
-            RoundedRectangle(cornerRadius: 11)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(TypeCatalog.meta("principle").color.opacity(dragging ? 0.85 : 0),
                         lineWidth: 1.5)
+                // ★ **음수 여백 = 레이아웃 밖에 그린다.** 글자가 쓰는 폭은 그대로다.
+                .padding(.horizontal, -8)
+                .padding(.vertical, -2)
         )
         .animation(.easeOut(duration: 0.15), value: dragging)
         .opacity(active ? 1 : 0.55)
