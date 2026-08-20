@@ -64,18 +64,18 @@ struct PrincipleReorderList: UIViewRepresentable {
             cell.contentConfiguration = UIHostingConfiguration {
                 PrincipleReorderRow(item: item, active: active)
             }
-            // ★ **여백은 잰 값이다** (2026-08-20 · 시뮬 · 같은 줄 내용으로 두 그릇 대조).
-            // 옛 그릇(SwiftUI `List` + 줄에 `.padding(.vertical, 5)`)의 줄 간격이 **104.7pt**였다 —
-            // `List`가 스스로 **15pt씩** 주고 있었고 거기에 줄의 5pt가 더해져 **한쪽 20pt**였다.
-            // 새 그릇은 **군더더기 여백이 0**이라(내용이 44pt보다 크면 최소 높이에 안 걸린다)
-            // 「여백 = 그릇 여백」이 그대로다: 10 → 84.7pt · **20 → 104.7pt(옛것과 일치)**.
-            // ⛔ 6이었을 때는 **한 줄마다 28pt씩 좁았다.**
+            // ★ **세로 여백 = 카드 사이 간격.** 원칙 영역(`InboxView`의 카드 묶음)이 카드 사이를
+            // **6pt**로 두므로 여기도 **3+3 = 6**으로 맞췄다(사용자 결정 2026-08-20).
+            // ⚠️ **바탕색이 생기기 전에는 20이었다** — 그때는 여백이 안 보여서 「줄 간격」으로 읽혔고
+            // 옛 `List`와 같은 **104.7pt**를 맞춘 값이었다. **카드가 생기자 20은 40pt 틈이 됐다.**
+            // 줄의 높이는 이제 카드 **안쪽 여백**(`PrincipleReorderRow`의 14/11)이 만든다.
             .margins(.horizontal, 16)
-            .margins(.vertical, 20)
+            .margins(.vertical, 3)
             var bg = UIBackgroundConfiguration.listCell()
-            bg.backgroundColor = UIColor(Palette.bg)
+            bg.backgroundColor = UIColor(Palette.bg)   // 카드 **사이**는 배경색 그대로 — 색을 칠하지 않는다
             cell.backgroundConfiguration = bg
-            cell.accessories = [.disclosureIndicator()]   // `List`의 `>`를 대신한다
+            // ⛔ 시스템 `>`(accessories)를 안 쓴다 — 그건 카드 **바깥**에 그려져 카드와 따로 논다.
+            // 줄 안에서 직접 그린다(`PrincipleReorderRow`).
         }
 
         let ds = UICollectionViewDiffableDataSource<Int, String>(collectionView: cv) { cv, ip, id in
@@ -188,22 +188,7 @@ struct PrincipleReorderRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "star.fill").font(.caption2)
-                .foregroundStyle(TypeCatalog.meta("principle").color).padding(.top, 3)
-            Text(item.raw ?? "")
-                .font(.system(size: PrincipleFont.size, weight: .medium))
-                .foregroundStyle(Palette.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if !active {
-                Text("대기").font(.caption2).foregroundStyle(Palette.textTertiary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Palette.surface, in: Capsule())
-            }
-        }
-        .opacity(active ? 1 : 0.55)
-        .contentShape(Rectangle())
+        PrincipleCard(item: item, active: active)
     }
 }
 #endif

@@ -110,7 +110,7 @@ struct PrincipleListView: View {
         List {
             ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
                 NavigationLink(value: p) {
-                    row(p, active: idx < n)
+                    PrincipleCard(item: p, active: idx < n)
                 }
                 .listRowBackground(Palette.bg)
                 .listRowSeparator(.hidden)
@@ -126,27 +126,42 @@ struct PrincipleListView: View {
         #endif
     }
 
-    /// 원칙 한 줄(맥 경로). **iOS는 `PrincipleReorderRow`가 같은 모양을 그린다** — 둘을 함께 고칠 것.
-    private func row(_ item: ResolvedItem, active: Bool) -> some View {
+}
+
+/// 원칙 한 줄 — **iOS·macOS 공용.** 두 경로가 같은 모양이어야 하므로 여기 한 곳에만 둔다.
+///
+/// ## 무엇이 무엇을 말하나 (사용자 결정 2026-08-20)
+/// - **밝기**: 각인되는 상위 N개는 또렷하게, 나머지는 흐리게(0.55).
+/// - **바탕색**: 각인되는 것은 **원칙 아이콘 색 계통**, 나머지는 **회색**.
+///   ⛔ **「대기」 글자는 뺐다** — *"이미 1 2 3은 밝은 색으로, 그 뒷쪽은 흐린 색으로 표시되고 있기 때문에
+///   '대기'라는 표시는 없애는 것이 좋겠어."* 같은 말을 두 번 하지 않는다.
+/// - **카드 사이는 칠하지 않는다** — 색은 카드에만, 틈은 배경 그대로.
+///
+/// ⚠️ **흐림은 내용에만 걸고 바탕에는 안 건다** — 바탕까지 흐려지면 회색이 배경에 묻힌다.
+struct PrincipleCard: View {
+    let item: ResolvedItem
+    let active: Bool
+    private var tint: Color { TypeCatalog.meta("principle").color }
+
+    var body: some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "star.fill").font(.caption2)
-                .foregroundStyle(TypeCatalog.meta("principle").color).padding(.top, 3)
+                .foregroundStyle(tint).padding(.top, 3)
             Text(item.raw ?? "")
                 .font(.system(size: PrincipleFont.size, weight: .medium))
                 .foregroundStyle(Palette.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if !active {
-                Text("대기").font(.caption2).foregroundStyle(Palette.textTertiary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Palette.surface, in: Capsule())
-            }
+            // 눌러서 상세로 간다는 표시. 시스템 accessory 대신 **카드 안**에 그린다.
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                .foregroundStyle(Palette.textTertiary).padding(.top, 3)
         }
-        // ⚠️ **이 여백은 고정이다 — 끌 때만 바꾸면 안 된다** (2026-08-20 사용자:
-        // *"테두리를 그리면 공간의 크기가 변해서 그런지 안의 텍스트가 줄바꿈이 일어나네"*).
-        // ★ **보이는 것(그림)을 바꾸려다 재는 것(레이아웃)까지 바꾸지 않는다.**
-        .padding(.vertical, 5)
-        .opacity(active ? 1 : 0.55)
+        .opacity(active ? 1 : 0.55)          // 흐림은 **내용에만**
+        // 카드 안쪽 여백 — 원칙 영역(`InboxView.PrincipleRow`)과 같은 14/11.
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(active ? tint.opacity(0.5) : Palette.surface,
+                    in: RoundedRectangle(cornerRadius: Palette.radius, style: .continuous))
         .contentShape(Rectangle())
     }
 }
