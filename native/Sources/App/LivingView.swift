@@ -45,6 +45,7 @@ struct LivingView: View {
                         .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
+                                .tint(Palette.overdue)   // 전역 .tint(Palette.accent)(RootView)가 destructive 기본 빨강을 덮는다
                         }
                         .swipeActions(edge: .leading) {
                             if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
@@ -63,6 +64,7 @@ struct LivingView: View {
                                 Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
                             }
                             Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
+                                .tint(Palette.overdue)
                         }
                 }
             }

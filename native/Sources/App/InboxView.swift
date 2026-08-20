@@ -180,6 +180,7 @@ struct InboxView: View {
     }
     @ViewBuilder private func deleteAction(_ item: ResolvedItem) -> some View {
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
+            .tint(Palette.overdue)   // 전역 .tint(Palette.accent)(RootView)가 destructive 기본 빨강을 덮는다
     }
     /// 「지금 챙길 것」 왼쪽 스와이프: 완료(했어요)·미루기.
     ///
@@ -210,6 +211,7 @@ struct InboxView: View {
             Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }
         }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
+            .tint(Palette.overdue)
     }
     /// 새 기억(미확정) 컨텍스트: **기억하기 · 삭제 둘뿐.**
     ///
@@ -228,6 +230,7 @@ struct InboxView: View {
     @ViewBuilder private func newItemActions(_ item: ResolvedItem) -> some View {
         Button { model.confirm(item) } label: { Label("기억하기 (살아있는 기억으로)", systemImage: "checkmark.seal.fill") }
         Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }
+            .tint(Palette.overdue)
     }
 
     func sectionTitle(_ title: String, count: Int,

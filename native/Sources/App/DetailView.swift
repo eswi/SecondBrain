@@ -475,7 +475,7 @@ struct DetailView: View {
     private var audioMissingRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "mic.slash").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
-            Text("원본 음성 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
+            Text(MediaMigrationText.missing(.audio)).font(.callout).foregroundStyle(Palette.textTertiary)
         }
     }
 
@@ -566,7 +566,7 @@ struct DetailView: View {
     private var photoMissingRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "photo").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
-            Text("원본 사진 있음 · 이 기기엔 없음").font(.callout).foregroundStyle(Palette.textTertiary)
+            Text(MediaMigrationText.missing(.photo)).font(.callout).foregroundStyle(Palette.textTertiary)
         }
     }
 

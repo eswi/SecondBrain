@@ -77,4 +77,26 @@ final class MediaUploadTests: XCTestCase {
     func testText_받기_실패는_원인을_안_짚는다() {
         XCTAssertEqual(MediaMigrationText.downloadFailed, "아직 못 받았어요 · 다시 시도")
     }
+
+    /// **어디에도 없을 때** — 2026-08-20에 바꾼 말. 옛 문구는 「… · 이 기기엔 없음」이었다.
+    /// 자료가 iCloud로 간 뒤 `absent`의 뜻이 「이 기기에도 iCloud에도 없다」로 좁아졌는데
+    /// 옛 말은 **「다른 기기에서 열면 되겠네」로 읽힌다.**
+    func testText_어디에도_없을_때는_기기를_안_가리킨다() {
+        XCTAssertEqual(MediaMigrationText.missing(.audio), "원본 음성 있음 · 파일을 못 찾음")
+        XCTAssertEqual(MediaMigrationText.missing(.photo), "원본 사진 있음 · 파일을 못 찾음")
+    }
+
+    /// ⛔ **한쪽만 고쳐지는 것을 막는 자리.** 음성·사진이 두 군데 문자열로 있으면
+    /// 한쪽만 바뀌어 **말이 갈린다** — 그래서 Core 한 곳에 두었고, 이 시험이 그것을 못박는다.
+    /// **옛 말이 되살아나면 여기서 걸린다.**
+    func testText_어디에도_없을_때_옛_말이_안_남아_있다() {
+        for kind in [MediaKind.audio, .photo] {
+            let s = MediaMigrationText.missing(kind)
+            XCTAssertFalse(s.contains("이 기기엔"), "옛 문구가 남아 있다: \(s)")
+            XCTAssertTrue(s.contains("파일을 못 찾음"), "새 문구가 아니다: \(s)")
+            // 「받는 중」·「받기 실패」와 섞이면 안 된다 — 셋은 다른 상태다.
+            XCTAssertNotEqual(s, MediaMigrationText.downloading(kind))
+            XCTAssertNotEqual(s, MediaMigrationText.downloadFailed)
+        }
+    }
 }
