@@ -1,0 +1,33 @@
+name: GhostLab
+options:
+  bundleIdPrefix: kr.teri
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  GhostLab:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: GhostLab
+  GhostLabUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GhostLab
+    dependencies:
+      - target: GhostLab
+schemes:
+  GhostLab:
+    build:
+      targets:
+        GhostLab: all
+        GhostLabUITests: [test]
+    test:
+      targets: [GhostLabUITests]

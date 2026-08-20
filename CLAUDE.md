@@ -113,6 +113,22 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
      **자료 확장 ②에서 다시 잴 때 새로 쓰지 말 것** — 새로 쓰면 오늘 값과 비교가 안 된다.
    - `swift native/tools/probe-security-scope.swift` — **샌드박스 없는 프로세스의 보안 스코프**
      (설계 `media-icloud-design.md` §2-A의 「쟀다」 표가 이 출력이다). 상태를 안 바꾼다.
+   - **`native/tools/sim-input.swift`** — **시뮬레이터를 CLI로 탭·드래그**(CGEvent). 좌표는 접근성
+     트리에서 읽는다(툴바 44pt 함정이 주석에 있다). ⚠️ **항시 규칙 7을 바꾸지 않는다** —
+     사용자가 명시적으로 지시했을 때만 쓴다.
+     ⛔ **2026-08-20에 이 도구가 있는 줄 모르고 같은 것을 새로 만들었다** — 이 목록에 **없었기 때문이다.**
+     그래서 올렸다. **목록에 없는 도구는 다시 만들어진다.**
+   - **`native/tools/ghostlab/`** — **「눌러야만 드러나는 것」을 재는 실험용 앱 + UI 시험 + 픽셀 판정기.**
+     같은 목록을 여러 꼴로 그려 놓고 **끌다가 멈추게** 한 뒤 스크린샷을 잰다.
+     `measure-frames.swift marks|bands <png>` = **색 띠 자리·줄 간격(pitch)**.
+     ★ **2026-08-20에 이것으로 갈린 것:** 원칙 목록 **잔상**(「안 된다」던 결론을 뒤집었다) ·
+     **편집모드도 잔상이 남는다**(문서에 있던 안이 죽었다) · `UIHostingConfiguration`은
+     **Dynamic Type를 안 끊는다** · `List`가 **스스로 주는 여백 한쪽 15pt** · 좌우 맞춤 가능성.
+     ⚠️ **앱 코드가 아니다** — `native/project.yml`은 `Sources/App`만 컴파일한다. 앱에서 참조 금지.
+     ⛔ **판정기의 문턱을 고치지 말 것** — 이번 값(104.7 / 60.0 / 52.3pt)과 비교가 깨진다.
+     ⛔ **`Test Case … passed`를 「안 죽었다」로 읽지 말 것** — `unexpected termination`과
+     `~/Library/Logs/DiagnosticReports`를 함께 본다(2026-08-21에 크래시를 이렇게 놓쳤다).
+     자세히 → `native/tools/ghostlab/README.md`
    ⚠️ 시뮬레이터 **접근성 좌표**(AppleScript)도 쓸 수 있지만 **창이 움직이면 통째로 어긋나고 읽기가 자주 실패**한다.
    **픽셀 측정이 안정적이다.** 좌표를 쓸 때는 **기기 화면 원점을 매번 다시 읽을 것.**
 6. **Dynamic Type는 단계를 바꿔 실제로 잰다** — `xcrun simctl ui booted content_size <단계>` 뒤 스크린샷을 측정.

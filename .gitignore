@@ -21,3 +21,6 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 *.xcodeproj/
+
+# ghostlab(실험용 계측 앱)의 xcodegen 생성물 — 도구 자체는 커밋한다
+native/tools/ghostlab/Info.plist
