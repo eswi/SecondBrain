@@ -73,14 +73,22 @@ struct PrincipleListView: View {
                     // ★ **끌기 시작 신호.** 제스처가 아니라 드래그 시스템이 부르는 자리다.
                     .onDrag {
                         draggingID = p.id
+                        hiddenID = p.id     // ★ 이제 바로 숨겨도 된다 — 사본을 아래서 직접 그린다
                         let mine = p.id
-                        // **한 박자 뒤에** 원본을 숨긴다 — 사본 스냅샷이 끝난 뒤여야 한다(위 주석).
-                        DispatchQueue.main.async { hiddenID = mine }
                         // 끄기 안전망 — 끌다 놓아 `onMove`가 안 불릴 때를 시간이 받친다.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                             if draggingID == mine { draggingID = nil; hiddenID = nil }
                         }
                         return NSItemProvider(object: NSString(string: p.id))
+                    } preview: {
+                        // ★ **들어올릴 사본을 우리가 그린다.**
+                        // ⛔ 앞 시도(`4dc8b9c`)는 원본을 숨겼더니 **사본까지 사라졌다**
+                        // (사용자: *"선택된 것 자체가 사라져 버렸어. 손을 떼야 나타나"*).
+                        // 시스템이 **원본을 스냅샷**해서 사본을 만들기 때문이다 —
+                        // 한 박자 미루는 것으로는 못 피했다. **스냅샷 시점은 약속돼 있지 않다.**
+                        // 여기서 직접 그리면 **원본과 사본이 갈라져** 원본을 마음대로 숨길 수 있다.
+                        row(p, active: idx < n, dragging: true)
+                            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 11))
                     }
                 }
                 .onMove { from, to in
