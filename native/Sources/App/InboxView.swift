@@ -44,7 +44,7 @@ struct InboxView: View {
             .background(Palette.bg.ignoresSafeArea())
             .hiddenNavBar()
             .navigationDestination(for: ResolvedItem.self) { DetailView(item: $0, model: model) }
-            .navigationDestination(for: PrincipleListRoute.self) { _ in PrincipleListView(model: model) }
+            .navigationDestination(for: PrincipleListRoute.self) { _ in PrincipleListView(model: model, path: $path) }
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
