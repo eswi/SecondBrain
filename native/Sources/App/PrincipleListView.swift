@@ -8,6 +8,18 @@ struct PrincipleListView: View {
     @ObservedObject var model: InboxModel
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
+    /// **지금 끌리고 있는 줄** — 3차 시도(2026-08-20). 신호는 `.onDrag`에서 온다.
+    ///
+    /// ### ★ 앞선 둘과 무엇이 다른가 — **흉내가 아니라 진짜 시작 신호다**
+    /// 1·2차는 `LongPressGesture`로 「집혔겠지」를 **추측**했다. `List`의 순서 바꾸기도
+    /// **같은 몸짓**으로 시작하므로 둘이 다퉜고 내 것이 이겨서 순서 바꾸기가 죽었다.
+    /// `.onDrag`는 **끌기가 실제로 시작될 때** 시스템이 부른다 — 몸짓을 두고 다투지 않는다.
+    ///
+    /// ⚠️ **그래도 될지 모른다** — `.onDrag`를 얹으면 `List`가 순서 바꾸기 대신
+    /// **바깥으로 끌어내는 드래그앤드롭**으로 해석할 수 있다. **판정은 실기기뿐이다.**
+    /// 안 되면 이 상태와 `.onDrag`를 통째로 빼고 `ea97b0d`로 돌아간다.
+    @State private var draggingID: String?
+
     /// ## ⛔ 2026-08-20 — **집힘 신호를 두 번 시도했고 두 번 다 드래그를 깼다. 뺐다.**
     ///
     /// 사용자가 원한 것: *"길게 눌러 「순서 이동 가능한 상태」가 된 것을 화면으로 알 수 있게."*
@@ -40,15 +52,26 @@ struct PrincipleListView: View {
             Section {
                 ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
                     NavigationLink(value: p) {   // 상세는 InboxView 스택의 ResolvedItem destination이 처리
-                        row(p, active: idx < n)
+                        row(p, active: idx < n, dragging: draggingID == p.id)
                     }
                     .listRowBackground(Palette.bg)
                     .listRowSeparator(.hidden)
+                    // ★ **끌기 시작 신호.** 제스처가 아니라 드래그 시스템이 부르는 자리다.
+                    .onDrag {
+                        draggingID = p.id
+                        // 끄기 안전망 — 끌다 놓아 `onMove`가 안 불릴 때를 시간이 받친다.
+                        let mine = p.id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                            if draggingID == mine { draggingID = nil }
+                        }
+                        return NSItemProvider(object: NSString(string: p.id))
+                    }
                 }
                 .onMove { from, to in
                     var reordered = items
                     reordered.move(fromOffsets: from, toOffset: to)
                     model.reorderPrinciples(reordered)
+                    draggingID = nil   // 순서가 정해졌다 = 끌기가 끝났다
                 }
             } header: {
                 // **두 줄을 항상 보인다**(사용자 결정 2026-08-20) — 무엇이 각인되는지 + 어떻게 순서를 바꾸는지.
@@ -74,7 +97,7 @@ struct PrincipleListView: View {
     }
 
     /// 원칙 한 줄. 동작(상위 N)이 아니면 흐리게 + "대기" 표시.
-    private func row(_ item: ResolvedItem, active: Bool) -> some View {
+    private func row(_ item: ResolvedItem, active: Bool, dragging: Bool) -> some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "star.fill").font(.caption2)
                 .foregroundStyle(TypeCatalog.meta("principle").color).padding(.top, 3)
@@ -94,12 +117,18 @@ struct PrincipleListView: View {
                 .foregroundStyle(TypeCatalog.meta("principle").color.opacity(0.55))
                 .padding(.top, 3)
         }
-        .padding(.vertical, 5)
-        // ⛔ **테두리를 상시로 넣었다가 되돌렸다** (2026-08-20). 사용자가 원한 것은
-        // **「끄는 동안, 끄는 그 줄만」**이었는데 **모든 줄에 항상** 넣었다 — 정반대다.
-        // **왜 그렇게 했나:** 「끄는 그 줄」을 감지하려면 제스처가 필요하고 그것이 두 번 드래그를 깼다.
-        // 그래서 **감지 없이 되는 쪽으로 바꿔 놓고, 요구가 그것이라고 스스로 고쳐 읽었다.**
-        // ⚠️ **할 수 있는 것에 맞춰 요구를 줄이면 안 된다** — 못 하면 못 한다고 말한다.
+        .padding(.vertical, dragging ? 9 : 5)
+        .padding(.horizontal, dragging ? 11 : 0)
+        // **테두리는 끌리는 그 줄에만, 끄는 동안만**(사용자 요구 2026-08-20).
+        // ⛔ 한 번은 이것을 **모든 줄에 항상**으로 만들었다 — 감지가 안 되니까
+        // 감지 없이 되는 쪽으로 바꿔 놓고 **요구가 그것이라고 스스로 고쳐 읽었다.**
+        // ⚠️ 할 수 있는 것에 맞춰 요구를 줄이지 않는다 — 못 하면 못 한다고 말한다.
+        .overlay(
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(TypeCatalog.meta("principle").color.opacity(dragging ? 0.85 : 0),
+                        lineWidth: 1.5)
+        )
+        .animation(.easeOut(duration: 0.15), value: dragging)
         .opacity(active ? 1 : 0.55)
         .contentShape(Rectangle())
     }
