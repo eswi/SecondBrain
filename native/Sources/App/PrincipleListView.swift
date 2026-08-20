@@ -1,5 +1,6 @@
 import SwiftUI
 import SecondBrainCore
+import UniformTypeIdentifiers   // .text (끌기 끝 신호를 받는 onDrop)
 
 /// 원칙 목록 화면 (memory-philosophy.md §3 — **신규 설계 화면**).
 /// 전체 원칙을 순서대로(위=고순위). 꾹 눌러 드래그로 순서 변경, 항목 터치 → 상세(DetailView 재사용).
@@ -19,6 +20,10 @@ struct PrincipleListView: View {
     /// **바깥으로 끌어내는 드래그앤드롭**으로 해석할 수 있다. **판정은 실기기뿐이다.**
     /// 안 되면 이 상태와 `.onDrag`를 통째로 빼고 `ea97b0d`로 돌아간다.
     @State private var draggingID: String?
+
+    /// 끌기가 **목록 위에 있나** — `onDrop(isTargeted:)`가 채운다. `true → false`가 **끌기 끝**이다.
+    /// ⚠️ `isTargeted`는 클로저가 아니라 `Binding<Bool>`을 받는다(2026-08-20에 한 번 틀려 컴파일 오류).
+    @State private var dropInside = false
 
     // MARK: - ⛔ 「끌 때 원래 자리의 잔상을 없앤다」는 **안 된다** (2026-08-20에 두 번 시도)
     //
@@ -78,9 +83,12 @@ struct PrincipleListView: View {
                     // ★ **끌기 시작 신호.** 제스처가 아니라 드래그 시스템이 부르는 자리다.
                     .onDrag {
                         draggingID = p.id
-                        // 끄기 안전망 — 끌다 놓아 `onMove`가 안 불릴 때를 시간이 받친다.
+                        // 끄기 **안전망** — 아래 `isTargeted`가 놓친 경우만 받친다.
+                        // ⚠️ 5초였다가 1.5초로 줄였다(2026-08-20). 사용자:
+                        // *"이동 안 하고 가만히 그 자리에서 손을 떼면 테두리가 안 없어져."*
+                        // 제자리에서 놓으면 `onMove`가 안 불려서 **5초 내내 남아 있었다.**
                         let mine = p.id
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             if draggingID == mine { draggingID = nil }
                         }
                         return NSItemProvider(object: NSString(string: p.id))
@@ -105,6 +113,15 @@ struct PrincipleListView: View {
                 .font(.footnote).foregroundStyle(Palette.textSecondary).textCase(nil)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+        // ★ **끌기가 끝나는 순간**을 잡는다 — `onMove`는 **순서가 실제로 바뀔 때만** 불린다.
+        // 제자리에서 놓으면 안 불려서 테두리가 남았다(사용자 2026-08-20).
+        // `isTargeted`는 끌기가 이 영역에 들어오고 **나갈 때/끝날 때** 불린다.
+        // ⚠️ 받는 것은 없다 — `false`를 돌려줘 **아무것도 처리하지 않는다.**
+        // 순서 바꾸기는 `List`가 그대로 한다. **판정은 실기기뿐이다**(끌기가 여전히 되는지).
+        .onDrop(of: [.text], isTargeted: $dropInside) { _ in false }
+        .onChange(of: dropInside) { _, inside in
+            if !inside { draggingID = nil }   // 끌기가 이 영역을 떠났다 = 끝났다
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
