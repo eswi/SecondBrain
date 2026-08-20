@@ -1,6 +1,5 @@
 import SwiftUI
 import SecondBrainCore
-import UniformTypeIdentifiers   // .text (끌기 끝 신호를 받는 onDrop)
 
 /// 원칙 목록 화면 (memory-philosophy.md §3 — **신규 설계 화면**).
 /// 전체 원칙을 순서대로(위=고순위). 꾹 눌러 드래그로 순서 변경, 항목 터치 → 상세(DetailView 재사용).
@@ -9,23 +8,38 @@ struct PrincipleListView: View {
     @ObservedObject var model: InboxModel
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
-    /// **지금 끌리고 있는 줄** — 3차 시도(2026-08-20). 신호는 `.onDrag`에서 온다.
-    ///
-    /// ### ★ 앞선 둘과 무엇이 다른가 — **흉내가 아니라 진짜 시작 신호다**
-    /// 1·2차는 `LongPressGesture`로 「집혔겠지」를 **추측**했다. `List`의 순서 바꾸기도
-    /// **같은 몸짓**으로 시작하므로 둘이 다퉜고 내 것이 이겨서 순서 바꾸기가 죽었다.
-    /// `.onDrag`는 **끌기가 실제로 시작될 때** 시스템이 부른다 — 몸짓을 두고 다투지 않는다.
-    ///
-    /// ⚠️ **그래도 될지 모른다** — `.onDrag`를 얹으면 `List`가 순서 바꾸기 대신
-    /// **바깥으로 끌어내는 드래그앤드롭**으로 해석할 수 있다. **판정은 실기기뿐이다.**
-    /// 안 되면 이 상태와 `.onDrag`를 통째로 빼고 `ea97b0d`로 돌아간다.
-    @State private var draggingID: String?
+    // MARK: - ⛔ 「끄는 동안 그 줄만 테두리」는 **못 했다 — 없앴다** (2026-08-20 사용자 결정)
+    //
+    // 사용자 판정(실기기): *"테두리가 사라지는 시간은 그때 그때 달라. 어떤 때는 바로 사라지고
+    // 어떤 때는 1초 좀 더 지나서 사라지고, 누르고만 있으면 아직 손을 떼지 않았는데도 사라지고 그래.
+    // 테두리는 없애자. 너가 못 하는 것으로 생각해."*
+    //
+    // ### 무엇을 시도했나 (전부 뺐다)
+    // | 시도 | 넣은 것 | 실기기 결과 |
+    // |---|---|---|
+    // | 1차 `d1749e2` | `LongPressGesture` + `DragGesture(0)`을 `simultaneousGesture`로 · 뜸·그림자·햅틱 | ⛔ **드래그가 안 됐다** |
+    // | 2차 `7e643f4` | `DragGesture`만 뺐다 | ⛔ 여전히. 게다가 **떼도 그림자가 남았다** |
+    // | 되돌림 `4b20926` | 제스처 통째로 제거 | ✅ 드래그 복구 (**지금 이 상태다**) |
+    // | 3차 `11fd8cb` | **`.onDrag`**로 끌기 시작을 잡아 그 줄에만 테두리 | ✅ 켜지긴 했다 |
+    // | `5a9c934` | `.onDrop(isTargeted:)`로 **끌기 끝**을 잡아 테두리를 끈다 | ⛔ **끄는 시점이 안 맞았다**(위 인용) |
+    //
+    // ### ★ 왜 못 했나 — **`List`는 「지금 끌린다」를 안 알려준다**
+    // 켜는 신호(`.onDrag`)는 있는데 **끄는 신호가 없다.** `.onMove`는 **순서가 실제로 바뀔 때만**
+    // 불리고(제자리에 놓으면 안 불린다), `.onDrop(isTargeted:)`는 드래그 세션의 **영역 출입**을
+    // 볼 뿐 손을 뗀 순간이 아니다. 그래서 **1.5초 안전망**을 함께 뒀는데, 그 셋이 서로 다른
+    // 시점에 걸려 **끄는 시각이 매번 달라졌다** — 손을 떼기도 전에 꺼지는 것이 그 안전망이다.
+    // 1·2차가 **켜는 쪽**에서 깨졌다면, 3차는 **끄는 쪽**에서 깨졌다.
+    //
+    // ⛔ **다시 시도하지 말 것.** 하려면 `List`를 버리고 `ScrollView` + 직접 만든 순서 바꾸기로
+    // 가야 한다 — **지금 잘 되는 것(순서 바꾸기·자동 스크롤·들어올림·접근성)을 통째로 갈아엎는 값이다.**
+    // ⛔ **`LongPressGesture`로 돌아가지 말 것** — 드래그를 두 번 죽였다(`d1749e2`·`7e643f4`).
+    //
+    // ### 지금 남은 신호 — 「끌 수 있다」까지만
+    // **머리글 둘째 줄(「눌러 끌어서 순서를 바꾸세요」) + iOS 기본 들어올림**뿐이다.
+    // ≡ 손잡이는 **`30e2d91`에서 뺐다**(사용자: *"이거 뭐야?"* — `NavigationLink`의 `>` 옆이라
+    // 내비게이션 표시처럼 보였다). **되살리지 말 것 — 사용자가 없애기로 한 것이다.**
 
-    /// 끌기가 **목록 위에 있나** — `onDrop(isTargeted:)`가 채운다. `true → false`가 **끌기 끝**이다.
-    /// ⚠️ `isTargeted`는 클로저가 아니라 `Binding<Bool>`을 받는다(2026-08-20에 한 번 틀려 컴파일 오류).
-    @State private var dropInside = false
-
-    // MARK: - ⛔ 「끌 때 원래 자리의 잔상을 없앤다」는 **안 된다** (2026-08-20에 두 번 시도)
+    // MARK: - ⛔ 「끌 때 원래 자리의 잔상을 없앤다」도 **안 된다** (2026-08-20에 두 번 시도)
     //
     // 사용자가 본 것: *"드래그로 살짝 이동하면 … 원래 있던 텍스트 잔상이 아래에 남아 있어."*
     // 시스템이 들어올리는 것은 **사본**이고 **원본은 제자리에 그대로 있다.**
@@ -40,34 +54,8 @@ struct PrincipleListView: View {
     // 즉 사본은 원본의 스냅샷일 뿐 아니라 **원본이 보이는 동안만 산다.**
     // ⛔ **그래서 「원본을 숨겨서 잔상을 없앤다」는 이 구조에서 성립하지 않는다.**
     //
-    // ⚠️ **다음 세션이 다시 시도하지 말 것.** 하려면 `List`를 안 쓰고
-    // `ScrollView`+직접 만든 순서 바꾸기로 가야 한다 — **지금 잘 되는 것을 통째로 갈아엎는 값이다.**
-    // 사용자 판정: 잔상은 *"사소하지만"*이었고, `11fd8cb` 상태는 *"오! 지금 잘 돼!!!! 바로 이거야."*
-
-    /// ## ⛔ 2026-08-20 — **집힘 신호를 두 번 시도했고 두 번 다 드래그를 깼다. 뺐다.**
-    ///
-    /// 사용자가 원한 것: *"길게 눌러 「순서 이동 가능한 상태」가 된 것을 화면으로 알 수 있게."*
-    ///
-    /// | 시도 | 넣은 것 | 실기기 결과 |
-    /// |---|---|---|
-    /// | 1차 (`d1749e2`) | `LongPressGesture` + `DragGesture(minimumDistance: 0)` 둘을 `simultaneousGesture`로 · 뜸·그림자·햅틱 | ⛔ **드래그가 안 됐다** — *"그림자가 나타나고 진동도 느껴지지만 드래그가 안 됨"* |
-    /// | 2차 (`7e643f4`) | `DragGesture`만 뺐다 | ⛔ **여전히 안 됐다.** 게다가 **떼도 그림자가 남았다** |
-    ///
-    /// ### ★ 2차가 원인을 갈라 줬다 — **그림자가 아니라 제스처였다**
-    /// *"떼도 그림자가 남는다"* = **내 `LongPressGesture`가 그 길게 누르기를 가져갔다**는 뜻이다.
-    /// 그런데 **`List`의 순서 바꾸기도 길게 누르기로 시작한다.** 같은 몸짓 하나를 둘이 노리고,
-    /// 내 것이 이기면 **`List`는 자기 차례를 못 받는다.**
-    /// ⚠️ **`simultaneousGesture`가 이것을 막아 주지 않는다** — 「나란히 받는다」가
-    /// 「`List` 내부 제스처와도 나란히」를 뜻하지는 않았다.
-    ///
-    /// ### ⛔ 그래서 시각효과를 바꾸는 것으로는 안 고쳐진다
-    /// `.shadow`·`.scaleEffect`는 **그리기만** 한다. 테두리로 바꿔도 **이긴 쪽이 무엇을 그리느냐**가
-    /// 바뀔 뿐 **누가 이기느냐**는 그대로다. **고칠 것은 그림이 아니라 제스처였고, 그래서 제스처를 뺐다.**
-    ///
-    /// ### 지금 남은 것 — 조작을 지키고 신호는 「가능하다」까지만
-    /// **≡ 손잡이 상시 노출**(원칙 아이콘 색) + **머리글 둘째 줄.** 「지금 집혔다」는 **못 준다.**
-    /// 주려면 **편집 모드 버튼**이 필요하다 — 그때는 순서 바꾸기가 **손잡이 드래그**로 바뀌어
-    /// 길게 누르기를 두고 다툴 일이 없어진다. **단계가 하나 느는 것이 그 대가다.**
+    // ⚠️ **다음 세션이 다시 시도하지 말 것.** 위 테두리와 **탈출구가 같다**(`List`를 버리는 것) —
+    // 둘을 함께 값에 넣어 사용자가 정한다.
 
     var body: some View {
         let items = model.orderedPrinciples
@@ -76,33 +64,21 @@ struct PrincipleListView: View {
             Section {
                 ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
                     NavigationLink(value: p) {   // 상세는 InboxView 스택의 ResolvedItem destination이 처리
-                        row(p, active: idx < n, dragging: draggingID == p.id)
+                        row(p, active: idx < n)
                     }
                     .listRowBackground(Palette.bg)
                     .listRowSeparator(.hidden)
-                    // ★ **끌기 시작 신호.** 제스처가 아니라 드래그 시스템이 부르는 자리다.
-                    .onDrag {
-                        draggingID = p.id
-                        // 끄기 **안전망** — 아래 `isTargeted`가 놓친 경우만 받친다.
-                        // ⚠️ 5초였다가 1.5초로 줄였다(2026-08-20). 사용자:
-                        // *"이동 안 하고 가만히 그 자리에서 손을 떼면 테두리가 안 없어져."*
-                        // 제자리에서 놓으면 `onMove`가 안 불려서 **5초 내내 남아 있었다.**
-                        let mine = p.id
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            if draggingID == mine { draggingID = nil }
-                        }
-                        return NSItemProvider(object: NSString(string: p.id))
-                    }
+                    // ⛔ 여기 `.onDrag`가 있었다 — **테두리를 켜려고** 넣은 것이라 함께 뺐다.
+                    // 순서 바꾸기는 아래 `.onMove`가 하고, `List` 기본 동작이 더 안전하다.
                 }
                 .onMove { from, to in
                     var reordered = items
                     reordered.move(fromOffsets: from, toOffset: to)
                     model.reorderPrinciples(reordered)
-                    draggingID = nil   // 순서가 정해졌다 = 끌기가 끝났다
                 }
             } header: {
                 // **두 줄을 항상 보인다**(사용자 결정 2026-08-20) — 무엇이 각인되는지 + 어떻게 순서를 바꾸는지.
-                // 편집 모드 버튼을 안 두기로 했으므로 **끄는 법을 아는 길은 이 줄뿐이다.**
+                // ★ 테두리·손잡이를 뺀 지금 **끄는 법을 아는 길은 이 줄뿐이다.** 지우지 말 것.
                 VStack(alignment: .leading, spacing: 2) {
                     Text(items.isEmpty ? "원칙 없음"
                          : "아래 \(n)개가 원칙 영역에 노출됩니다")   // 문구는 사용자가 정했다(2026-08-20)
@@ -114,15 +90,6 @@ struct PrincipleListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        // ★ **끌기가 끝나는 순간**을 잡는다 — `onMove`는 **순서가 실제로 바뀔 때만** 불린다.
-        // 제자리에서 놓으면 안 불려서 테두리가 남았다(사용자 2026-08-20).
-        // `isTargeted`는 끌기가 이 영역에 들어오고 **나갈 때/끝날 때** 불린다.
-        // ⚠️ 받는 것은 없다 — `false`를 돌려줘 **아무것도 처리하지 않는다.**
-        // 순서 바꾸기는 `List`가 그대로 한다. **판정은 실기기뿐이다**(끌기가 여전히 되는지).
-        .onDrop(of: [.text], isTargeted: $dropInside) { _ in false }
-        .onChange(of: dropInside) { _, inside in
-            if !inside { draggingID = nil }   // 끌기가 이 영역을 떠났다 = 끝났다
-        }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.bg.ignoresSafeArea())
@@ -133,7 +100,7 @@ struct PrincipleListView: View {
     }
 
     /// 원칙 한 줄. 동작(상위 N)이 아니면 흐리게 + "대기" 표시.
-    private func row(_ item: ResolvedItem, active: Bool, dragging: Bool) -> some View {
+    private func row(_ item: ResolvedItem, active: Bool) -> some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "star.fill").font(.caption2)
                 .foregroundStyle(TypeCatalog.meta("principle").color).padding(.top, 3)
@@ -146,33 +113,19 @@ struct PrincipleListView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Palette.surface, in: Capsule())
             }
-            // ⛔ **여기 ≡ 손잡이(`line.3.horizontal`)가 있었다 — 뺐다** (2026-08-20).
+            // ⛔ **여기 ≡ 손잡이(`line.3.horizontal`)가 있었다 — 뺐다** (2026-08-20 `30e2d91`).
             // `4b20926`에서 넣었다. **그때는 집힘 신호를 못 만들던 때**라
             // 「이 줄은 끌 수 있다」를 알릴 길이 그것뿐이었다.
-            // **이제 필요 없다:** `.onDrag` 테두리가 그 일을 더 잘 하고, 머리글에도 안내가 있다.
-            // ⚠️ **그리고 자리가 나빴다** — `NavigationLink`의 `>` 바로 옆이라
+            // ⚠️ **자리가 나빴다** — `NavigationLink`의 `>` 바로 옆이라
             // **내비게이션 표시의 일부처럼 보였다.** 사용자가 *"이거 뭐야?"*라고 물었다.
             // ★ **못 하던 때의 임시방편이 되던 뒤에도 남아 있었다.**
         }
-        // ⛔ **여백을 끌 때만 바꾸면 안 된다** (2026-08-20 사용자:
+        // ⚠️ **이 여백은 고정이다 — 끌 때만 바꾸면 안 된다** (2026-08-20 사용자:
         // *"테두리를 그리면 공간의 크기가 변해서 그런지 안의 텍스트가 줄바꿈이 일어나네"*).
         // 옛 코드는 `dragging ? 11 : 0`으로 **좌우 22pt를 뺏어** 글자 폭을 줄였고,
-        // 그래서 **집는 순간 줄바꿈 자리가 달라졌다.**
-        // → **여백은 고정하고 테두리만 바깥에 그린다**(아래 음수 padding). 글자 폭이 안 변한다.
+        // 그래서 **집는 순간 줄바꿈 자리가 달라졌다.** 테두리는 이제 없지만
+        // ★ **교훈은 남는다: 보이는 것(그림)을 바꾸려다 재는 것(레이아웃)까지 바꾸지 않는다.**
         .padding(.vertical, 5)
-        // **테두리는 끌리는 그 줄에만, 끄는 동안만**(사용자 요구 2026-08-20).
-        // ⛔ 한 번은 이것을 **모든 줄에 항상**으로 만들었다 — 감지가 안 되니까
-        // 감지 없이 되는 쪽으로 바꿔 놓고 **요구가 그것이라고 스스로 고쳐 읽었다.**
-        // ⚠️ 할 수 있는 것에 맞춰 요구를 줄이지 않는다 — 못 하면 못 한다고 말한다.
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(TypeCatalog.meta("principle").color.opacity(dragging ? 0.85 : 0),
-                        lineWidth: 1.5)
-                // ★ **음수 여백 = 레이아웃 밖에 그린다.** 글자가 쓰는 폭은 그대로다.
-                .padding(.horizontal, -8)
-                .padding(.vertical, -2)
-        )
-        .animation(.easeOut(duration: 0.15), value: dragging)
         .opacity(active ? 1 : 0.55)
         .contentShape(Rectangle())
     }
