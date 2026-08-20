@@ -28,6 +28,17 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    - ⛔ **이 오작동은 `EXIT=0`으로 끝난다** — 빌드가 성공하므로 **로그로는 알 수 없다.**
      UDID 오타(`EXIT=64`)와 **반대 성질**이다: 틀린 UDID는 시끄럽게 죽고, `name=`은 **조용히 다른 데서 돈다.**
      그래서 「빌드 성공」을 「의도한 런타임에서 성공」으로 읽으면 안 된다.
+5. **★ 「빌드 실패인데 설치 성공」이 된다 — 설치 판정만으로는 새 코드가 깔렸는지 알 수 없다.**
+   `DerivedData/…/Debug-iphoneos/SecondBrain.app`이 **지워지지 않으므로**, 빌드가 실패하면
+   `devicectl … install`이 **직전 빌드의 앱을 그대로 얹고 `App installed`를 찍는다.**
+   ⛔ **2026-08-21에 실제로 밟았다** — 크래시 수정을 커밋하고 설치까지 「성공」했는데
+   폰에는 **죽는 그 빌드가 다시 깔렸다**(빌드는 `EXIT=66`, 원인은 경로 오타).
+   - **판정은 둘을 함께 본다:** ① 빌드 `EXIT=0` + `error: 0` ② `App installed` 줄.
+   - **의심되면 `.app`의 실행파일 시각을 `stat -f '%Sm'`로 보고 `date`와 비교한다.**
+   - 확실히 하려면 **설치 전에 `.app`을 지운다** — 그러면 낡은 것이 얹힐 길이 없다.
+6. **⚠️ `xcodebuild`·`git add`는 「어느 디렉터리에서 도는가」에 걸린다.** 프로젝트는 `native/`에,
+   저장소 루트는 그 위다. 2026-08-21에 **셋을 연달아 밟았다**(`native/`에서 `git add native/` 두 번,
+   저장소 루트에서 `-project SecondBrain.xcodeproj` 한 번). **경로는 절대경로로 쓴다.**
 4. **빌드 결과는 `|tail`로 판정하지 말 것** — 파이프가 exit code를 가린다. `> log 2>&1; echo "EXIT=$?"; grep -c 'error:' log`로 본다.
 
 ## 항시 규칙
