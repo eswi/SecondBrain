@@ -64,8 +64,14 @@ struct PrincipleReorderList: UIViewRepresentable {
             cell.contentConfiguration = UIHostingConfiguration {
                 PrincipleReorderRow(item: item, active: active)
             }
+            // ★ **여백은 잰 값이다** (2026-08-20 · 시뮬 · 같은 줄 내용으로 두 그릇 대조).
+            // 옛 그릇(SwiftUI `List` + 줄에 `.padding(.vertical, 5)`)의 줄 간격이 **104.7pt**였다 —
+            // `List`가 스스로 **15pt씩** 주고 있었고 거기에 줄의 5pt가 더해져 **한쪽 20pt**였다.
+            // 새 그릇은 **군더더기 여백이 0**이라(내용이 44pt보다 크면 최소 높이에 안 걸린다)
+            // 「여백 = 그릇 여백」이 그대로다: 10 → 84.7pt · **20 → 104.7pt(옛것과 일치)**.
+            // ⛔ 6이었을 때는 **한 줄마다 28pt씩 좁았다.**
             .margins(.horizontal, 16)
-            .margins(.vertical, 6)
+            .margins(.vertical, 20)
             var bg = UIBackgroundConfiguration.listCell()
             bg.backgroundColor = UIColor(Palette.bg)
             cell.backgroundConfiguration = bg
