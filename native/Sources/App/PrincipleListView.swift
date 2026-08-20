@@ -94,17 +94,12 @@ struct PrincipleListView: View {
                 .foregroundStyle(TypeCatalog.meta("principle").color.opacity(0.55))
                 .padding(.top, 3)
         }
-        .padding(.vertical, 9)
-        .padding(.horizontal, 11)
-        // **테두리 — 상시로 그려둔다**(2026-08-20 사용자 요청). 색은 원칙 아이콘과 같게.
-        // ★ **제스처가 아니라 그림이라 안전하다.** iOS가 드래그로 줄을 들어올릴 때
-        // **이 테두리째 뜨므로** 「집혔다」가 더 뚜렷해진다 — 우리가 집힘을 감지할 필요가 없다.
-        // ⛔ **집힘을 직접 감지하려던 두 번의 시도가 드래그를 깼다**(머리 주석의 시도 표).
-        .overlay(
-            RoundedRectangle(cornerRadius: 11)
-                .stroke(TypeCatalog.meta("principle").color.opacity(active ? 0.42 : 0.18),
-                        lineWidth: 1)
-        )
+        .padding(.vertical, 5)
+        // ⛔ **테두리를 상시로 넣었다가 되돌렸다** (2026-08-20). 사용자가 원한 것은
+        // **「끄는 동안, 끄는 그 줄만」**이었는데 **모든 줄에 항상** 넣었다 — 정반대다.
+        // **왜 그렇게 했나:** 「끄는 그 줄」을 감지하려면 제스처가 필요하고 그것이 두 번 드래그를 깼다.
+        // 그래서 **감지 없이 되는 쪽으로 바꿔 놓고, 요구가 그것이라고 스스로 고쳐 읽었다.**
+        // ⚠️ **할 수 있는 것에 맞춰 요구를 줄이면 안 된다** — 못 하면 못 한다고 말한다.
         .opacity(active ? 1 : 0.55)
         .contentShape(Rectangle())
     }
