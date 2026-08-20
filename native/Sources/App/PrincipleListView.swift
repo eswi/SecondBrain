@@ -55,7 +55,7 @@ struct PrincipleListView: View {
                 // 편집 모드 버튼을 안 두기로 했으므로 **끄는 법을 아는 길은 이 줄뿐이다.**
                 VStack(alignment: .leading, spacing: 2) {
                     Text(items.isEmpty ? "원칙 없음"
-                         : "위 \(n)개가 각인 동작 — 상단 원칙 영역에 노출")
+                         : "아래 \(n)개가 원칙 영역에 노출됩니다")   // 문구는 사용자가 정했다(2026-08-20)
                     if !items.isEmpty {
                         Text("눌러 끌어서 순서를 바꾸세요")   // 문구는 사용자가 정했다(2026-08-20)
                     }
@@ -94,7 +94,17 @@ struct PrincipleListView: View {
                 .foregroundStyle(TypeCatalog.meta("principle").color.opacity(0.55))
                 .padding(.top, 3)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 9)
+        .padding(.horizontal, 11)
+        // **테두리 — 상시로 그려둔다**(2026-08-20 사용자 요청). 색은 원칙 아이콘과 같게.
+        // ★ **제스처가 아니라 그림이라 안전하다.** iOS가 드래그로 줄을 들어올릴 때
+        // **이 테두리째 뜨므로** 「집혔다」가 더 뚜렷해진다 — 우리가 집힘을 감지할 필요가 없다.
+        // ⛔ **집힘을 직접 감지하려던 두 번의 시도가 드래그를 깼다**(머리 주석의 시도 표).
+        .overlay(
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(TypeCatalog.meta("principle").color.opacity(active ? 0.42 : 0.18),
+                        lineWidth: 1)
+        )
         .opacity(active ? 1 : 0.55)
         .contentShape(Rectangle())
     }
