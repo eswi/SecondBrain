@@ -37,13 +37,11 @@ struct PrincipleListView: View {
                     .scaleEffect(grabbedID == p.id ? 1.03 : 1, anchor: .leading)
                     .shadow(color: .black.opacity(grabbedID == p.id ? 0.45 : 0), radius: 8, y: 3)
                     .animation(.spring(response: 0.25, dampingFraction: 0.7), value: grabbedID)
-                    // ⚠️ 둘 다 `simultaneousGesture` — 드래그를 **가로채지 않는다.**
-                    // 길게 누르면 집힘 신호를 켜고, 손을 떼면(드래그 끝) 끈다.
+                    // ⛔ **2026-08-20에 여기서 드래그를 깼다 — 전말은 아래 `grab(_:)` 주석.**
+                    // 지금은 **길게 누르기 하나만** 나란히 받는다. `DragGesture(minimumDistance: 0)`을
+                    // 함께 얹었던 것이 터치를 가져갔다(그것이 범인이라는 것은 **아직 추정**이다 — §아래).
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.3).onEnded { _ in grab(p.id) }
-                    )
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0).onEnded { _ in grabbedID = nil }
                     )
                 }
                 .onMove { from, to in
@@ -77,12 +75,32 @@ struct PrincipleListView: View {
 
     /// **집혔다**를 켠다 — 화면(뜸·그림자·배경)과 **손**(햅틱) 둘로 알린다.
     /// 햅틱은 iOS만 — macOS엔 `UIImpactFeedbackGenerator`가 없다.
+    ///
+    /// ## ⛔ 2026-08-20 — 이 자리에서 **드래그를 한 번 깼다**
+    /// 처음엔 `LongPressGesture` **+ `DragGesture(minimumDistance: 0)`** 둘을
+    /// `simultaneousGesture`로 얹었다. **빌드도 시험도 다 통과했는데 실기기에서 드래그가 안 됐다** —
+    /// 사용자가 눌러서 잡았다(*"그림자가 나타나고 진동도 느껴지지만 드래그가 안 됨"*).
+    /// **그날 아침 ①-2로 통과시킨 기능을 그날 오후에 내가 깬 것이다.**
+    ///
+    /// ⚠️ **`DragGesture`를 뺀 것은 「그것이 범인이라고 추정」한 것이다 — 쟀다는 뜻이 아니다.**
+    /// 둘 중 어느 쪽이 먹었는지 갈라 재지 않았고, **`LongPressGesture`만으로도 깨질 수 있다**
+    /// (`List`의 순서 바꾸기 자체가 **길게 누르기로 시작**하므로 같은 몸짓을 두고 다툰다).
+    /// **그러면 제스처를 아예 빼고 ㉯(핸들 상시 노출)로 간다** — 신호는 잃지만 조작은 지킨다.
+    ///
+    /// **★ 이것이 오늘 쫓던 종류 그 자체다:** 빌드 `EXIT=0` · `error:` 0 · Core 374개 초록 ·
+    /// 화면은 그럴듯했다(그림자도 진동도 났다). **틀린 것은 눌러야만 드러났다.**
     private func grab(_ id: String) {
         guard grabbedID != id else { return }   // 같은 줄에 두 번 울리지 않는다
         grabbedID = id
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         #endif
+        // 해제는 **제스처 없이** 한다 — 손 뗀 것을 잡으려고 제스처를 또 얹으면 같은 함정이다.
+        // `onMove`가 먼저 끄고, 안 끌고 놓았을 때를 위해 시간이 뒤를 받친다.
+        let mine = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            if grabbedID == mine { grabbedID = nil }
+        }
     }
 
     /// 원칙 한 줄. 동작(상위 N)이 아니면 흐리게 + "대기" 표시.

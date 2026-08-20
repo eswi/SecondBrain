@@ -21,15 +21,18 @@ struct SecondBrainShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: CaptureMemoryIntent(),
             phrases: [
-                // **앱 이름 하나짜리 구절**(2026-08-20 사용자). ⚠️ **된다고 확인된 것이 아니다** —
-                // Apple 문서·WWDC 예시는 전부 동사가 붙은 꼴(`"Open \(.applicationName)"`)이고
-                // **토큰 하나짜리 예시가 없다.** Siri가 이것을 「앱을 열어라」로 해석할 수 있다.
-                // **그래서 아래 셋을 안 지웠다** — 짧은 것이 안 먹어도 긴 것이 살아 있다.
-                // 판정은 실기기에서 사용자가 한다(빌드는 문법만 본다).
+                // ✅ **앱 이름 하나면 된다 — 실기기에서 확인됐다**(2026-08-20 사용자):
+                // *"SecondBrain만 말해도 수집 모드로 바로 들어가네."*
+                // Siri가 **「앱을 열어라」로 새지 않고** 이 인텐트로 온다.
+                //
+                // ⚠️ **문서로는 알 수 없던 값이다** — Apple 문서·WWDC 예시는 전부 동사가 붙은 꼴
+                // (`"Open \(.applicationName)"`)이고 **토큰 하나짜리 예시가 없다.**
+                // 빌드는 문법까지만 본다(구절이 `Metadata.appintents`에 들어간 것은 확인했다).
+                // **눌러야 알 수 있었고, 눌러서 알았다.**
+                //
+                // 긴 셋(「…으로 기억하기」·「… 음성 수집」·「…에 기억 남기기」)은 **안전망이었고
+                // 짧은 것이 먹었으므로 걷어냈다**(사용자 결정 2026-08-20).
                 "\(.applicationName)",
-                "\(.applicationName)으로 기억하기",
-                "\(.applicationName) 음성 수집",
-                "\(.applicationName)에 기억 남기기",
             ],
             shortTitle: "음성으로 새 기억",
             systemImageName: "mic.fill"
