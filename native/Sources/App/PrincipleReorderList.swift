@@ -178,13 +178,16 @@ struct PrincipleReorderList: UIViewRepresentable {
 struct PrincipleReorderRow: View {
     let item: ResolvedItem
     let active: Bool
+    /// 글자 크기 단계가 바뀌면 다시 그리게 하는 의존 — 없으면 `PrincipleFont.size`가 안 갱신된다.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "star.fill").font(.caption2)
                 .foregroundStyle(TypeCatalog.meta("principle").color).padding(.top, 3)
             Text(item.raw ?? "")
-                .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                .font(.system(size: PrincipleFont.size, weight: .medium))
+                .foregroundStyle(Palette.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if !active {

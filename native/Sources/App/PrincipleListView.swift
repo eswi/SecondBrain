@@ -1,5 +1,31 @@
 import SwiftUI
 import SecondBrainCore
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
+
+/// 원칙 목록의 글자 크기 — **「새로운 기억」 탭 원칙 띠(`.callout`)보다 정확히 2pt 크게.**
+/// (사용자 결정 2026-08-20. 띠는 `InboxView.PrincipleRow`이고 `.callout.weight(.medium)`이다.)
+///
+/// ⚠️ **숫자(18)를 박지 않는다.** 단계마다 `.callout`의 실제 크기를 읽어 +2 한다 —
+/// 그래야 접근성에서 글자를 키울 때 **이 목록만 안 커지는 일이 없다.**
+/// 쓰는 쪽은 `@Environment(\.dynamicTypeSize)`를 하나 들고 있어야 한다(단계가 바뀔 때 다시 그리는 의존).
+///
+/// **잰 값(2026-08-20 · 시뮬):** 띠 `.callout` = L 16 · XL 18 · XXL 20 · XXXL 22 →
+/// 이 목록은 각각 **18 · 20 · 22 · 24**.
+/// ⚠️ `@ScaledMetric(relativeTo: .callout) = 18`도 후보였는데 **차이가 일정하지 않았다**
+/// (L +2.0 · XL +1.7 · XXL +1.3 · XXXL +2.0). 「2pt」는 모든 단계에서 2pt여야 하므로 안 썼다.
+enum PrincipleFont {
+    static var size: CGFloat {
+        #if canImport(UIKit)
+        UIFont.preferredFont(forTextStyle: .callout).pointSize + 2
+        #else
+        NSFont.preferredFont(forTextStyle: .callout).pointSize + 2
+        #endif
+    }
+}
 
 /// 원칙 목록 화면 (memory-philosophy.md §3 — **신규 설계 화면**).
 /// 전체 원칙을 순서대로(위=고순위). 꾹 눌러 드래그로 순서 변경, 항목 터치 → 상세(DetailView 재사용).
@@ -14,6 +40,8 @@ struct PrincipleListView: View {
     @ObservedObject var model: InboxModel
     /// 줄을 눌렀을 때 상세로 밀어 넣을 자리. iOS 경로는 `NavigationLink`가 없어서 직접 민다.
     @Binding var path: NavigationPath
+    /// 글자 크기 단계가 바뀌면 다시 그리게 하는 의존 — `PrincipleFont.size`가 이것을 따라간다.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
     // MARK: - ⛔ 「끄는 동안 그 줄만 테두리」는 **못 했다 — 없앴다** (2026-08-20 사용자 결정)
@@ -104,7 +132,8 @@ struct PrincipleListView: View {
             Image(systemName: "star.fill").font(.caption2)
                 .foregroundStyle(TypeCatalog.meta("principle").color).padding(.top, 3)
             Text(item.raw ?? "")
-                .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                .font(.system(size: PrincipleFont.size, weight: .medium))
+                .foregroundStyle(Palette.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if !active {
