@@ -129,12 +129,13 @@ struct PrincipleListView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Palette.surface, in: Capsule())
             }
-            // **끌 수 있다는 표시** — 색은 원칙 아이콘과 같게(사용자가 그 색을 짚었다, 2026-08-20).
-            // ⚠️ **이것은 「지금 집혔다」가 아니라 「끌 수 있다」다.** 앞의 것은 제스처가 필요하고,
-            // 제스처는 `List`의 순서 바꾸기와 다툰다(위 주석). **그림만 두고 제스처는 안 둔다.**
-            Image(systemName: "line.3.horizontal").font(.caption2)
-                .foregroundStyle(TypeCatalog.meta("principle").color.opacity(0.55))
-                .padding(.top, 3)
+            // ⛔ **여기 ≡ 손잡이(`line.3.horizontal`)가 있었다 — 뺐다** (2026-08-20).
+            // `4b20926`에서 넣었다. **그때는 집힘 신호를 못 만들던 때**라
+            // 「이 줄은 끌 수 있다」를 알릴 길이 그것뿐이었다.
+            // **이제 필요 없다:** `.onDrag` 테두리가 그 일을 더 잘 하고, 머리글에도 안내가 있다.
+            // ⚠️ **그리고 자리가 나빴다** — `NavigationLink`의 `>` 바로 옆이라
+            // **내비게이션 표시의 일부처럼 보였다.** 사용자가 *"이거 뭐야?"*라고 물었다.
+            // ★ **못 하던 때의 임시방편이 되던 뒤에도 남아 있었다.**
         }
         // ⛔ **여백을 끌 때만 바꾸면 안 된다** (2026-08-20 사용자:
         // *"테두리를 그리면 공간의 크기가 변해서 그런지 안의 텍스트가 줄바꿈이 일어나네"*).
