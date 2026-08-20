@@ -101,7 +101,13 @@ struct PrincipleReorderList: UIViewRepresentable {
             // ⚠️ **여기서 다시 그리지 않으면 번호·바탕색이 옛 자리에 남는다.**
             // 위에서 `appliedIDs`를 갱신했으므로 `apply`는 아무것도 안 한다 —
             // **되울림을 막는 그 장치가 재구성까지 막는다.** 그래서 직접 부른다.
-            coord.reconfigureAll()
+            //
+            // ⛔⛔ **그런데 여기서 바로 부르면 앱이 죽는다.** `didReorder`는 데이터소스가
+            // **적용하는 중**에 불리고, 재구성도 「적용」이다 →
+            // `BUG_IN_CLIENT_OF_DIFFABLE_DATA_SOURCE__APPLYING_SNAPSHOTS_REENTRANTLY`로 **abort**.
+            // (2026-08-21 실기기·랩에서 놓을 때마다 죽었다. 크래시 리포트가 이름으로 말해줬다.)
+            // **그래서 한 박자 미룬다** — 적용이 끝난 뒤에 그린다.
+            DispatchQueue.main.async { coord.reconfigureAll() }
             coord.parent.onReorder(ordered)
         }
         context.coordinator.dataSource = ds
@@ -207,6 +213,7 @@ struct PrincipleReorderList: UIViewRepresentable {
                 cv.cancelInteractiveMovement()
                 isMoving = false
                 dragFrom = nil; dragTo = nil
+                // 여기는 제스처 콜백이라 적용 중이 아니다 — 바로 불러도 된다.
                 reconfigureAll()          // 되돌아왔으니 번호·색도 되돌린다
             }
         }
@@ -222,6 +229,7 @@ struct PrincipleReorderList: UIViewRepresentable {
             if dragFrom == nil { dragFrom = original.item }
             if dragTo != proposed.item {
                 dragTo = proposed.item
+                // 여기도 적용 중이 아니다(콜렉션뷰의 이동 추적) — 실측으로 안전했다.
                 reconfigureAll()
             }
             return proposed
