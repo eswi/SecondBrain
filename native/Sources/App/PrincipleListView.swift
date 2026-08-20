@@ -20,6 +20,17 @@ struct PrincipleListView: View {
     /// 안 되면 이 상태와 `.onDrag`를 통째로 빼고 `ea97b0d`로 돌아간다.
     @State private var draggingID: String?
 
+    /// **원래 자리에 남는 잔상을 숨긴다** (2026-08-20 사용자: *"원래 있던 텍스트 잔상이 아래에 남아 있어"*).
+    ///
+    /// 시스템이 들어올리는 것은 **사본**이고 **원본은 제자리에 그대로 있다** — 순서가 실제로 바뀔 때야 사라진다.
+    ///
+    /// ### ⚠️ `draggingID`와 따로 두는 이유 — **사본을 원본에서 떠 간다**
+    /// 시스템은 `.onDrag`가 돌아온 **직후 원본을 스냅샷**해서 들어올릴 사본을 만든다.
+    /// 그래서 **`draggingID`와 같은 타이밍에 숨기면 사본까지 투명해질 수 있다.**
+    /// → 숨기기만 **한 박자 뒤**(`DispatchQueue.main.async`)로 미룬다. 스냅샷이 끝난 뒤에 사라진다.
+    /// ⚠️ **이 타이밍은 보장된 것이 아니다** — 스냅샷 시점이 문서로 약속돼 있지 않다. **눌러야 안다.**
+    @State private var hiddenID: String?
+
     /// ## ⛔ 2026-08-20 — **집힘 신호를 두 번 시도했고 두 번 다 드래그를 깼다. 뺐다.**
     ///
     /// 사용자가 원한 것: *"길게 눌러 「순서 이동 가능한 상태」가 된 것을 화면으로 알 수 있게."*
@@ -56,13 +67,18 @@ struct PrincipleListView: View {
                     }
                     .listRowBackground(Palette.bg)
                     .listRowSeparator(.hidden)
+                    // 원래 자리의 잔상을 숨긴다. **줄 자체는 남겨 둔다** — 높이가 사라지면
+                    // 목록이 출렁여서 끌던 자리가 흔들린다. **보이지만 않게** 한다.
+                    .opacity(hiddenID == p.id ? 0 : 1)
                     // ★ **끌기 시작 신호.** 제스처가 아니라 드래그 시스템이 부르는 자리다.
                     .onDrag {
                         draggingID = p.id
-                        // 끄기 안전망 — 끌다 놓아 `onMove`가 안 불릴 때를 시간이 받친다.
                         let mine = p.id
+                        // **한 박자 뒤에** 원본을 숨긴다 — 사본 스냅샷이 끝난 뒤여야 한다(위 주석).
+                        DispatchQueue.main.async { hiddenID = mine }
+                        // 끄기 안전망 — 끌다 놓아 `onMove`가 안 불릴 때를 시간이 받친다.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                            if draggingID == mine { draggingID = nil }
+                            if draggingID == mine { draggingID = nil; hiddenID = nil }
                         }
                         return NSItemProvider(object: NSString(string: p.id))
                     }
@@ -72,6 +88,7 @@ struct PrincipleListView: View {
                     reordered.move(fromOffsets: from, toOffset: to)
                     model.reorderPrinciples(reordered)
                     draggingID = nil   // 순서가 정해졌다 = 끌기가 끝났다
+                    hiddenID = nil
                 }
             } header: {
                 // **두 줄을 항상 보인다**(사용자 결정 2026-08-20) — 무엇이 각인되는지 + 어떻게 순서를 바꾸는지.
