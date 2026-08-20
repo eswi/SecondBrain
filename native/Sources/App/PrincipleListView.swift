@@ -110,7 +110,7 @@ struct PrincipleListView: View {
         List {
             ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
                 NavigationLink(value: p) {
-                    PrincipleCard(item: p, active: idx < n)
+                    PrincipleCard(item: p, number: idx + 1, active: idx < n)
                 }
                 .listRowBackground(Palette.bg)
                 .listRowSeparator(.hidden)
@@ -130,23 +130,41 @@ struct PrincipleListView: View {
 
 /// 원칙 한 줄 — **iOS·macOS 공용.** 두 경로가 같은 모양이어야 하므로 여기 한 곳에만 둔다.
 ///
-/// ## 무엇이 무엇을 말하나 (사용자 결정 2026-08-20)
-/// - **밝기**: 각인되는 상위 N개는 또렷하게, 나머지는 흐리게(0.55).
-/// - **바탕색**: 각인되는 것은 **원칙 아이콘 색 계통**, 나머지는 **회색**.
-///   ⛔ **「대기」 글자는 뺐다** — *"이미 1 2 3은 밝은 색으로, 그 뒷쪽은 흐린 색으로 표시되고 있기 때문에
-///   '대기'라는 표시는 없애는 것이 좋겠어."* 같은 말을 두 번 하지 않는다.
-/// - **카드 사이는 칠하지 않는다** — 색은 카드에만, 틈은 배경 그대로.
+/// ## ★ 원칙 영역(`InboxView.PrincipleRow`)의 짜임을 그대로 가져왔다 (사용자 결정 2026-08-20)
+/// *"'새로운 기억'에 원칙들이 표시된 색깔과 테두리를 차용하는 방식으로 해결하자.
+/// 두 화면을 오가더라도 일관성이 유지되고 테두리도 잘 어울릴 것 같아.
+/// 그리고 원칙 화면에서도 별표 분류 아이콘을 쓰지 말고 숫자로 1 2 3 4 방식으로 붙이자."*
 ///
-/// ⚠️ **흐림은 내용에만 걸고 바탕에는 안 건다** — 바탕까지 흐려지면 회색이 배경에 묻힌다.
+/// | | 원칙 영역 | 이 카드 |
+/// |---|---|---|
+/// | 머리 | **숫자**(굵게·틴트·`monospacedDigit`) | **같다** — ⛔ 별 아이콘을 뺐다 |
+/// | 바탕 | `tint.opacity(0.14)` | **같다**(노출되는 것) |
+/// | 테두리 | `tint.opacity(0.28)` | **같다**(노출되는 것) |
+/// | 모서리 | `Palette.radius` | 같다 |
+/// | 안쪽 여백 | 좌우 14 · 상하 11 | 같다 |
+///
+/// ⛔ **별 아이콘을 뺀 이유는 대비다.** 바탕을 틴트로 깔면 **같은 색 아이콘이 묻힌다**
+/// (2026-08-20 랩에서 보였다). 숫자는 원칙 영역과 **같은 말**이라 일관성까지 얻는다.
+///
+/// ## 노출 안 되는 것 — 같은 짜임의 **회색 판**
+/// 바탕 `Palette.surface` · 테두리 `Palette.border`. 내용은 흐리게(0.55).
+/// ⛔ **「대기」 글자는 없다** — 밝기와 색이 이미 말한다(사용자: *"같은 말을 두 번"*).
+/// ⚠️ **흐림은 내용에만 건다** — 바탕까지 흐리면 회색이 배경에 묻힌다.
 struct PrincipleCard: View {
     let item: ResolvedItem
+    /// 1부터. 원칙 영역과 같은 셈법(위가 1번).
+    let number: Int
     let active: Bool
     private var tint: Color { TypeCatalog.meta("principle").color }
+    private var fill: Color { active ? tint.opacity(0.14) : Palette.surface }
+    private var stroke: Color { active ? tint.opacity(0.28) : Palette.border }
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "star.fill").font(.caption2)
-                .foregroundStyle(tint).padding(.top, 3)
+            Text("\(number)")
+                .font(.system(size: PrincipleFont.size, weight: .bold)).monospacedDigit()
+                .foregroundStyle(tint)
+                .frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
             Text(item.raw ?? "")
                 .font(.system(size: PrincipleFont.size, weight: .medium))
                 .foregroundStyle(Palette.textPrimary)
@@ -157,11 +175,11 @@ struct PrincipleCard: View {
                 .foregroundStyle(Palette.textTertiary).padding(.top, 3)
         }
         .opacity(active ? 1 : 0.55)          // 흐림은 **내용에만**
-        // 카드 안쪽 여백 — 원칙 영역(`InboxView.PrincipleRow`)과 같은 14/11.
         .padding(.horizontal, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(active ? tint.opacity(0.5) : Palette.surface,
-                    in: RoundedRectangle(cornerRadius: Palette.radius, style: .continuous))
+        .background(fill, in: RoundedRectangle(cornerRadius: Palette.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Palette.radius, style: .continuous)
+            .strokeBorder(stroke))
         .contentShape(Rectangle())
     }
 }

@@ -62,13 +62,13 @@ struct PrincipleReorderList: UIViewRepresentable {
         let reg = UICollectionView.CellRegistration<UICollectionViewListCell, ResolvedItem> { cell, indexPath, item in
             let active = indexPath.item < context.coordinator.parent.activeCount
             cell.contentConfiguration = UIHostingConfiguration {
-                PrincipleReorderRow(item: item, active: active)
+                PrincipleReorderRow(item: item, number: indexPath.item + 1, active: active)
             }
             // ★ **세로 여백 = 카드 사이 간격.** 원칙 영역(`InboxView`의 카드 묶음)이 카드 사이를
             // **6pt**로 두므로 여기도 **3+3 = 6**으로 맞췄다(사용자 결정 2026-08-20).
             // ⚠️ **바탕색이 생기기 전에는 20이었다** — 그때는 여백이 안 보여서 「줄 간격」으로 읽혔고
             // 옛 `List`와 같은 **104.7pt**를 맞춘 값이었다. **카드가 생기자 20은 40pt 틈이 됐다.**
-            // 줄의 높이는 이제 카드 **안쪽 여백**(`PrincipleReorderRow`의 14/11)이 만든다.
+            // 줄의 높이는 이제 카드 **안쪽 여백**(`PrincipleCard`의 14/11)이 만든다.
             .margins(.horizontal, 16)
             .margins(.vertical, 3)
             var bg = UIBackgroundConfiguration.listCell()
@@ -180,15 +180,17 @@ struct PrincipleReorderList: UIViewRepresentable {
     }
 }
 
-/// 원칙 한 줄 — **`List` 시절과 같은 모양.** 여백만 셀 쪽(`margins`)으로 옮겼다.
+/// 셀 안에 들어가는 껍데기 — 모양은 `PrincipleCard`(iOS·macOS 공용)가 그린다.
+/// ⚠️ **이 뷰가 따로 있는 이유는 `@Environment` 하나 때문이다** — 글자 크기 단계가 바뀔 때
+/// 다시 그려지게 하는 의존이다. 없으면 `PrincipleFont.size`가 안 갱신된다.
 struct PrincipleReorderRow: View {
     let item: ResolvedItem
+    let number: Int
     let active: Bool
-    /// 글자 크기 단계가 바뀌면 다시 그리게 하는 의존 — 없으면 `PrincipleFont.size`가 안 갱신된다.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        PrincipleCard(item: item, active: active)
+        PrincipleCard(item: item, number: number, active: active)
     }
 }
 #endif
