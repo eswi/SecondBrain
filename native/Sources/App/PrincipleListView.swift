@@ -20,16 +20,24 @@ struct PrincipleListView: View {
     /// 안 되면 이 상태와 `.onDrag`를 통째로 빼고 `ea97b0d`로 돌아간다.
     @State private var draggingID: String?
 
-    /// **원래 자리에 남는 잔상을 숨긴다** (2026-08-20 사용자: *"원래 있던 텍스트 잔상이 아래에 남아 있어"*).
-    ///
-    /// 시스템이 들어올리는 것은 **사본**이고 **원본은 제자리에 그대로 있다** — 순서가 실제로 바뀔 때야 사라진다.
-    ///
-    /// ### ⚠️ `draggingID`와 따로 두는 이유 — **사본을 원본에서 떠 간다**
-    /// 시스템은 `.onDrag`가 돌아온 **직후 원본을 스냅샷**해서 들어올릴 사본을 만든다.
-    /// 그래서 **`draggingID`와 같은 타이밍에 숨기면 사본까지 투명해질 수 있다.**
-    /// → 숨기기만 **한 박자 뒤**(`DispatchQueue.main.async`)로 미룬다. 스냅샷이 끝난 뒤에 사라진다.
-    /// ⚠️ **이 타이밍은 보장된 것이 아니다** — 스냅샷 시점이 문서로 약속돼 있지 않다. **눌러야 안다.**
-    @State private var hiddenID: String?
+    // MARK: - ⛔ 「끌 때 원래 자리의 잔상을 없앤다」는 **안 된다** (2026-08-20에 두 번 시도)
+    //
+    // 사용자가 본 것: *"드래그로 살짝 이동하면 … 원래 있던 텍스트 잔상이 아래에 남아 있어."*
+    // 시스템이 들어올리는 것은 **사본**이고 **원본은 제자리에 그대로 있다.**
+    //
+    // | 시도 | 무엇을 | 결과 |
+    // |---|---|---|
+    // | `4dc8b9c` | 원본에 `.opacity(0)` — 사본 스냅샷을 피하려고 **한 박자 뒤**(`main.async`)에 | ⛔ *"선택된 것 자체가 사라져 버렸어. 손을 떼야 나타나"* |
+    // | `e2e4dfb` | `.onDrag(_:preview:)`로 **사본을 직접 그리고** 원본은 즉시 숨김 | ⛔ *"아래 잔상과 함께 끌리는 사본도 사라져"* |
+    //
+    // ### ★ 무엇을 배웠나 — **사본은 원본에 매여 있다**
+    // 사본을 `preview:`로 **직접 그려도** 원본을 숨기면 사본이 같이 죽는다.
+    // 즉 사본은 원본의 스냅샷일 뿐 아니라 **원본이 보이는 동안만 산다.**
+    // ⛔ **그래서 「원본을 숨겨서 잔상을 없앤다」는 이 구조에서 성립하지 않는다.**
+    //
+    // ⚠️ **다음 세션이 다시 시도하지 말 것.** 하려면 `List`를 안 쓰고
+    // `ScrollView`+직접 만든 순서 바꾸기로 가야 한다 — **지금 잘 되는 것을 통째로 갈아엎는 값이다.**
+    // 사용자 판정: 잔상은 *"사소하지만"*이었고, `11fd8cb` 상태는 *"오! 지금 잘 돼!!!! 바로 이거야."*
 
     /// ## ⛔ 2026-08-20 — **집힘 신호를 두 번 시도했고 두 번 다 드래그를 깼다. 뺐다.**
     ///
@@ -67,28 +75,15 @@ struct PrincipleListView: View {
                     }
                     .listRowBackground(Palette.bg)
                     .listRowSeparator(.hidden)
-                    // 원래 자리의 잔상을 숨긴다. **줄 자체는 남겨 둔다** — 높이가 사라지면
-                    // 목록이 출렁여서 끌던 자리가 흔들린다. **보이지만 않게** 한다.
-                    .opacity(hiddenID == p.id ? 0 : 1)
                     // ★ **끌기 시작 신호.** 제스처가 아니라 드래그 시스템이 부르는 자리다.
                     .onDrag {
                         draggingID = p.id
-                        hiddenID = p.id     // ★ 이제 바로 숨겨도 된다 — 사본을 아래서 직접 그린다
-                        let mine = p.id
                         // 끄기 안전망 — 끌다 놓아 `onMove`가 안 불릴 때를 시간이 받친다.
+                        let mine = p.id
                         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                            if draggingID == mine { draggingID = nil; hiddenID = nil }
+                            if draggingID == mine { draggingID = nil }
                         }
                         return NSItemProvider(object: NSString(string: p.id))
-                    } preview: {
-                        // ★ **들어올릴 사본을 우리가 그린다.**
-                        // ⛔ 앞 시도(`4dc8b9c`)는 원본을 숨겼더니 **사본까지 사라졌다**
-                        // (사용자: *"선택된 것 자체가 사라져 버렸어. 손을 떼야 나타나"*).
-                        // 시스템이 **원본을 스냅샷**해서 사본을 만들기 때문이다 —
-                        // 한 박자 미루는 것으로는 못 피했다. **스냅샷 시점은 약속돼 있지 않다.**
-                        // 여기서 직접 그리면 **원본과 사본이 갈라져** 원본을 마음대로 숨길 수 있다.
-                        row(p, active: idx < n, dragging: true)
-                            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 11))
                     }
                 }
                 .onMove { from, to in
@@ -96,7 +91,6 @@ struct PrincipleListView: View {
                     reordered.move(fromOffsets: from, toOffset: to)
                     model.reorderPrinciples(reordered)
                     draggingID = nil   // 순서가 정해졌다 = 끌기가 끝났다
-                    hiddenID = nil
                 }
             } header: {
                 // **두 줄을 항상 보인다**(사용자 결정 2026-08-20) — 무엇이 각인되는지 + 어떻게 순서를 바꾸는지.
