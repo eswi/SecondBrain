@@ -1,8 +1,5 @@
 import SwiftUI
 import SecondBrainCore
-#if os(iOS)
-import UIKit   // 햅틱(UIImpactFeedbackGenerator)만 쓴다
-#endif
 
 /// 원칙 목록 화면 (memory-philosophy.md §3 — **신규 설계 화면**).
 /// 전체 원칙을 순서대로(위=고순위). 꾹 눌러 드래그로 순서 변경, 항목 터치 → 상세(DetailView 재사용).
@@ -11,16 +8,30 @@ struct PrincipleListView: View {
     @ObservedObject var model: InboxModel
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
 
-    /// **지금 집힌 줄** — 길게 눌러 「순서 이동 가능한 상태」가 된 것을 **화면으로 보이게** 한다(2026-08-20).
+    /// ## ⛔ 2026-08-20 — **집힘 신호를 두 번 시도했고 두 번 다 드래그를 깼다. 뺐다.**
     ///
-    /// **왜 편집 모드 버튼이 아닌가:** 길게 눌러 바로 끄는 조작이 **이미 되고 있었다**(실기기 확인 2026-08-20).
-    /// 버튼을 두면 단계가 하나 늘고 그 조작을 대체한다. **없던 것은 조작이 아니라 신호였다.**
+    /// 사용자가 원한 것: *"길게 눌러 「순서 이동 가능한 상태」가 된 것을 화면으로 알 수 있게."*
     ///
-    /// ⚠️ **실험적이다** — 제스처를 얹어 SwiftUI 기본 드래그와 다툴 수 있다(사용자 판단 2026-08-20:
-    /// *"안전보다는 실험적으로 가보자. 이상하면 안전하게 바꾸면 되니까."*).
-    /// **드래그가 여전히 되는지는 실기기에서만 판정된다** — `simultaneousGesture`를 쓴 것이 그 대비다
-    /// (제스처를 **가로채지 않고 나란히** 받는다).
-    @State private var grabbedID: String?
+    /// | 시도 | 넣은 것 | 실기기 결과 |
+    /// |---|---|---|
+    /// | 1차 (`d1749e2`) | `LongPressGesture` + `DragGesture(minimumDistance: 0)` 둘을 `simultaneousGesture`로 · 뜸·그림자·햅틱 | ⛔ **드래그가 안 됐다** — *"그림자가 나타나고 진동도 느껴지지만 드래그가 안 됨"* |
+    /// | 2차 (`7e643f4`) | `DragGesture`만 뺐다 | ⛔ **여전히 안 됐다.** 게다가 **떼도 그림자가 남았다** |
+    ///
+    /// ### ★ 2차가 원인을 갈라 줬다 — **그림자가 아니라 제스처였다**
+    /// *"떼도 그림자가 남는다"* = **내 `LongPressGesture`가 그 길게 누르기를 가져갔다**는 뜻이다.
+    /// 그런데 **`List`의 순서 바꾸기도 길게 누르기로 시작한다.** 같은 몸짓 하나를 둘이 노리고,
+    /// 내 것이 이기면 **`List`는 자기 차례를 못 받는다.**
+    /// ⚠️ **`simultaneousGesture`가 이것을 막아 주지 않는다** — 「나란히 받는다」가
+    /// 「`List` 내부 제스처와도 나란히」를 뜻하지는 않았다.
+    ///
+    /// ### ⛔ 그래서 시각효과를 바꾸는 것으로는 안 고쳐진다
+    /// `.shadow`·`.scaleEffect`는 **그리기만** 한다. 테두리로 바꿔도 **이긴 쪽이 무엇을 그리느냐**가
+    /// 바뀔 뿐 **누가 이기느냐**는 그대로다. **고칠 것은 그림이 아니라 제스처였고, 그래서 제스처를 뺐다.**
+    ///
+    /// ### 지금 남은 것 — 조작을 지키고 신호는 「가능하다」까지만
+    /// **≡ 손잡이 상시 노출**(원칙 아이콘 색) + **머리글 둘째 줄.** 「지금 집혔다」는 **못 준다.**
+    /// 주려면 **편집 모드 버튼**이 필요하다 — 그때는 순서 바꾸기가 **손잡이 드래그**로 바뀌어
+    /// 길게 누르기를 두고 다툴 일이 없어진다. **단계가 하나 느는 것이 그 대가다.**
 
     var body: some View {
         let items = model.orderedPrinciples
@@ -31,24 +42,13 @@ struct PrincipleListView: View {
                     NavigationLink(value: p) {   // 상세는 InboxView 스택의 ResolvedItem destination이 처리
                         row(p, active: idx < n)
                     }
-                    .listRowBackground(grabbedID == p.id ? Palette.surface2 : Palette.bg)
+                    .listRowBackground(Palette.bg)
                     .listRowSeparator(.hidden)
-                    // ★ 집힌 줄을 눈에 보이게 — 살짝 뜨고, 그림자가 진다.
-                    .scaleEffect(grabbedID == p.id ? 1.03 : 1, anchor: .leading)
-                    .shadow(color: .black.opacity(grabbedID == p.id ? 0.45 : 0), radius: 8, y: 3)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: grabbedID)
-                    // ⛔ **2026-08-20에 여기서 드래그를 깼다 — 전말은 아래 `grab(_:)` 주석.**
-                    // 지금은 **길게 누르기 하나만** 나란히 받는다. `DragGesture(minimumDistance: 0)`을
-                    // 함께 얹었던 것이 터치를 가져갔다(그것이 범인이라는 것은 **아직 추정**이다 — §아래).
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.3).onEnded { _ in grab(p.id) }
-                    )
                 }
                 .onMove { from, to in
                     var reordered = items
                     reordered.move(fromOffsets: from, toOffset: to)
                     model.reorderPrinciples(reordered)
-                    grabbedID = nil
                 }
             } header: {
                 // **두 줄을 항상 보인다**(사용자 결정 2026-08-20) — 무엇이 각인되는지 + 어떻게 순서를 바꾸는지.
@@ -73,36 +73,6 @@ struct PrincipleListView: View {
         #endif
     }
 
-    /// **집혔다**를 켠다 — 화면(뜸·그림자·배경)과 **손**(햅틱) 둘로 알린다.
-    /// 햅틱은 iOS만 — macOS엔 `UIImpactFeedbackGenerator`가 없다.
-    ///
-    /// ## ⛔ 2026-08-20 — 이 자리에서 **드래그를 한 번 깼다**
-    /// 처음엔 `LongPressGesture` **+ `DragGesture(minimumDistance: 0)`** 둘을
-    /// `simultaneousGesture`로 얹었다. **빌드도 시험도 다 통과했는데 실기기에서 드래그가 안 됐다** —
-    /// 사용자가 눌러서 잡았다(*"그림자가 나타나고 진동도 느껴지지만 드래그가 안 됨"*).
-    /// **그날 아침 ①-2로 통과시킨 기능을 그날 오후에 내가 깬 것이다.**
-    ///
-    /// ⚠️ **`DragGesture`를 뺀 것은 「그것이 범인이라고 추정」한 것이다 — 쟀다는 뜻이 아니다.**
-    /// 둘 중 어느 쪽이 먹었는지 갈라 재지 않았고, **`LongPressGesture`만으로도 깨질 수 있다**
-    /// (`List`의 순서 바꾸기 자체가 **길게 누르기로 시작**하므로 같은 몸짓을 두고 다툰다).
-    /// **그러면 제스처를 아예 빼고 ㉯(핸들 상시 노출)로 간다** — 신호는 잃지만 조작은 지킨다.
-    ///
-    /// **★ 이것이 오늘 쫓던 종류 그 자체다:** 빌드 `EXIT=0` · `error:` 0 · Core 374개 초록 ·
-    /// 화면은 그럴듯했다(그림자도 진동도 났다). **틀린 것은 눌러야만 드러났다.**
-    private func grab(_ id: String) {
-        guard grabbedID != id else { return }   // 같은 줄에 두 번 울리지 않는다
-        grabbedID = id
-        #if os(iOS)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        #endif
-        // 해제는 **제스처 없이** 한다 — 손 뗀 것을 잡으려고 제스처를 또 얹으면 같은 함정이다.
-        // `onMove`가 먼저 끄고, 안 끌고 놓았을 때를 위해 시간이 뒤를 받친다.
-        let mine = id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            if grabbedID == mine { grabbedID = nil }
-        }
-    }
-
     /// 원칙 한 줄. 동작(상위 N)이 아니면 흐리게 + "대기" 표시.
     private func row(_ item: ResolvedItem, active: Bool) -> some View {
         HStack(alignment: .top, spacing: 9) {
@@ -117,6 +87,12 @@ struct PrincipleListView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Palette.surface, in: Capsule())
             }
+            // **끌 수 있다는 표시** — 색은 원칙 아이콘과 같게(사용자가 그 색을 짚었다, 2026-08-20).
+            // ⚠️ **이것은 「지금 집혔다」가 아니라 「끌 수 있다」다.** 앞의 것은 제스처가 필요하고,
+            // 제스처는 `List`의 순서 바꾸기와 다툰다(위 주석). **그림만 두고 제스처는 안 둔다.**
+            Image(systemName: "line.3.horizontal").font(.caption2)
+                .foregroundStyle(TypeCatalog.meta("principle").color.opacity(0.55))
+                .padding(.top, 3)
         }
         .padding(.vertical, 5)
         .opacity(active ? 1 : 0.55)
