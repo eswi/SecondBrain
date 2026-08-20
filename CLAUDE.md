@@ -28,6 +28,7 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    - ⛔ **이 오작동은 `EXIT=0`으로 끝난다** — 빌드가 성공하므로 **로그로는 알 수 없다.**
      UDID 오타(`EXIT=64`)와 **반대 성질**이다: 틀린 UDID는 시끄럽게 죽고, `name=`은 **조용히 다른 데서 돈다.**
      그래서 「빌드 성공」을 「의도한 런타임에서 성공」으로 읽으면 안 된다.
+4. **빌드 결과는 `|tail`로 판정하지 말 것** — 파이프가 exit code를 가린다. `> log 2>&1; echo "EXIT=$?"; grep -c 'error:' log`로 본다.
 5. **★ 「빌드 실패인데 설치 성공」이 된다 — 설치 판정만으로는 새 코드가 깔렸는지 알 수 없다.**
    `DerivedData/…/Debug-iphoneos/SecondBrain.app`이 **지워지지 않으므로**, 빌드가 실패하면
    `devicectl … install`이 **직전 빌드의 앱을 그대로 얹고 `App installed`를 찍는다.**
@@ -39,7 +40,6 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
 6. **⚠️ `xcodebuild`·`git add`는 「어느 디렉터리에서 도는가」에 걸린다.** 프로젝트는 `native/`에,
    저장소 루트는 그 위다. 2026-08-21에 **셋을 연달아 밟았다**(`native/`에서 `git add native/` 두 번,
    저장소 루트에서 `-project SecondBrain.xcodeproj` 한 번). **경로는 절대경로로 쓴다.**
-4. **빌드 결과는 `|tail`로 판정하지 말 것** — 파이프가 exit code를 가린다. `> log 2>&1; echo "EXIT=$?"; grep -c 'error:' log`로 본다.
 
 ## 항시 규칙
 1. **사양서 우선 · 즉흥 금지** — 전략·방향 결정을 즉흥으로 하지 않는다. Claude 챗에서 정해진 방향을
