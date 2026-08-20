@@ -52,6 +52,13 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    **단, 실기기 조작·설치는 세션 끝까지 미루지 말고 그 자리에서 적는다** → 아래 **「기록 규칙」**.
 5. **살아있는 자산 보호** — §3 분류 프롬프트(`classify.py` / 사양서 §3), `docs/native/merge-design.md`,
    분류 체계(사양서 §2)는 큰 편집 때도 **함부로 건드리지 말 것**.
+   - ⛔⛔ **`automation/setup-mac.sh`를 돌리지 말 것 — 그것이 차단해 둔 자동 분류를 되살린다.**
+     그 스크립트는 **매시간 `classify.py`를 도는 launchd LaunchAgent를 설치**한다.
+     자동 분류는 **2026-08-18에 앱에서 진입점 둘을 막았고**(`ClassifyPause`) **재개발 예정**이며,
+     맥의 launchd도 **차단·확인 완료**다(맥북 08-18 차단 · 맥미니 08-19 애초에 없음).
+     **`automation/`은 그 결정 이전에 만들어진 것이고 경고가 붙어 있지 않았다**
+     (2026-08-21 전수 대조에서 발견). 되살리는 것은 **사용자 결정 사안**이다.
+     ⚠️ `uninstall-mac.sh`는 반대로 **끄는 쪽**이라 안전하다.
 6. **★ 화면에 나오는 말은 사용자가 정한다.** 새로 만드는 **사용자 눈에 보이는 문구**(화면 라벨·버튼·
    배너·토스트·분류 이름 등)는 **임의로 짓지 말고 반드시 물어볼 것.** 후보 2~3개 + 뜻 한 줄을
    제시하고 **사용자가 고른다.**
@@ -118,6 +125,18 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
      사용자가 명시적으로 지시했을 때만 쓴다.
      ⛔ **2026-08-20에 이 도구가 있는 줄 모르고 같은 것을 새로 만들었다** — 이 목록에 **없었기 때문이다.**
      그래서 올렸다. **목록에 없는 도구는 다시 만들어진다.**
+   - **`native/tools/inbox-state.py`** — **실데이터(`inbox*.md`)를 접어 「항목의 지금 상태」를 찍는다.**
+     `--unconfirmed` · `--type recurrence` · `--id <8자>`. **계측 규칙 7의 「표본·목록」을 데이터에서
+     계산하려고 만든 도구다.** ⚠️ **iCloud 동기화 지연이 있다** — 폰 화면과 어긋나면 파일이 뒤처진 것이다.
+     ⛔ **이것은 여기(CLAUDE.md)에 없었고 `HANDOFF.md`에만 적혀 있었다** — HANDOFF는 갱신되며 지워지는
+     스냅샷이다. **오래 남아야 하는 것은 여기 적는다**(2026-08-21 전수 대조에서 발견).
+   - **`native/tools/sb-migrate/`** — **레거시 → UUID 마이그레이션 CLI**(별도 패키지 · 앱 빌드 영향 0).
+     `--dry-run <folder>`(파일 무변경) · `--apply <folder> --out <outdir>`(원본 무변경).
+     해시·병합·검증을 **앱과 같은 `SecondBrainCore`로** 한다(재구현 divergence 방지).
+     설계 `docs/native/legacy-uuid-migration.md`. **일회성 성격이지만 다시 쓸 수 있다.**
+   - ⛔ **`native/tools/2026-08-18-strip-auto-fields.py`는 「쓰는 도구」가 아니다** —
+     **그날 그 데이터를 고친 기록**이다(실행 완료). **재실행 금지.** 파일명에 날짜가 있는 이유가 그것이고,
+     다시 필요하면 **날짜를 새로 붙여 복제**한다(그 파일 머리주석의 지시).
    - **`native/tools/ghostlab/`** — **「눌러야만 드러나는 것」을 재는 실험용 앱 + UI 시험 + 픽셀 판정기.**
      같은 목록을 여러 꼴로 그려 놓고 **끌다가 멈추게** 한 뒤 스크린샷을 잰다.
      `measure-frames.swift marks|bands <png>` = **색 띠 자리·줄 간격(pitch)**.
