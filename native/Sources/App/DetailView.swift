@@ -252,8 +252,11 @@ struct DetailView: View {
     private var rawSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionLabel("원문")
-            // TextEditor 대신 axis:.vertical TextField — 내용 따라 높이가 늘고 **자체 스크롤이 없어**
-            // 바깥 ScrollView가 그대로 스크롤된다(긴 원문 위를 드래그해도 페이지가 넘어감). 여러 줄·줄바꿈 지원.
+            // ⛔ **옛 서술(부분적으로 뒤집혔다 · 2026-08-21):** *"TextEditor 대신 axis:.vertical TextField —
+            // 내용 따라 높이가 늘고 **자체 스크롤이 없어** 바깥 ScrollView가 그대로 스크롤된다"*.
+            // **6줄까지는 그대로다**(안 넘치면 스크롤을 켜지 않는다). **넘으면 칸 안에서 스크롤한다** —
+            // 긴 원문에서 칸이 화면을 다 먹어 성역·분류가 안 보이는 것을 사용자가 잡았다.
+            // ✅ **유지되는 것:** 6줄 이내에서는 바깥이 스크롤하고, 높이는 내용만큼 늘어난다.
             // **편집 중에도 좌우 맞춤**(2026-08-21 사용자 요구) → `JustifiedTextEditor`(UITextView).
             // 옛 `TextField(axis:.vertical)`의 성질은 지킨다 — 자체 스크롤 없음·내용만큼 높이 늘어남.
             // ⚠️ 맥은 좌우 맞춤이 없으므로 옛 방식 그대로 둔다.

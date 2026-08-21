@@ -389,16 +389,25 @@ final class JustifiedTextView: UIView {
 /// 그리는 쪽(`JustifiedTextView`)은 **고르기·커서가 없다.** 편집은 텍스트 뷰가 해야 한다.
 /// `TextField(axis: .vertical)`(옛것)은 좌우 맞춤을 못 준다 — SwiftUI에 그 정렬이 없다.
 ///
-/// ## ⚠️ 원칙 셋을 **다른 방법으로** 지킨다 — 여기서는 줄을 우리가 못 나눈다
-/// 편집 중에는 TextKit이 줄을 나눈다. 그래서 **줄바꿈 거부 훅**
-/// (`NSLayoutManagerDelegate.layoutManager(_:shouldBreakLineByWordBeforeCharacterAt:)`)으로
-/// **못 끊게 막는 방식**으로 같은 결과를 노린다:
-///   **①** 부호 앞에서 못 끊게 한다(앞이 한글일 때만) → 끊는 자리가 앞으로 밀려 **한글이 줄 시작**이 된다.
-///   **②** 빈칸 앞에서 못 끊게 한다 → 빈칸이 **앞 줄 끝**에 남고 다음 줄 앞에 안 온다.
-///   **③** 비한글 덩어리 **안에서** 못 끊게 한다(영어·숫자가 단어 안에서 안 잘린다).
-/// ⛔ **훅이 불리는지는 화면으로 확인해야 한다** — 「불릴 것이다」로 적지 않는다(랩 P 편집).
-/// ⚠️ 그리는 쪽과 **완전히 같은 줄 나누기는 아니다.** 여기는 「못 끊게 막기」만 할 수 있고,
-/// 그리는 쪽은 「어디서 끊을지 고르기」를 한다.
+/// ## ⚠️ 원칙 셋을 **어절 끊기로** 지킨다 — 여기서는 줄을 우리가 못 나눈다
+/// 편집 중에는 TextKit이 줄을 나눈다.
+///
+/// ### ⛔ 1차 시도는 실패했다 — **거부 훅은 부호에 안 들었다** (2026-08-21 실기기)
+/// `byCharWrapping` + `NSLayoutManagerDelegate.layoutManager(_:shouldBreakLineByWordBeforeCharacterAt:)`로
+/// **못 끊게 막으려** 했다. 사용자 판정: *"우측 맞춤을 하는 것 같아. 줄 제일 앞에 빈칸을 넣어도
+/// 처음에 빈칸이 안 오게 하는 조정도 하고 있어. **그런데 부호가 앞으로 오지 않게 방지하지는 않아.**"*
+/// → 화면에 「…더 쓰자 / **.** 면도도」가 나왔다. **글자 단위 끊기는 그 훅을 안 거친다**(이름이 `ByWord`다).
+/// ★ **랩의 결정 실험은 이것을 못 잡았다** — 그 표본에서는 끊는 자리가 부호에 안 걸려
+/// **두 쪽이 우연히 같게 나왔다.** 「같다」를 「원칙이 지켜진다」로 읽으면 안 되는 자리였다.
+///
+/// ### ✅ 그래서 **어절 끊기(`byWordWrapping`)로 바꿨다** — 원칙 셋이 저절로 지켜진다
+///   **①** 부호는 **앞 어절에 붙어** 다니므로 줄 앞에 안 온다.
+///   **②** 어절 끊기는 **빈칸을 앞 줄 끝에** 남긴다.
+///   **③** 영어·숫자도 어절이라 **단어 안에서 안 잘린다.**
+/// ⚠️ **대가:** 한글 어절을 안 쪼개므로 **빈칸이 더 벌어진다**(그리는 쪽보다 티가 난다).
+/// **한글 단어 중간 끊기는 원칙이 아니라 「빈칸 벌어짐을 줄이는 수단」이었다** — 편집 중에는 그 수단을 포기하고
+/// **원칙 셋을 지키는 쪽**을 골랐다. 저장하면 표시 쪽(우리 엔진)이 다시 제대로 나눈다.
+/// ⛔ 거부 훅은 **남겨 뒀다** — 어절 끊기에서도 부호 앞 거부가 한 번 더 걸릴 수 있고 해가 없다.
 ///
 /// ## 자체 스크롤은 끈다
 /// 옛 `TextField(axis:.vertical)`의 성질을 지킨다 — **내용만큼 높이가 늘고 바깥 `ScrollView`가 스크롤한다**
@@ -409,13 +418,20 @@ struct JustifiedTextEditor: UIViewRepresentable {
     @Binding var isFocused: Bool
     var style: JustifiedStyle = .body
     var color: Color
+    /// **보이는 줄 수 상한.** 넘으면 칸이 더 안 자라고 **안에서 스크롤한다**(2026-08-21 사용자 요구).
+    /// ⛔ **옛 결정이 뒤집혔다** — 전엔 *"자체 스크롤이 없어 바깥 `ScrollView`가 그대로 스크롤된다"*가
+    /// 원문 칸의 성질이었다(그래서 `TextEditor` 대신 `TextField(axis:)`를 골랐다). 긴 원문에서
+    /// **칸이 화면을 다 먹어** 성역·분류가 안 보이는 것을 사용자가 잡았다.
+    /// **넘치지 않는 동안은 옛 성질이 그대로다** — 스크롤을 켜지 않으므로 바깥이 스크롤한다.
+    var maxVisibleLines: Int = 6
 
     private var font: UIFont { .systemFont(ofSize: style.pointSize) }
 
     private var paragraph: NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.alignment = .justified
-        ps.lineBreakMode = .byCharWrapping
+        // ★ **어절 끊기다**(글자 끊기가 아니다) — 위 주석의 이유. 원칙 셋이 이 한 줄로 지켜진다.
+        ps.lineBreakMode = .byWordWrapping
         ps.lineBreakStrategy = []
         return ps
     }
@@ -469,8 +485,12 @@ struct JustifiedTextEditor: UIViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, uiView tv: UITextView,
                       context: Context) -> CGSize? {
         guard let w = proposal.width, w > 0, w < .infinity else { return nil }
-        let h = tv.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude)).height
-        return CGSize(width: w, height: ceil(h))
+        let content = ceil(tv.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude)).height)
+        let cap = ceil(font.lineHeight * CGFloat(maxVisibleLines))
+        // 넘칠 때만 **안에서** 스크롤한다 — 안 넘치면 바깥 `ScrollView`가 스크롤한다(옛 성질 유지).
+        tv.isScrollEnabled = content > cap
+        tv.alwaysBounceVertical = false      // 안 넘치는 동안 드래그를 가로채지 않게
+        return CGSize(width: w, height: min(content, cap))
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text, isFocused: $isFocused) }
