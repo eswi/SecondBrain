@@ -4,6 +4,10 @@ import XCTest
 /// §7 (c) Stage D3-B — **분류 게이트**: 그 분류가 안 쓰는 칸의 날짜는 시점이 아니다.
 /// 게이트는 `ItemSchedule.publishDay` 한 곳에 있고, 소비자(알림·"곧 닥칠 것")가 상속한다.
 /// 칸별 판단이 핵심: 주차는 다시 보기는 쓰고 **마감만** 안 쓴다.
+///
+/// ★ **이것은 「결정을 지키는 시험」이다**(`CLAUDE.md` 「시험을 쓰는 법」).
+/// ⚠️ **깨진다면 분류 게이트를 누가 넓히거나 좁힌 것**일 수 있다 —
+/// `memory-philosophy.md` §7 (c)를 먼저 본다(게이트는 `ItemSchedule.publishDay` 한 곳이다).
 final class ClassGateTests: XCTestCase {
 
     private var utc: Calendar {

@@ -3,6 +3,9 @@ import XCTest
 
 /// 상세 화면 draft 커밋(EditDiff)의 정확성 (edit-policy.md §2).
 /// 특히 사용자 확인 요청: **수정 ≠ 확정** — 어떤 편집도 confirmed를 만들지 않는다.
+///
+/// ★ **이것은 「결정을 지키는 시험」이다**(`CLAUDE.md` 「시험을 쓰는 법」).
+/// ⚠️ **깨진다면 [저장]과 [기억하기]의 분리가 무너진 것**일 수 있다 — `edit-policy.md` §2를 먼저 본다.
 final class EditDiffTests: XCTestCase {
 
     /// 편의 생성기: 필드로 ResolvedItem 구성.

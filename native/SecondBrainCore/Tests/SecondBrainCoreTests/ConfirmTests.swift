@@ -4,6 +4,10 @@ import XCTest
 /// "확정" 개념(edit-policy.md §1~3)의 엔진 정확성을 못박는다.
 /// 핵심 정책 = **확정은 단방향**: OR-머지(grow-only) + unconfirm 경로 없음으로 이중 보장.
 /// (사용자가 특별히 확인 요청한 경로: 테스트 2·4)
+///
+/// ★ **이것은 「결정을 지키는 시험」이다**(`CLAUDE.md` 「시험을 쓰는 법」).
+/// ⚠️ **깨진다면 구현이 틀린 것이 아니라 「단방향」이 뒤집힌 것**일 수 있다 —
+/// 먼저 `edit-policy.md` §3을 보고 **누가 왜 바꿨나**를 찾는다.
 final class ConfirmTests: XCTestCase {
 
     private func create(_ id: String, hlc: HLC, type: String? = nil) -> Event {
