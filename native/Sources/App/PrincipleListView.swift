@@ -195,7 +195,10 @@ struct PrincipleCard: View {
                 .foregroundStyle(Palette.textTertiary).padding(.top, 3)
         }
         .opacity(active ? 1 : 0.55)          // 흐림은 **내용에만**
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        // ★ 왼쪽만 9pt (2026-08-21 사용자) — **번호와 첫 글자 사이(HStack spacing 9)와 같게 맞춘 것이다.**
+        // 잰 값: 왼쪽 테두리→번호 **14** · 번호→첫 글자 **9** → **5pt 차이**였다.
+        // 오른쪽은 그대로 14다(chevron이 있고 사용자가 그쪽은 안 지적했다).
+        .padding(.leading, 9).padding(.trailing, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(fill, in: RoundedRectangle(cornerRadius: Palette.radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Palette.radius, style: .continuous)

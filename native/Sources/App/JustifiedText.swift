@@ -462,6 +462,17 @@ struct JustifiedTextEditor: UIViewRepresentable {
         tv.selectedRange = sel
     }
 
+    /// ⛔⛔ **이게 없으면 편집 칸이 가로로 무한히 늘어난다** (2026-08-21 실기기에서 사용자가 잡았다).
+    /// `isScrollEnabled = false`인 `UITextView`의 **본디 크기(intrinsic)는 「한 줄로 쭉 늘어난 폭」**이라,
+    /// SwiftUI가 그 폭을 그대로 받아 **화면 밖까지 넓어지고 상세 화면 전체가 좌우로 밀렸다.**
+    /// → **제안된 폭을 받아 그 폭에서의 높이를 돌려준다**(그리는 쪽 `JustifiedTextView`와 같은 방식).
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView tv: UITextView,
+                      context: Context) -> CGSize? {
+        guard let w = proposal.width, w > 0, w < .infinity else { return nil }
+        let h = tv.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude)).height
+        return CGSize(width: w, height: ceil(h))
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(text: $text, isFocused: $isFocused) }
 
     /// ⚠️ `nonisolated`가 붙어 있는 이유: `NSLayoutManagerDelegate`는 메인 액터 밖에서도 불릴 수 있어

@@ -385,7 +385,8 @@ struct PrincipleRow: View {
                           weight: .medium, color: Palette.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        // ★ 왼쪽만 9pt — 원칙 목록과 같은 셈(2026-08-21). 번호와 첫 글자 사이(9)와 같게 맞췄다.
+        .padding(.leading, 9).padding(.trailing, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         // 그라데이션 대신 틴트 색을 균일하게 깐다(원칙 항목 전용).
         .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: Palette.radius, style: .continuous))
