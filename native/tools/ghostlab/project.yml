@@ -3,6 +3,12 @@ options:
   bundleIdPrefix: kr.teri
   deploymentTarget:
     iOS: "17.0"
+# ⚠️ 랩이 앱 파일 하나(`JustifiedText.swift`)를 함께 컴파일하고, 그 파일이 `SecondBrainCore`를
+# import한다(줄 나누기가 Core로 갔다 · 2026-08-21). 그래서 **랩도 Core를 물어야** 빌드된다.
+packages:
+  SecondBrainCore:
+    path: ../../SecondBrainCore
+
 targets:
   GhostLab:
     type: application
@@ -13,6 +19,9 @@ targets:
       # 랩 규칙은 「앱에서 랩을 참조하지 말 것」이고 이건 **반대 방향**이라 괜찮다.
       # 베껴 두면 갈린다 — 재는 것이 앱이 그리는 것과 같아야 줄바꿈 원칙을 확인할 수 있다.
       - path: ../../Sources/App/JustifiedText.swift
+    dependencies:
+      - package: SecondBrainCore
+        product: SecondBrainCore
     info:
       path: Info.plist
       properties:

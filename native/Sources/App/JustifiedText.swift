@@ -1,4 +1,5 @@
 import SwiftUI
+import SecondBrainCore
 import CoreText
 #if canImport(UIKit)
 import UIKit
@@ -47,162 +48,12 @@ import UIKit
 //  지금은 **화면·픽셀로만** 확인했다(랩 `RulesProbe` · O 원칙).
 //  ══════════════════════════════════════════════════════════════════════════════════
 
-/// 글자 갈래 — 원칙 ①③이 이 구분 위에 서 있다.
-enum JustifyCharKind {
-    case space          // 빈칸 (원칙 ②)
-    case hangul         // 한글 — **글자 단위로 끊을 수 있다** (원칙 ③의 「한글만」)
-    case other          // 그 밖 — 영어·숫자·부호. **덩어리로 붙어 다닌다** (원칙 ③)
-
-    static func of(_ c: Character) -> JustifyCharKind {
-        if c.isWhitespace { return .space }
-        guard let u = c.unicodeScalars.first else { return .other }
-        // 한글: 완성형 음절 · 자모 · 호환 자모
-        if (0xAC00...0xD7A3).contains(u.value)
-            || (0x1100...0x11FF).contains(u.value)
-            || (0x3130...0x318F).contains(u.value) { return .hangul }
-        return .other
-    }
-
-    /// 부호인가 — 원칙 ①이 「줄 앞에 오면 안 되는 것」으로 보는 것.
-    static func isPunct(_ c: Character) -> Bool {
-        c.isPunctuation || c.isSymbol
-    }
-}
-
-/// **줄을 직접 나눈다.** 순수 계산 — 그리기와 섞지 않는다(재기·시험을 위해).
-struct JustifiedLineBreaker {
-    let font: CTFont
-    let width: CGFloat
-
-    /// 한 덩어리 — 빈칸 하나 · 한글 한 글자 · 그 밖의 이어붙은 덩어리(원칙 ③).
-    private struct Atom { let text: String; let kind: JustifyCharKind }
-
-    struct Line {
-        let text: String
-        /// 문단의 마지막 줄인가 — **좌우 맞춤을 걸지 않는 줄**이다(정의상 왼쪽 맞춤).
-        let isParagraphEnd: Bool
-    }
-
-    func lines(_ source: String) -> [Line] {
-        // 원문의 줄바꿈은 문단 경계로 지킨다.
-        source.components(separatedBy: "\n").flatMap { paragraph -> [Line] in
-            var out = breakParagraph(paragraph)
-            if out.isEmpty { out = [Line(text: "", isParagraphEnd: true)] }
-            return out
-        }
-    }
-
-    private func atoms(_ s: String) -> [Atom] {
-        var out: [Atom] = []
-        for c in s {
-            let k = JustifyCharKind.of(c)
-            if k == .other, let last = out.last, last.kind == .other {
-                out[out.count - 1] = Atom(text: last.text + String(c), kind: .other)   // 원칙 ③ — 붙여 둔다
-            } else {
-                out.append(Atom(text: String(c), kind: k))
-            }
-        }
-        return out
-    }
-
-    private func fits(_ s: String) -> Bool { measure(s) <= width + 0.01 }
-
-    private func measure(_ s: String) -> CGFloat {
-        guard !s.isEmpty else { return 0 }
-        let a = NSAttributedString(string: s, attributes: [.font: font as Any])
-        var asc: CGFloat = 0, desc: CGFloat = 0, lead: CGFloat = 0
-        return CGFloat(CTLineGetTypographicBounds(
-            CTLineCreateWithAttributedString(a), &asc, &desc, &lead))
-    }
-
-    private func breakParagraph(_ paragraph: String) -> [Line] {
-        let items = atoms(paragraph)
-        guard !items.isEmpty else { return [] }
-
-        var out: [Line] = []
-        var cur = ""
-        var i = 0
-        var isFirstLine = true
-
-        while i < items.count {
-            let atom = items[i]
-
-            // ── 원칙 ② — 줄 앞 빈칸은 버린다. **첫 줄만 예외**(원문이 빈칸으로 시작하는 경우).
-            if cur.isEmpty, atom.kind == .space, !isFirstLine { i += 1; continue }
-
-            let candidate = cur + atom.text
-            if fits(candidate) || cur.isEmpty {
-                // 한 덩어리가 혼자서도 폭을 넘으면(아주 긴 영문·URL) 그때는 쪼갠다 —
-                // 원칙 ③의 예외. 쪼개지 않으면 넘쳐서 잘려 보인다.
-                if cur.isEmpty, !fits(atom.text), atom.kind == .other, atom.text.count > 1 {
-                    let (head, rest) = splitOversized(atom.text)
-                    out.append(Line(text: head, isParagraphEnd: false))
-                    var replaced = items
-                    replaced[i] = Atom(text: rest, kind: .other)
-                    return out + breakRemainder(replaced, from: i)
-                }
-                cur = candidate
-                i += 1
-                continue
-            }
-
-            // ── 줄을 끊는다. 먼저 원칙 ①을 본다.
-            var breakAt = i
-            if let first = atom.text.first, JustifyCharKind.isPunct(first),
-               let lastChar = cur.last, JustifyCharKind.of(lastChar) == .hangul,
-               breakAt - 1 >= 0, items[breakAt - 1].kind == .hangul,
-               cur.count > 1 {
-                // 부호가 줄 앞에 오려 한다 → **부호 바로 앞 한글을 함께 내린다.**
-                cur.removeLast()
-                breakAt -= 1
-            }
-
-            out.append(Line(text: trimTail(cur), isParagraphEnd: false))
-            cur = ""
-            isFirstLine = false
-            i = breakAt
-        }
-
-        if !cur.isEmpty || out.isEmpty {
-            out.append(Line(text: trimTail(cur), isParagraphEnd: true))
-        } else if var last = out.popLast() {
-            last = Line(text: last.text, isParagraphEnd: true)
-            out.append(last)
-        }
-        return out
-    }
-
-    /// 남은 덩어리들로 이어서 나눈다(긴 덩어리를 쪼갠 뒤 재진입용).
-    private func breakRemainder(_ items: [Atom], from index: Int) -> [Line] {
-        let rest = items[index...].map(\.text).joined()
-        return breakParagraph(rest)
-    }
-
-    /// 폭보다 긴 한 덩어리를 글자 수로 쪼갠다 — 들어가는 만큼만 앞에 남긴다.
-    private func splitOversized(_ s: String) -> (String, String) {
-        var head = ""
-        for c in s {
-            if !fits(head + String(c)), !head.isEmpty { break }
-            head.append(c)
-        }
-        return (head, String(s.dropFirst(head.count)))
-    }
-
-    /// 「…」을 붙여 폭에 맞춘다 — 뒤에서 한 글자씩 덜어낸다. 줄 제한이 걸린 목록 줄에서 쓴다.
-    func truncated(_ s: String, suffix: String) -> String {
-        var head = s
-        while !head.isEmpty, !fits(head + suffix) { head.removeLast() }
-        while let l = head.last, l.isWhitespace { head.removeLast() }
-        return head + suffix
-    }
-
-    /// 줄 끝 빈칸은 지운다 — 좌우 맞춤이 **끝 빈칸까지 늘려** 오른쪽이 비어 보이는 것을 막는다.
-    private func trimTail(_ s: String) -> String {
-        var t = s
-        while let l = t.last, l.isWhitespace { t.removeLast() }
-        return t
-    }
-}
+//  ## ★ 줄 나누기는 `SecondBrainCore`에 있다 (2026-08-21 사용자 결정)
+//  `JustifyCharKind` · `JustifiedLineBreaker`를 **Core로 옮겼다** — **순수 함수라 화면 없이 검증된다.**
+//  이 프로젝트가 계속 해온 방식이고(`MediaPlace`·`MapsLink`·`MediaMigrationText`),
+//  **줄바꿈 규칙은 화면 없이도 검증돼야 하는 종류**라는 판단이다.
+//  시험 → `SecondBrainCore/Tests/…/JustifiedLineBreakTests.swift`(**12개** · 원칙 셋 + 경계).
+//  ⚠️ **여기 남은 것은 「그리는 것」뿐이다** — `UIView`·`UITextView`가 iOS 전용이라 Core에 못 간다.
 
 /// ⚠️ **내가 더한 안전장치 하나 — 「너무 짧은 줄은 맞추지 않는다」** (2026-08-21).
 /// 원칙 셋에는 없는 것이다. 넣은 이유: 랩에서 **줄이 짧을 때 자간이 크게 벌어졌다** —
