@@ -20,10 +20,7 @@ struct CardProbeRow: View {
                 .font(.system(size: UIFont.preferredFont(forTextStyle: .callout).pointSize + 2, weight: .bold))
                 .monospacedDigit().foregroundStyle(pTint)
                 .frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
-            Text(text)
-                .font(.system(size: UIFont.preferredFont(forTextStyle: .callout).pointSize + 2, weight: .medium))
-                .foregroundStyle(textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+            CardJustifiedLabel(text: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
                 .foregroundStyle(textTertiary).padding(.top, 3)
@@ -40,6 +37,8 @@ struct CardProbeRow: View {
 }
 
 private let cardTexts = [
+    "매일 저녁에 차를 어디다 주차 하는지에 대해서 자동으로 기록해놓거나 또는 기억할 수 있는 방법을 만들어야 됩니다",
+    "아침에 일어날 때 존재하지 않던 없던 급한 일정이 머릿속에 있도록 와 일어나는 나를 괴롭히고 서두르게 만든다 그런데 그 일정은 존재하지 않는 일정이다 이게 뭐지 몇 번 그러는 그러는데",
     "먼저 사람을 본다 — 문제보다 사람이 앞이다. 급할수록 그렇다.",
     "짐작한 값과 잰 값을 같은 말투로 말하지 않는다.",
     "할 수 있는 것에 맞춰 요구를 줄이지 않는다. 못 하면 못 한다고 말한다.",
@@ -90,4 +89,35 @@ struct CardCollection: UIViewRepresentable {
     func updateUIView(_ v: UICollectionView, context: Context) {}
     func makeCoordinator() -> C { C() }
     final class C { var ds: UICollectionViewDiffableDataSource<Int, Int>? }
+}
+
+
+/// 앱 `JustifiedText`와 **같은 속성**을 값만 베낀 것 — 셀 안에서 높이가 맞나 보려는 것.
+/// ⛔ 앱 코드를 import하지 않는다(랩 규칙).
+struct CardJustifiedLabel: UIViewRepresentable {
+    let text: String
+    private var size: CGFloat { UIFont.preferredFont(forTextStyle: .callout).pointSize + 2 }
+
+    private func attributed() -> NSAttributedString {
+        let ps = NSMutableParagraphStyle()
+        ps.alignment = .justified
+        ps.lineBreakMode = .byCharWrapping
+        ps.lineBreakStrategy = []
+        return NSAttributedString(string: text, attributes: [
+            .font: UIFont.systemFont(ofSize: size, weight: .medium),
+            .foregroundColor: UIColor(textPrimary),
+            .paragraphStyle: ps,
+        ])
+    }
+    func makeUIView(context: Context) -> UILabel {
+        let l = UILabel(); l.numberOfLines = 0; l.backgroundColor = .clear
+        l.attributedText = attributed(); return l
+    }
+    func updateUIView(_ v: UILabel, context: Context) { v.attributedText = attributed() }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+        guard let w = proposal.width, w > 0, w < .infinity else { return nil }
+        uiView.preferredMaxLayoutWidth = w
+        let h = uiView.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude)).height
+        return CGSize(width: w, height: ceil(h))
+    }
 }

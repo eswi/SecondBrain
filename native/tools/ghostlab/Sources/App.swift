@@ -64,12 +64,25 @@ enum Mode: String, CaseIterable, Identifiable {
     case probe   = "I 글자"          // 글자 크기 계측
     case gap     = "J 여백"          // 줄 간격 계측
     case card    = "K 카드"          // 새 카드 모양
-    case just    = "L 맞춤"          // 좌우 맞춤 가능한가
+    case just    = "L 맞춤"          // 좌우 맞춤 넷 — 표본 ①(62자)
+    case just2   = "M 맞춤2"         // 좌우 맞춤 넷 — 표본 ②(102자)
+    case punct   = "N 금칙"          // 부호가 줄 앞으로 넘어가나 (전략 셋)
     var id: String { rawValue }
+
+    /// ★ **화면을 눌러서 고르는 것을 CLI로 고른다** (2026-08-21 신설).
+    /// `xcrun simctl launch <udid> kr.teri.GhostLab -ghostmode L` 처럼 준다.
+    /// ⚠️ 이 맥북에서는 `sim-input.swift`(CGEvent)가 막혀 있다 — 시뮬 창이 39×135로 줄어 있고
+    /// `System Events`가 창을 못 본다. **탭 없이 꼴을 고르려면 이 길뿐이다.**
+    static var fromLaunchArgs: Mode? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-ghostmode"), i + 1 < args.count else { return nil }
+        let want = args[i + 1]
+        return allCases.first { $0.rawValue.hasPrefix(want) }
+    }
 }
 
 struct ContentView: View {
-    @State private var mode: Mode = .plain
+    @State private var mode: Mode = Mode.fromLaunchArgs ?? .plain
     @State private var rows = seed
 
     var body: some View {
@@ -91,7 +104,9 @@ struct ContentView: View {
             case .probe:   FontProbe()
             case .gap:     GapProbe()
             case .card:    CardProbe()
-            case .just:    JustifyProbe()
+            case .just:    JustifyProbe(sample: .parking)
+            case .just2:   JustifyProbe(sample: .morning)
+            case .punct:   PunctProbe()
             }
         }
     }
