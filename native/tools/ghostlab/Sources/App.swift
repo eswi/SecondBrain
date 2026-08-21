@@ -68,6 +68,7 @@ enum Mode: String, CaseIterable, Identifiable {
     case just2   = "M 맞춤2"         // 좌우 맞춤 넷 — 표본 ②(102자)
     case punct   = "N 금칙"          // 부호가 줄 앞으로 넘어가나 (전략 셋)
     case rules   = "O 원칙"          // ★ 줄바꿈 원칙 셋 — **앱 코드 그대로**
+    case editBox = "P 편집"          // 원문 편집 칸이 가로로 안 늘어나나
     var id: String { rawValue }
 
     /// ★ **화면을 눌러서 고르는 것을 CLI로 고른다** (2026-08-21 신설).
@@ -109,6 +110,7 @@ struct ContentView: View {
             case .just2:   JustifyProbe(sample: .morning)
             case .punct:   PunctProbe()
             case .rules:   RulesProbe()
+            case .editBox: EditProbe()
             }
         }
     }

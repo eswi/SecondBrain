@@ -41,9 +41,9 @@ struct RulesProbe: View {
                 ForEach(Array(ruleSamples.enumerated()), id: \.offset) { _, s in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(s.0).font(.caption.weight(.semibold)).foregroundStyle(textSecond)
-                        JustifiedText(text: s.1,
-                                      size: UIFont.preferredFont(forTextStyle: .callout).pointSize + 2,
-                                      color: textPrimary)
+                        // 앱이 원칙 목록에서 쓰는 그 값 — `.callout + 2` · medium.
+                        JustifiedText(text: s.1, style: .callout, delta: 2,
+                                      weight: .medium, color: textPrimary)
                             .frame(width: 298)
                             .overlay(alignment: .trailing) {
                                 Rectangle().fill(pTint.opacity(0.35)).frame(width: 1)
