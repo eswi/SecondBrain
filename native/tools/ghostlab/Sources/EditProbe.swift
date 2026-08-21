@@ -20,9 +20,11 @@ private let pTint = Color(red: 0x22/255, green: 0xD3/255, blue: 0xEE/255)
 
 struct EditProbe: View {
     // 실데이터에서 가져온 긴 원문(사용자 스샷에 나온 그 원칙).
-    @State private var text = "대화를 시작할 때마다 이 대화에서의 여러 가지 공격은 나를 향한 공격이 아니라 사실을 인지하고 시작하자 그리고 또 한 줄 더 붙여서 여러 줄이 되게 한다"
+    // ⛔ 사용자 스샷처럼 아주 긴 원문 — **6줄에서 멈추고 안에서 스크롤하나**를 본다.
+    @State private var text = "월요일 아침에는 미용에 좀 더 11111111신경 더 쓰자. 면도도 하고, 코털 정리도 하고 머리도 한 번 세심하게 빗고 옷도 한결 깨끗하고 정중하게 입자. 월요일 아침에는 미용에 좀 더 11111111신경 더 쓰자. 면도도 하고, 코털 정리도 하고 머리도 한 번 세심하게 빗고 옷도 한결 깨끗하고 정중하게 입자. 월요일 아침에는 미용에 좀 더 신경 더 쓰자."
     @State private var focused = false
-    @State private var punct = "할 수 있는 것에 맞춰 요구를 줄이지 않는다. 못 하면 못 한다고 말한다. 그리고 또 한 줄 더 붙인다."
+    // ⛔ 실기기에서 깨진 그 문장 — 「…더 쓰자 / . 면도도」로 부호가 줄 앞에 왔다.
+    @State private var punct = "월요일 아침에는 미용에 좀 더 11111111신경 더 쓰자. 면도도 하고, 코털 정리도 하고 머리도 한 번 세심하게 빗고 옷도 한결 깨끗하고 정중하게 입자."
     @State private var focused2 = false
 
     var body: some View {
@@ -42,7 +44,7 @@ struct EditProbe: View {
                     .padding(14)
                     .background(surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                Text("↑ 이 칸이 화면 밖으로 나가면 회귀다").font(.caption2).foregroundStyle(textSecond)
+                Text("↑ 6줄에서 멈춰야 한다(안에서 스크롤). 안 멈추면 회귀다").font(.caption2).foregroundStyle(textSecond)
 
                 // ★ 둘째 칸 — **부호가 든 표본.** 「줄바꿈 거부 훅」이 실제로 불리는지 보는 자리다.
                 //   ① 부호가 줄 앞에 오면 훅이 안 불린 것이고, 한글이 줄 앞에 오면 불린 것이다.
