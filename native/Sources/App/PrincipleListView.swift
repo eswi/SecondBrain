@@ -165,10 +165,9 @@ struct PrincipleCard: View {
                 .font(.system(size: PrincipleFont.size, weight: .bold)).monospacedDigit()
                 .foregroundStyle(tint)
                 .frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
-            Text(item.raw ?? "")
-                .font(.system(size: PrincipleFont.size, weight: .medium))
-                .foregroundStyle(Palette.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+            // 좌우 맞춤 + 단어 중간 끊기 (2026-08-21 사용자 결정 · 랩에서 넷을 재고 D를 골랐다).
+            // ⚠️ 맥은 왼쪽 맞춤으로 남는다 — `JustifiedText` 머리주석에 이유가 있다.
+            JustifiedText(text: item.raw ?? "", size: PrincipleFont.size, color: Palette.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             // 눌러서 상세로 간다는 표시. 시스템 accessory 대신 **카드 안**에 그린다.
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold))

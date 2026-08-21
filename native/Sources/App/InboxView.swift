@@ -364,6 +364,9 @@ struct DashboardRow: View {
 struct PrincipleRow: View {
     let item: ResolvedItem
     var number: Int? = nil            // 순서 번호(1,2,3…). 별 아이콘은 섹션 제목으로 옮김.
+    /// ⚠️ **단계가 바뀔 때 다시 그리는 의존.** 글자를 `UILabel`로 바꾼 뒤로는 이게 없으면
+    /// 접근성에서 글자 크기를 올려도 **이 줄만 안 커진다**(`PrincipleFont.size`가 안 갱신된다).
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var tint: Color { TypeCatalog.meta("principle").color }
 
     var body: some View {
@@ -372,9 +375,10 @@ struct PrincipleRow: View {
                 Text("\(number)").font(.callout.weight(.bold)).monospacedDigit()
                     .foregroundStyle(tint).frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
             }
-            Text(item.raw ?? "")
-                .font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+            // 좌우 맞춤 + 단어 중간 끊기 — **원칙 목록과 같은 짜임**(둘이 갈리면 두 화면이 갈린다).
+            // 여기 글자 크기는 `.callout` 그대로다(목록은 +2pt다 — 그 차이는 유지한다).
+            JustifiedText(text: item.raw ?? "", size: PrincipleFont.size - 2,
+                          color: Palette.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
