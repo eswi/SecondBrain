@@ -372,13 +372,17 @@ struct PrincipleRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
             if let number {
+                // 번호는 **두 자리 고정 폭 · 우측 맞춤**(2026-08-21) — 원칙 목록과 같은 셈.
                 Text("\(number)").font(.callout.weight(.bold)).monospacedDigit()
-                    .foregroundStyle(tint).frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
+                    .foregroundStyle(tint)
+                    .frame(width: PrincipleFont.numberWidth(size: PrincipleFont.size - 2),
+                           alignment: .trailing)
+                    .padding(.top, 1)
             }
             // 좌우 맞춤 + 단어 중간 끊기 — **원칙 목록과 같은 짜임**(둘이 갈리면 두 화면이 갈린다).
             // 여기 글자 크기는 `.callout` 그대로다(목록은 +2pt다 — 그 차이는 유지한다).
-            JustifiedText(text: item.raw ?? "", size: PrincipleFont.size - 2,
-                          color: Palette.textPrimary)
+            JustifiedText(text: item.raw ?? "", style: .callout, delta: 0,
+                          weight: .medium, color: Palette.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
@@ -450,8 +454,9 @@ struct UpcomingCard: View {
             NavigationLink(value: entry.item) {                                          // 나머지 = 상세 화면
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(entry.item.raw ?? "(내용 없음)")
-                            .font(.body).foregroundStyle(Palette.textPrimary).lineLimit(3)
+                        // 원문이 보이는 곳은 좌우 맞춤(2026-08-21 사용자 요구). 굵기·크기·줄 제한은 전과 같다.
+                        JustifiedText(text: entry.item.raw ?? "(내용 없음)", style: .body,
+                                      weight: .regular, color: Palette.textPrimary, maxLines: 3)
                         HStack(spacing: 6) {
                             SourceBadge(source: entry.item.source)
                             // 캡션 색 = 원문과 같은 textPrimary(밝게). 크기(.caption)로 이미 비중을 죽이므로 색만 올린다.
@@ -529,8 +534,9 @@ struct MemoryRow: View {
                 //    일관성 쪽으로 판단했다. 새 기억들만 원하면 `provisional`처럼 플래그로 가르면 된다.
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
-                        Text(item.raw ?? "(내용 없음)")
-                            .font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)   // 원문 2줄까지(넘치면 …)
+                        // 원문 2줄까지(넘치면 …) · 좌우 맞춤(2026-08-21 사용자 요구)
+                        JustifiedText(text: item.raw ?? "(내용 없음)", style: .callout,
+                                      weight: .regular, color: Palette.textPrimary, maxLines: 2)
                         Spacer(minLength: 4)
                         // 상태 칩(§4 + D) — 완료 후 살아있는 기억으로 와도 "완료"/"N일 놓침"이 보이고,
                         // **늦었는데 숨겨진 것**은 여기서 「8/14에 다시 · 7일 늦음」(amber)으로 드러난다.

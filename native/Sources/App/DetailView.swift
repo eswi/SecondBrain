@@ -75,7 +75,10 @@ struct DetailView: View {
     @State private var noticeDialog: String?
 
     /// 원문 편집 포커스. 원문 밖을 누르면 내리고(키보드 숨김), 원문을 다시 누르면 그 위치에 커서·키보드 복귀.
-    @FocusState private var rawFocused: Bool
+    /// ⚠️ **`@FocusState`가 아니다** — `UIViewRepresentable`(`JustifiedTextEditor`)에는 `.focused`가
+    /// 안 걸린다. Bool로 주고받고, 텍스트 뷰가 `becomeFirstResponder`/`resign`으로 따라온다.
+    /// 밖을 눌러 내리는 세 자리(`rawFocused = false`)는 그대로 산다.
+    @State private var rawFocused: Bool = false
 
     /// 지금 고치는 중인 시점 칸(없으면 nil). **기억하지 않는다** — `@State`라 화면과 함께 태어나고 죽는다.
     /// 화면을 다시 열면 언제나 닫힌 채다.
@@ -251,11 +254,21 @@ struct DetailView: View {
             sectionLabel("원문")
             // TextEditor 대신 axis:.vertical TextField — 내용 따라 높이가 늘고 **자체 스크롤이 없어**
             // 바깥 ScrollView가 그대로 스크롤된다(긴 원문 위를 드래그해도 페이지가 넘어감). 여러 줄·줄바꿈 지원.
-            TextField("원문", text: $raw, axis: .vertical)
-                .font(.body)
-                .foregroundStyle(Palette.textPrimary)
-                .textFieldStyle(.plain)
-                .focused($rawFocused)   // 탭하면 포커스·키보드(커서는 탭 위치) / 밖을 누르면 아래에서 해제
+            // **편집 중에도 좌우 맞춤**(2026-08-21 사용자 요구) → `JustifiedTextEditor`(UITextView).
+            // 옛 `TextField(axis:.vertical)`의 성질은 지킨다 — 자체 스크롤 없음·내용만큼 높이 늘어남.
+            // ⚠️ 맥은 좌우 맞춤이 없으므로 옛 방식 그대로 둔다.
+            // ⚠️ `Group`으로 감싼 이유: `#if`가 수식어 사슬을 끊는다(아래 여백·테두리가 둘 다에 걸려야 한다).
+            Group {
+                #if os(iOS)
+                JustifiedTextEditor(text: $raw, isFocused: $rawFocused,
+                                    style: .body, color: Palette.textPrimary)
+                #else
+                TextField("원문", text: $raw, axis: .vertical)
+                    .font(.body)
+                    .foregroundStyle(Palette.textPrimary)
+                    .textFieldStyle(.plain)
+                #endif
+            }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(Palette.bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))

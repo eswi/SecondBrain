@@ -30,6 +30,14 @@ import UIKit
 //  단어 중간 끊기를 함께 걸면 **9.7pt**로 내려간다(최악 줄 11.7 → 8.0). 한글 한 글자가 **15.6pt**라
 //  그보다 작은 남는 폭은 글자로 못 메우고 빈칸으로 간다 — **「0에 가깝게」는 원리적으로 안 된다.**
 //
+//  ## 어디에 쓰나 — **원문이 보이는 곳 전부** (2026-08-21 사용자 요구)
+//  원칙 목록·원칙 영역 · 지금 챙길 것 · 새 기억들/살아있는 기억(`MemoryRow`) · 검색 · 보관함 ·
+//  **상세의 원문(편집 중에도)**.
+//  ⛔ **수집 창(`CaptureSheet`)에는 넣지 않는다** — 사용자가 명시적으로 뺐다.
+//  글꼴·굵기·줄 제한이 자리마다 다르므로 **글자 크기를 여기서 계산한다**(`style` + `delta`) —
+//  그래야 `@Environment(\.dynamicTypeSize)` 의존을 **이 뷰 하나가** 들고 있으면 된다.
+//  (전엔 크기를 쓰는 쪽이 계산해서, 쓰는 쪽마다 그 의존을 심어야 했다.)
+//
 //  ## 맥은 왼쪽 맞춤으로 남는다
 //  그리는 쪽이 `UIView`(iOS 전용)다. 맥은 `Text` 그대로 — **두 플랫폼이 갈리는 것을 알고 받아들였다.**
 //
@@ -180,6 +188,14 @@ struct JustifiedLineBreaker {
         return (head, String(s.dropFirst(head.count)))
     }
 
+    /// 「…」을 붙여 폭에 맞춘다 — 뒤에서 한 글자씩 덜어낸다. 줄 제한이 걸린 목록 줄에서 쓴다.
+    func truncated(_ s: String, suffix: String) -> String {
+        var head = s
+        while !head.isEmpty, !fits(head + suffix) { head.removeLast() }
+        while let l = head.last, l.isWhitespace { head.removeLast() }
+        return head + suffix
+    }
+
     /// 줄 끝 빈칸은 지운다 — 좌우 맞춤이 **끝 빈칸까지 늘려** 오른쪽이 비어 보이는 것을 막는다.
     private func trimTail(_ s: String) -> String {
         var t = s
@@ -197,21 +213,54 @@ struct JustifiedLineBreaker {
 /// **긴 영문·URL 때문에 일찍 끝난 줄**뿐이다. ⛔ **이 값은 사용자가 정할 사안이다** — 바꾸려면 여기 한 줄.
 private let justifyMinFill: CGFloat = 0.85
 
-/// 원칙 문장을 그린다. iOS는 직접 그리고, 맥은 `Text`(왼쪽 맞춤).
+/// 글꼴 갈래 — 자리마다 다르다(목록은 `.body`/`.callout`, 원칙 목록은 `.callout+2`).
+/// 플랫폼마다 타입이 갈려서(`UIFont.TextStyle` ↔ `NSFont.TextStyle`) 우리 것으로 하나 둔다.
+enum JustifiedStyle {
+    case body, callout
+
+    var pointSize: CGFloat {
+        #if canImport(UIKit)
+        switch self {
+        case .body:    return UIFont.preferredFont(forTextStyle: .body).pointSize
+        case .callout: return UIFont.preferredFont(forTextStyle: .callout).pointSize
+        }
+        #else
+        switch self {
+        case .body:    return NSFont.preferredFont(forTextStyle: .body).pointSize
+        case .callout: return NSFont.preferredFont(forTextStyle: .callout).pointSize
+        }
+        #endif
+    }
+}
+
+/// 굵기 — 쓰는 자리가 둘뿐이다(목록은 보통, 원칙은 medium).
+enum JustifiedWeight { case regular, medium }
+
+/// 원문을 그린다. iOS는 직접 그리고, 맥은 `Text`(왼쪽 맞춤).
 struct JustifiedText: View {
     let text: String
-    /// 이미 계산된 글자 크기(pt) — ⚠️ **여기서 계산하지 않는다.**
-    /// 단계가 바뀔 때 다시 그리는 의존(`@Environment(\.dynamicTypeSize)`)은 **쓰는 쪽**에 있다.
-    let size: CGFloat
+    var style: JustifiedStyle = .callout
+    /// 갈래 기준 크기에 더할 값. 원칙 목록이 **+2**다(`PrincipleFont`와 같은 셈).
+    var delta: CGFloat = 0
+    var weight: JustifiedWeight = .medium
     let color: Color
+    /// 0이면 제한 없음. 목록 줄은 2~3줄에서 자른다(넘치면 마지막 줄에 「…」).
+    var maxLines: Int = 0
+
+    /// ★ **단계가 바뀔 때 다시 그리는 의존은 이 뷰가 들고 있다** — 크기를 여기서 계산하기 때문이다.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var size: CGFloat { style.pointSize + delta }
 
     var body: some View {
         #if os(iOS)
-        JustifiedTextRepresentable(text: text, size: size, color: color)
+        JustifiedTextRepresentable(text: text, size: size, weight: weight,
+                                   color: color, maxLines: maxLines)
         #else
         Text(text)
-            .font(.system(size: size, weight: .medium))
+            .font(.system(size: size, weight: weight == .medium ? .medium : .regular))
             .foregroundStyle(color)
+            .lineLimit(maxLines == 0 ? nil : maxLines)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
         #endif
@@ -222,15 +271,17 @@ struct JustifiedText: View {
 private struct JustifiedTextRepresentable: UIViewRepresentable {
     let text: String
     let size: CGFloat
+    let weight: JustifiedWeight
     let color: Color
+    let maxLines: Int
 
     func makeUIView(context: Context) -> JustifiedTextView {
         let v = JustifiedTextView()
-        v.configure(text: text, size: size, color: UIColor(color))
+        v.configure(text: text, size: size, weight: weight, color: UIColor(color), maxLines: maxLines)
         return v
     }
     func updateUIView(_ v: JustifiedTextView, context: Context) {
-        v.configure(text: text, size: size, color: UIColor(color))
+        v.configure(text: text, size: size, weight: weight, color: UIColor(color), maxLines: maxLines)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: JustifiedTextView,
                       context: Context) -> CGSize? {
@@ -243,7 +294,10 @@ private struct JustifiedTextRepresentable: UIViewRepresentable {
 final class JustifiedTextView: UIView {
     private var text = ""
     private var size: CGFloat = 17
+    private var weight: JustifiedWeight = .medium
     private var color: UIColor = .label
+    /// 0이면 제한 없음. 넘치면 **마지막 보이는 줄에 「…」**을 붙이고 그 줄은 안 맞춘다.
+    private var maxLines = 0
     private var lastWidth: CGFloat = 0
     private var cached: [JustifiedLineBreaker.Line] = []
 
@@ -255,20 +309,35 @@ final class JustifiedTextView: UIView {
     }
     required init?(coder: NSCoder) { fatalError("스토리보드로 안 쓴다") }
 
-    func configure(text: String, size: CGFloat, color: UIColor) {
-        guard self.text != text || self.size != size || self.color != color else { return }
-        self.text = text; self.size = size; self.color = color
+    func configure(text: String, size: CGFloat, weight: JustifiedWeight,
+                   color: UIColor, maxLines: Int) {
+        guard self.text != text || self.size != size || self.weight != weight
+                || self.color != color || self.maxLines != maxLines else { return }
+        self.text = text; self.size = size; self.weight = weight
+        self.color = color; self.maxLines = maxLines
         accessibilityLabel = text
         cached = []; lastWidth = 0
         setNeedsDisplay(); invalidateIntrinsicContentSize()
     }
 
-    private var font: UIFont { .systemFont(ofSize: size, weight: .medium) }
+    private var font: UIFont {
+        .systemFont(ofSize: size, weight: weight == .medium ? .medium : .regular)
+    }
     private var lineHeight: CGFloat { ceil(font.lineHeight) }
 
     private func lines(forWidth w: CGFloat) -> [JustifiedLineBreaker.Line] {
         if w == lastWidth, !cached.isEmpty { return cached }
-        let broken = JustifiedLineBreaker(font: font as CTFont, width: w).lines(text)
+        let breaker = JustifiedLineBreaker(font: font as CTFont, width: w)
+        var broken = breaker.lines(text)
+        // 줄 제한 — 넘치면 **마지막 보이는 줄에 「…」**. 그 줄은 맞추지 않는다(끝이 아니니까).
+        if maxLines > 0, broken.count > maxLines {
+            var kept = Array(broken.prefix(maxLines))
+            if let last = kept.popLast() {
+                kept.append(JustifiedLineBreaker.Line(
+                    text: breaker.truncated(last.text, suffix: "…"), isParagraphEnd: true))
+            }
+            broken = kept
+        }
         cached = broken; lastWidth = w
         return broken
     }
@@ -309,6 +378,132 @@ final class JustifiedTextView: UIView {
             ctx.textPosition = CGPoint(x: 0, y: bounds.height - baselineFromTop)
             CTLineDraw(ct, ctx)
         }
+    }
+}
+#endif
+
+#if os(iOS)
+/// **원문 편집 — 편집 중에도 좌우 맞춤** (2026-08-21 사용자 요구).
+///
+/// ## 왜 `UITextView`인가
+/// 그리는 쪽(`JustifiedTextView`)은 **고르기·커서가 없다.** 편집은 텍스트 뷰가 해야 한다.
+/// `TextField(axis: .vertical)`(옛것)은 좌우 맞춤을 못 준다 — SwiftUI에 그 정렬이 없다.
+///
+/// ## ⚠️ 원칙 셋을 **다른 방법으로** 지킨다 — 여기서는 줄을 우리가 못 나눈다
+/// 편집 중에는 TextKit이 줄을 나눈다. 그래서 **줄바꿈 거부 훅**
+/// (`NSLayoutManagerDelegate.layoutManager(_:shouldBreakLineByWordBeforeCharacterAt:)`)으로
+/// **못 끊게 막는 방식**으로 같은 결과를 노린다:
+///   **①** 부호 앞에서 못 끊게 한다(앞이 한글일 때만) → 끊는 자리가 앞으로 밀려 **한글이 줄 시작**이 된다.
+///   **②** 빈칸 앞에서 못 끊게 한다 → 빈칸이 **앞 줄 끝**에 남고 다음 줄 앞에 안 온다.
+///   **③** 비한글 덩어리 **안에서** 못 끊게 한다(영어·숫자가 단어 안에서 안 잘린다).
+/// ⛔ **훅이 불리는지는 화면으로 확인해야 한다** — 「불릴 것이다」로 적지 않는다(랩 P 편집).
+/// ⚠️ 그리는 쪽과 **완전히 같은 줄 나누기는 아니다.** 여기는 「못 끊게 막기」만 할 수 있고,
+/// 그리는 쪽은 「어디서 끊을지 고르기」를 한다.
+///
+/// ## 자체 스크롤은 끈다
+/// 옛 `TextField(axis:.vertical)`의 성질을 지킨다 — **내용만큼 높이가 늘고 바깥 `ScrollView`가 스크롤한다**
+/// (긴 원문 위를 드래그해도 페이지가 넘어간다). `isScrollEnabled = false`가 그것이다.
+struct JustifiedTextEditor: UIViewRepresentable {
+    @Binding var text: String
+    /// 포커스 — `@FocusState`는 `UIViewRepresentable`에 안 걸린다. Bool로 주고받는다.
+    @Binding var isFocused: Bool
+    var style: JustifiedStyle = .body
+    var color: Color
+
+    private var font: UIFont { .systemFont(ofSize: style.pointSize) }
+
+    private var paragraph: NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.alignment = .justified
+        ps.lineBreakMode = .byCharWrapping
+        ps.lineBreakStrategy = []
+        return ps
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        // ⚠️ TextKit 1로 만든다 — `NSLayoutManager` 대리자(줄바꿈 거부 훅)가 필요하다.
+        //    기본값(TextKit 2)에는 그 훅이 없다.
+        let tv = UITextView(usingTextLayoutManager: false)
+        tv.isScrollEnabled = false
+        tv.backgroundColor = .clear
+        tv.textContainerInset = .zero
+        tv.textContainer.lineFragmentPadding = 0
+        tv.delegate = context.coordinator
+        tv.layoutManager.delegate = context.coordinator
+        tv.font = font
+        tv.textColor = UIColor(color)
+        tv.typingAttributes = [.font: font, .foregroundColor: UIColor(color),
+                               .paragraphStyle: paragraph]
+        tv.text = text
+        apply(tv)
+        return tv
+    }
+
+    func updateUIView(_ tv: UITextView, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.isFocused = $isFocused
+        if tv.text != text { tv.text = text; apply(tv) }
+        if tv.font != font || tv.textColor != UIColor(color) {
+            tv.font = font; tv.textColor = UIColor(color); apply(tv)
+        }
+        // 포커스 맞추기 — 밖을 눌러 내리는 길(상세의 세 자리)이 이걸로 산다.
+        if isFocused, !tv.isFirstResponder { tv.becomeFirstResponder() }
+        if !isFocused, tv.isFirstResponder { tv.resignFirstResponder() }
+    }
+
+    /// 문단 속성을 글 전체에 다시 입힌다(타이핑 속성만으로는 붙여넣기·초기값에 안 걸린다).
+    private func apply(_ tv: UITextView) {
+        let sel = tv.selectedRange
+        tv.attributedText = NSAttributedString(string: tv.text, attributes: [
+            .font: font, .foregroundColor: UIColor(color), .paragraphStyle: paragraph,
+        ])
+        tv.typingAttributes = [.font: font, .foregroundColor: UIColor(color),
+                               .paragraphStyle: paragraph]
+        tv.selectedRange = sel
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text, isFocused: $isFocused) }
+
+    /// ⚠️ `nonisolated`가 붙어 있는 이유: `NSLayoutManagerDelegate`는 메인 액터 밖에서도 불릴 수 있어
+    /// 그대로 두면 **데이터 경합 경고로 빌드가 막힌다**(Swift 6 격리 검사).
+    /// 줄바꿈 판단은 **넘겨받은 문자열만** 보므로 상태를 안 건드린다 — 그래서 안전하다.
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var text: Binding<String>
+        var isFocused: Binding<Bool>
+        init(text: Binding<String>, isFocused: Binding<Bool>) {
+            self.text = text; self.isFocused = isFocused
+        }
+
+        func textViewDidChange(_ tv: UITextView) {
+            if text.wrappedValue != tv.text { text.wrappedValue = tv.text }
+        }
+        func textViewDidBeginEditing(_ tv: UITextView) {
+            if !isFocused.wrappedValue { isFocused.wrappedValue = true }
+        }
+        func textViewDidEndEditing(_ tv: UITextView) {
+            if isFocused.wrappedValue { isFocused.wrappedValue = false }
+        }
+
+    }
+}
+
+/// ★ 원칙 셋 — **여기서 끊는 것을 거부한다.** (메인 액터 밖에서 불릴 수 있어 `nonisolated`)
+extension JustifiedTextEditor.Coordinator: NSLayoutManagerDelegate {
+    nonisolated func layoutManager(_ layoutManager: NSLayoutManager,
+                                   shouldBreakLineByWordBeforeCharacterAt charIndex: Int) -> Bool {
+        guard let s = layoutManager.textStorage?.string else { return true }
+        let chars = Array(s)
+        guard charIndex > 0, charIndex < chars.count else { return true }
+        let here = chars[charIndex], prev = chars[charIndex - 1]
+        let kHere = JustifyCharKind.of(here), kPrev = JustifyCharKind.of(prev)
+
+        // ② 빈칸이 줄 앞에 오면 안 된다 → 빈칸 앞에서 안 끊는다(빈칸은 앞 줄 끝에 남는다).
+        if kHere == .space { return false }
+        // ① 부호 앞에서 안 끊는다 — **앞이 한글일 때만**(아니면 허용).
+        if JustifyCharKind.isPunct(here), kPrev == .hangul { return false }
+        // ③ 비한글 덩어리 안에서 안 끊는다(영어·숫자가 단어 중간에서 안 잘린다).
+        if kHere == .other, kPrev == .other { return false }
+        return true
     }
 }
 #endif

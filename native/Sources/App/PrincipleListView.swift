@@ -25,6 +25,24 @@ enum PrincipleFont {
         NSFont.preferredFont(forTextStyle: .callout).pointSize + 2
         #endif
     }
+
+    /// 번호 칸 폭 — **두 자리 기준**(`##`), 우측 맞춤으로 쓴다.
+    ///
+    /// ⛔ **왜 고정 폭인가:** 전엔 `minWidth: 16`이라 **10번부터 칸이 넓어져 원문이 오른쪽으로 밀렸다**
+    /// (2026-08-21 사용자가 화면에서 잡았다 — *"1~9까지는 괜찮은데 10번부터는 원문이 우측으로 밀려 보여"*).
+    /// **원칙은 100개를 넘지 않는다**는 전제를 사용자가 줬으므로 **두 자리로 고정**한다.
+    /// 값은 `00`을 **그 크기·굵기·monospacedDigit로 실제로 재서** 얻는다 — 짐작하지 않는다.
+    static func numberWidth(size: CGFloat) -> CGFloat {
+        #if canImport(UIKit)
+        let f: Any = UIFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
+        #else
+        let f: Any = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
+        #endif
+        let a = NSAttributedString(string: "00", attributes: [.font: f])
+        var asc: CGFloat = 0, desc: CGFloat = 0, lead: CGFloat = 0
+        return ceil(CGFloat(CTLineGetTypographicBounds(
+            CTLineCreateWithAttributedString(a), &asc, &desc, &lead)))
+    }
 }
 
 /// 원칙 목록 화면 (memory-philosophy.md §3 — **신규 설계 화면**).
@@ -161,13 +179,16 @@ struct PrincipleCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
+            // 번호는 **두 자리 고정 폭 · 우측 맞춤**(2026-08-21) — 10번부터 원문이 밀리던 것을 막는다.
             Text("\(number)")
                 .font(.system(size: PrincipleFont.size, weight: .bold)).monospacedDigit()
                 .foregroundStyle(tint)
-                .frame(minWidth: 16, alignment: .trailing).padding(.top, 1)
+                .frame(width: PrincipleFont.numberWidth(size: PrincipleFont.size), alignment: .trailing)
+                .padding(.top, 1)
             // 좌우 맞춤 + 단어 중간 끊기 (2026-08-21 사용자 결정 · 랩에서 넷을 재고 D를 골랐다).
             // ⚠️ 맥은 왼쪽 맞춤으로 남는다 — `JustifiedText` 머리주석에 이유가 있다.
-            JustifiedText(text: item.raw ?? "", size: PrincipleFont.size, color: Palette.textPrimary)
+            JustifiedText(text: item.raw ?? "", style: .callout, delta: 2,
+                          weight: .medium, color: Palette.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             // 눌러서 상세로 간다는 표시. 시스템 accessory 대신 **카드 안**에 그린다.
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold))

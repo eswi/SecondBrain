@@ -62,7 +62,9 @@ struct SearchView: View {
                     HStack(spacing: 10) {
                         TypeGlyph(type: item.type)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(item.raw ?? "").font(.callout).foregroundStyle(Palette.textPrimary).lineLimit(2)
+                            // 좌우 맞춤(2026-08-21) — 검색도 원문이 보이는 곳이다.
+                            JustifiedText(text: item.raw ?? "", style: .callout,
+                                          weight: .regular, color: Palette.textPrimary, maxLines: 2)
                             // **「임시」는 캡션 줄(날짜) 오른쪽에 붙인다 (2026-08-18 사용자 결정).**
                             //
                             // **왜 원문 줄이 아닌가:** 검색 결과는 **확정된 기억이 훨씬 많다**
