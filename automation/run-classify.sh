@@ -1,4 +1,15 @@
 #!/bin/bash
+# ⛔ 이 파일은 「지금은 쓰지 않는 것」이다.
+#    자동 분류는 2026-08-18에 앱에서 진입점 둘을 막았고(`ClassifyPause`),
+#    2026-08-21에 **zero base로 새로 설계**하기로 정해졌다(CLAUDE.md 항시 규칙 8).
+#    이 스크립트는 그 결정 '이전'에 만들어졌고, **launchd 없이 직접 돌려도 그대로 돈다** —
+#    classify.py를 1회 실행해 iCloud inbox.md에 분류 필드를 쓴다.
+#    ⛔ **화면에 아무것도 안 나온다** — 결과는 로그에만 찍힌다.
+#       「래퍼니까 안전하다」로 읽지 말 것. 분류가 실제로 일어난다.
+#    고치거나 지우지 말 것 — 표시만 해 둔다. 되살릴지는 사용자가 정한다.
+#    근거: CLAUDE.md 항시 규칙 8 · docs/native/memory-philosophy.md §2-1-B
+#          (그 절의 「자동은 준비까지, 결정은 사용자가」).
+#
 # 스케줄 실행용 분류기 래퍼 (macOS launchd / 기타 cron).
 # - classify.py를 이 스크립트 기준 상위(=repo 루트)에서 찾는다.
 # - python은 $SECONDBRAIN_PYTHON(플리스트가 지정) 우선, 없으면 PATH의 python3.

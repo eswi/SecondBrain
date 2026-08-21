@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# ⛔ 이 파일은 「지금은 쓰지 않는 것」이다.
+#    자동 분류는 2026-08-18에 앱에서 진입점 둘을 막았고(`ClassifyPause`),
+#    2026-08-21에 **zero base로 새로 설계**하기로 정해졌다(CLAUDE.md 항시 규칙 8).
+#    이 파일은 그 결정 '이전'에 만들어졌고, 인수 없이 돌리면 iCloud inbox.md에
+#    **type·due·resurface·status·question을 직접 써넣는다** — 결정 C(자동의 제안은
+#    항목 필드에 쓰지 않는다)를 정면으로 위반한다.
+#    ⛔⛔ **그리고 아래 SYSTEM_PROMPT에 `discard`가 그대로 있다.** 앱(`classifyFields`)에는
+#         「AI가 사람이 수집한 기억을 조용히 삭제하면 안 됨」 방어가 있지만 **여기엔 없다.**
+#         2026-07-24에 이 경로가 `D6E4950B`(사람이 확정한 기억)까지 버렸다.
+#    ⚠️ 저장하지 않는 모드 둘: --plan(API 호출 없음 · 대상만 표시) · --dry-run(호출하되 저장 안 함).
+#    고치거나 지우지 말 것 — 표시만 해 둔다. 되살릴지는 사용자가 정한다.
+#    근거: CLAUDE.md 항시 규칙 8 · docs/native/memory-philosophy.md §2-1-B
+#          (그 절의 「자동은 준비까지, 결정은 사용자가」).
+#
 """classify.py — 받은함 자동 분류기 (설계서 §3·§6-2)
 
 데스크톱(Mac/Windows)에서 수동 실행한다. iCloud의 inbox.md에서 '아직 분류 안 된 줄'만

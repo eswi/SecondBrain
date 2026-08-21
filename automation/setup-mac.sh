@@ -1,4 +1,15 @@
 #!/bin/bash
+# ⛔ 이 파일은 「지금은 쓰지 않는 것」이다.
+#    자동 분류는 2026-08-18에 앱에서 진입점 둘을 막았고(`ClassifyPause`),
+#    2026-08-21에 **zero base로 새로 설계**하기로 정해졌다(CLAUDE.md 항시 규칙 8).
+#    이 스크립트는 그 결정 '이전'에 만들어졌고, 한 줄 돌리면 되살아난다 —
+#    **매시간 :00에 classify.py를 도는 launchd LaunchAgent를 설치한다.**
+#    ⚠️ 지금 유일한 제동은 키 파일이 없으면 멈추는 것뿐이다(아래 2단계 exit 1).
+#    고치거나 지우지 말 것 — 표시만 해 둔다. 되살릴지는 사용자가 정한다.
+#    근거: CLAUDE.md 항시 규칙 8 · docs/native/memory-philosophy.md §2-1-B
+#          (그 절의 「자동은 준비까지, 결정은 사용자가」).
+#    (같은 폴더의 uninstall-mac.sh는 반대로 **끄는 쪽**이라 안전하다 · README.md 참조)
+#
 # macOS 자동 분류 스케줄 설치 (launchd LaunchAgent).
 # 매시간 :00 에 classify.py를 실행한다. 미분류 줄이 없으면 API 호출 없이 끝난다.
 #
