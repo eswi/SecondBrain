@@ -420,6 +420,26 @@ extension MediaCardProbe {
     }
 }
 
+/// ★ 꼴 Y — **「더 있음」 세 꼴의 카드 높이만 갈라 재는 대조군** (2026-08-22 저녁).
+/// ⛔ **딱지를 한 글자로 맞췄다** — 꼴 Q는 딱지 길이가 달라 **줄바꿈이 높이를 흔든다.**
+/// 그러면 「표시가 높이를 바꿨나」와 「글자가 한 줄 늘었나」가 안 갈린다.
+struct EdgeHeightProbe: View {
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                let six = MediaKind.allCases.map { ($0, 1, ThumbState.ok, "") }
+                MediaCard(items: six, side: 62, label: "㉮")
+                MediaCard(items: six, side: 62, edgeStyle: 1, label: "㉯")
+                MediaCard(items: six, side: 62, edgeStyle: 2, label: "㉰")
+                MediaCard(items: Array(six.prefix(5)), side: 62, label: "五")   // 안 넘치는 대조
+            }
+            .padding(16)
+        }
+        .background(cBg)
+        .foregroundStyle(cText)
+    }
+}
+
 // MARK: - 꼴 R: 네모 한 변 스윕 — 여섯이 몇 개까지 보이나
 
 struct MediaSizeProbe: View {

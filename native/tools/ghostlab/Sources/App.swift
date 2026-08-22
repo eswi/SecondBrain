@@ -77,6 +77,7 @@ enum Mode: String, CaseIterable, Identifiable {
     case media3  = "V 문구"          // ★ 문구 셋 후보 (2026-08-22)
     case canPrev = "W 물음"          // ★ canPreviewItem이 무엇에 답하나
     case media4  = "X 아이콘"        // ★ 실패 셋을 아이콘으로 가른 꼴
+    case edgeH   = "Y 높이"          // ★ 「더 있음」 세 꼴의 카드 높이 대조군
     var id: String { rawValue }
 
     /// ★ **화면을 눌러서 고르는 것을 CLI로 고른다** (2026-08-21 신설).
@@ -127,6 +128,7 @@ struct ContentView: View {
             case .media3:  MediaCardProbe(page: 3)
             case .canPrev: CanPreviewProbe()
             case .media4:  MediaCardProbe(page: 4)
+            case .edgeH:   EdgeHeightProbe()
             }
         }
     }
