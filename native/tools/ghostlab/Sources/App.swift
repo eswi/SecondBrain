@@ -74,6 +74,9 @@ enum Mode: String, CaseIterable, Identifiable {
     case media2  = "T 자료2"         // ★ 자료 카드 둘째 장 — 배지 두 자리 · 못 만들었다
     case quick   = "S 뷰어"          // ★ QLPreviewController가 무엇을 빼앗나
     case quickNav = "U 뷰어2"        // ★ QL을 내비게이션에 얹은 꼴 — 애플 크롬이 보인다
+    case media3  = "V 문구"          // ★ 문구 셋 후보 (2026-08-22)
+    case canPrev = "W 물음"          // ★ canPreviewItem이 무엇에 답하나
+    case media4  = "X 아이콘"        // ★ 실패 셋을 아이콘으로 가른 꼴
     var id: String { rawValue }
 
     /// ★ **화면을 눌러서 고르는 것을 CLI로 고른다** (2026-08-21 신설).
@@ -121,6 +124,9 @@ struct ContentView: View {
             case .media2:  MediaCardProbe(page: 2)
             case .quick:   QuickLookProbe()
             case .quickNav: QuickLookNavProbe()
+            case .media3:  MediaCardProbe(page: 3)
+            case .canPrev: CanPreviewProbe()
+            case .media4:  MediaCardProbe(page: 4)
             }
         }
     }
