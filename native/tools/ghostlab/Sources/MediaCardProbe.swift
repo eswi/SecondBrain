@@ -129,15 +129,19 @@ struct MediaTile: View {
     @ViewBuilder private var okFace: some View {
         switch kind {
         case .voice:
-            // ★ 음성만 **미리보기가 없다** — 아이콘 + 메타. 이 꼴이 ②의 판정 재료다.
+            // ★ 음성만 **미리보기가 없다** — 아이콘 + 길이. **②는 「그대로 좋다」로 닫혔다**(2026-08-22 사용자).
+            //
+            // ⛔ **글자를 고쳤다 (2026-08-22 밤 사용자)** — 옛 꼴은 **두 줄**이었다:
+            //    · 길이 `0:37` = `side * 0.15` → **62pt에서 9.3pt**
+            //    · 날짜 `8/7`  = `side * 0.12` → **62pt에서 7.4pt**
+            //    새 꼴은 **날짜를 뺐고**(네모에서 보여줄 필요가 없다) **길이를 2pt 키웠다** →
+            //    `side * 0.15 + 2` → **62pt에서 11.3pt**. **두 줄이 한 줄이 된다.**
             VStack(spacing: max(1, side * 0.04)) {
                 Image(systemName: "waveform")
                     .font(.system(size: side * 0.34, weight: .regular))
                     .foregroundStyle(cAccent)
-                Text("0:37").font(.system(size: max(8, side * 0.15), weight: .semibold))
+                Text("0:37").font(.system(size: side * 0.15 + 2, weight: .semibold))
                     .foregroundStyle(cText)
-                Text("8/7").font(.system(size: max(7, side * 0.12)))
-                    .foregroundStyle(cText3)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .photo:
@@ -347,12 +351,12 @@ struct MediaCardProbe: View {
             MediaCard(items: all(1), side: side, label: "종류 1 — 음성만")
             MediaCard(items: all(3), side: side, label: "종류 3 — 음성 · 사진3 · 동영상")
             MediaCard(items: all(5), side: side, label: "종류 5 — 다섯 (딱 맞는다 · 표시 없음)")
-            MediaCard(items: all(6), side: side,
-                      label: "★ 종류 6 — 넘친다 · 표시 ㉮ 흐림+chevron(네모를 덮는다)")
-            MediaCard(items: all(6), side: side, edgeStyle: 1,
-                      label: "★ 종류 6 — 표시 ㉯ 흐림만")
             MediaCard(items: all(6), side: side, edgeStyle: 2,
-                      label: "★ 종류 6 — 표시 ㉰ 아래 점 (네모를 안 덮는다 · 카드가 12pt 높아진다)")
+                      label: "✅ 종류 6 — 정해진 꼴: 표시 ㉰ 아래 점 (네모를 안 덮는다)")
+            MediaCard(items: all(6), side: side,
+                      label: "(안 고른 것) 표시 ㉮ 흐림+chevron — 다섯째를 덮는다")
+            MediaCard(items: all(6), side: side, edgeStyle: 1,
+                      label: "(안 고른 것) 표시 ㉯ 흐림만")
         }
     }
 
@@ -428,9 +432,9 @@ struct EdgeHeightProbe: View {
         ScrollView {
             VStack(spacing: 12) {
                 let six = MediaKind.allCases.map { ($0, 1, ThumbState.ok, "") }
+                MediaCard(items: six, side: 62, edgeStyle: 2, label: "㉰")
                 MediaCard(items: six, side: 62, label: "㉮")
                 MediaCard(items: six, side: 62, edgeStyle: 1, label: "㉯")
-                MediaCard(items: six, side: 62, edgeStyle: 2, label: "㉰")
                 MediaCard(items: Array(six.prefix(5)), side: 62, label: "五")   // 안 넘치는 대조
             }
             .padding(16)
