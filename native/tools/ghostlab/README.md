@@ -143,3 +143,38 @@ ls ~/Library/Logs/DiagnosticReports/ | grep -i ghostlab   # 새 .ips가 없어�
 **자료 확장 2단계 — 사진·지도를 성역에서 떼어 새 카드로 옮기는 일**(`HANDOFF.md` §3-A ②).
 화면 배치를 다시 만지는 일이고, 그때 **바꾸기 전/후를 같은 자로 재려면 이 장치가 있어야 한다**
 (사용자 지시 2026-08-21).
+
+---
+
+## ★ 꼴 다섯을 더했다 — **자료 카드** (2026-08-22 · `media-expansion-design.md` §3-A·§3-B)
+
+| 꼴 | 무엇을 그리나 | 무엇에 답하려고 |
+|---|---|---|
+| **Q 자료** | 자료 카드 — **종류 1~5개**일 때 각각 · 개수 배지 | 카드가 어떻게 생기나 · **음성이 맨 앞인 것**(②) |
+| **T 자료2** | 배지 **두 자리**(12·25) · **「못 만들었다」 문구 후보 넷** · 섞임 · **0개 대조** | 「못 만들었다」와 「자료가 없다」를 갈라 보이나(§3-A-3) · **문구는 사용자가 고른다** |
+| **R 크기** | 네모 한 변 **56·62·68·76·88·100** 스윕 | **다섯이 한 화면에 들어가는 크기**(③) · 「우쪽에 더 있음」이 언제 나오나 |
+| **S 뷰어** | `QLPreviewController`를 **전체화면으로 제시** | 애플 뷰어가 어떻게 시작하나 → **크롬이 안 보이는 상태로 시작한다**(실측) |
+| **U 뷰어2** | 같은 것을 **내비게이션에 얹었다** | **애플이 바에 무엇을 얹나** — 목록(≡) · 파일명 제목 · **마크업** · 공유 |
+
+**쓰는 법** (탭 없이 꼴을 고른다 — `-ghostmode`):
+
+```sh
+cd native/tools/ghostlab && xcodegen generate
+SIM=<이 기기의 UDID>                       # 맥미니 26.5 = 34A5033B-… (이름으로 쓰지 말 것)
+xcodebuild -project GhostLab.xcodeproj -scheme GhostLab -destination "id=$SIM" \
+  -derivedDataPath /tmp/gl build > /tmp/gl.log 2>&1; echo "EXIT=$?"; grep -c 'error:' /tmp/gl.log
+xcrun simctl install $SIM /tmp/gl/Build/Products/Debug-iphonesimulator/GhostLab.app
+xcrun simctl terminate $SIM kr.teri.GhostLab; xcrun simctl launch $SIM kr.teri.GhostLab -ghostmode Q
+xcrun simctl io $SIM screenshot /tmp/Q.png
+swift ../measure-ui.swift /tmp/Q.png 1100 1120     # 카드 높이 — 열 둘이 일치해야 한다
+```
+
+### ⛔ 이 꼴들이 재지 **못하는** 것 하나 — 적어 두지 않으면 다음이 속는다
+**Dynamic Type**. 네모 안 글자를 **한 변의 비율**(`side * 0.15` 꼴)로 잡았으므로
+**글자 크기를 키워도 안 커진다.** 앱은 접근성을 따를 것이고, 그러면 **62pt 네모가 위험하다**
+(XXL 21pt · §3-B-4 ②). **이 랩으로 그 위험을 확인할 수 없다** — 재려면 랩부터 고쳐야 한다.
+
+### ⛔ 실물 파일을 안 쓴다
+표본 `82B1044B`는 맥미니에서 **dataless**이고 **받지 않는다**(사용자 2026-08-22).
+네모 안의 사진·페이지는 **대역**이고, **정사각형이라 실물 비율이 필요 없다**(§3-A-5).
+`S`·`U`가 쓰는 JPEG·PDF는 **그 자리에서 만든다**(`UIGraphicsImageRenderer`·`UIGraphicsPDFRenderer`).

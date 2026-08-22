@@ -69,6 +69,11 @@ enum Mode: String, CaseIterable, Identifiable {
     case punct   = "N 금칙"          // 부호가 줄 앞으로 넘어가나 (전략 셋)
     case rules   = "O 원칙"          // ★ 줄바꿈 원칙 셋 — **앱 코드 그대로**
     case editBox = "P 편집"          // 원문 편집 칸이 가로로 안 늘어나나
+    case media   = "Q 자료"          // ★ 자료 카드 — 종류 다섯 · 정사각형 (2026-08-22)
+    case mediaSz = "R 크기"          // ★ 네모 한 변 스윕 — 다섯이 한 화면에 들어가나
+    case media2  = "T 자료2"         // ★ 자료 카드 둘째 장 — 배지 두 자리 · 못 만들었다
+    case quick   = "S 뷰어"          // ★ QLPreviewController가 무엇을 빼앗나
+    case quickNav = "U 뷰어2"        // ★ QL을 내비게이션에 얹은 꼴 — 애플 크롬이 보인다
     var id: String { rawValue }
 
     /// ★ **화면을 눌러서 고르는 것을 CLI로 고른다** (2026-08-21 신설).
@@ -111,6 +116,11 @@ struct ContentView: View {
             case .punct:   PunctProbe()
             case .rules:   RulesProbe()
             case .editBox: EditProbe()
+            case .media:   MediaCardProbe()
+            case .mediaSz: MediaSizeProbe()
+            case .media2:  MediaCardProbe(page: 2)
+            case .quick:   QuickLookProbe()
+            case .quickNav: QuickLookNavProbe()
             }
         }
     }
