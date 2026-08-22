@@ -142,6 +142,7 @@ struct MediaTile: View {
                     .foregroundStyle(cAccent)
                 Text("0:37").font(.system(size: side * 0.15 + 2, weight: .semibold))
                     .foregroundStyle(cText)
+                    .offset(y: 1)          // ★ 2026-08-23 사용자: 음성·동영상 **둘 다 1pt 내린다**
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .photo:
@@ -155,20 +156,28 @@ struct MediaTile: View {
         case .video:
             // 대역 — **첫 프레임(장면)의 중앙**을 자른 것을 흉내낸다.
             // ★ 사진과 같은 「중앙」이므로 **재생 표시가 없으면 사진과 구분이 안 된다** — 그것이 이 꼴의 논점.
+            //
+            // ⛔ **시간 표시를 음성과 같은 형식으로 맞췄다 (2026-08-23 사용자).**
+            //    옛 꼴: **우하단 캡슐 배지**(`side × 0.13` · 검은 캡슐). → **버렸다.**
+            //    새 꼴: **음성과 같은 자리** — 가운데 맞춤 · 아이콘 아래 · 같은 글자 크기(`side × 0.15 + 2`) ·
+            //          **둘 다 1pt 내림.**
+            //    ⚠️ **자리를 정말 같게 하려면 아이콘 크기도 같아야 한다** — 가운데 정렬된 묶음의
+            //    높이가 다르면 글자 y가 어긋난다. 그래서 재생 아이콘을 **`0.30` → `0.34`**(파형과 같게) 했다.
             ZStack {
                 LinearGradient(colors: [.pink.opacity(0.75), .purple.opacity(0.9)],
                                startPoint: .top, endPoint: .bottom)
                 Image(systemName: "figure.walk")
-                    .font(.system(size: side * 0.40)).foregroundStyle(.white.opacity(0.8))
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: side * 0.30))
-                    .foregroundStyle(.white, .black.opacity(0.45))
-                Text("1:02").font(.system(size: max(7, side * 0.13), weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(Capsule().fill(.black.opacity(0.5)))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(side * 0.05)
+                    .font(.system(size: side * 0.40)).foregroundStyle(.white.opacity(0.55))
+                VStack(spacing: max(1, side * 0.04)) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: side * 0.34))
+                        .foregroundStyle(.white, .black.opacity(0.45))
+                    Text("1:02").font(.system(size: side * 0.15 + 2, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.6), radius: 2, y: 0)   // 그림 위라 읽히게
+                        .offset(y: 1)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         case .url:
             // 대역 — **페이지 축소의 윗쪽**. 위에 제목 줄, 아래로 본문 줄.
