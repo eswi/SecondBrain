@@ -105,6 +105,7 @@ struct MediaTile: View {
     let side: CGFloat
     var state: ThumbState = .ok
     var fail: FailKind = .generic
+    var hasPlace: Bool = false         // 사진에 위치 정보가 있나 (4-a·4-b)  ← failText보다 앞이다
     /// 「못 만들었다」 문구 후보 — ⛔ **화면 문구는 사용자가 정한다.** 여기 것은 **후보**다.
     var failText: String = ""
 
@@ -152,6 +153,15 @@ struct MediaTile: View {
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 Image(systemName: "mountain.2.fill")
                     .font(.system(size: side * 0.42)).foregroundStyle(.white.opacity(0.85))
+                // ★ **위치 표시 — 우하단**(4-b · 2026-08-23) · **있을 때만 그린다**(4-a).
+                //   ⛔ **누르는 것이 아니다** — 위치 보기는 뷰어에서만(§3-F-4).
+                if hasPlace {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: side * 0.24))
+                        .foregroundStyle(.white, .black.opacity(0.45))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(side * 0.05)
+                }
             }
         case .video:
             // 대역 — **첫 프레임(장면)의 중앙**을 자른 것을 흉내낸다.
@@ -247,6 +257,22 @@ struct MediaTile: View {
     }
 }
 
+/// ★ **빈 자리 네모 — 점선**(㉮ · 2026-08-23 사용자). 자료가 0개인 기억에도 **카드가 서고 이 네모 하나가 있다.**
+/// ⛔ **그래야 추가 경로가 하나로 유지된다** — 「네모를 눌러 뷰어로」가 자료가 있든 없든 같다.
+struct EmptyTile: View {
+    let side: CGFloat
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(cText3.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            .overlay(
+                Image(systemName: "plus")
+                    .font(.system(size: side * 0.30, weight: .light))
+                    .foregroundStyle(cText3)
+            )
+            .frame(width: side, height: side)
+    }
+}
+
 /// 자료 카드 하나 — **폭 전체**(§3-2) · 네모 한 줄 · 넘치면 가로 스크롤(§3-A-1).
 struct MediaCard: View {
     let items: [(MediaKind, Int, ThumbState, String)]
@@ -256,6 +282,8 @@ struct MediaCard: View {
     var showEdge: Bool = true          // 좌/우에 더 있음 표시
     var edgeStyle: Int = 0             // 0=흐림+chevron(겹침) · 1=흐림만 · 2=아래 점(안 겹친다)
     var label: String = ""             // 랩 딱지(계측용 · 화면 문구 아님)
+    var placePhoto: Bool = false       // 사진 네모에 위치 표시를 그리나
+    var empty: Bool = false            // ★ 자료 0개 — 점선 네모 하나만 (㉮)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -269,10 +297,12 @@ struct MediaCard: View {
                 ZStack(alignment: .trailing) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: gap) {
+                            if empty { EmptyTile(side: side) }
                             ForEach(Array(items.enumerated()), id: \.offset) { _, it in
                                 MediaTile(kind: it.0, count: it.1, side: side,
                                           state: it.2,
                                           fail: fails.isEmpty ? .generic : fails[min(fails.count - 1, items.firstIndex(where: { $0.0 == it.0 && $0.3 == it.3 }) ?? 0)],
+                                          hasPlace: it.0 == .photo && placePhoto,
                                           failText: it.3)
                             }
                         }
@@ -379,6 +409,12 @@ struct MediaCardProbe: View {
                       side: side, label: "대조 — 없는 종류는 네모가 아예 없다 (URL·PDF·기타 0개)")
             MediaCard(items: [(.video, 1, .ok, "")], side: side,
                       label: "동영상만 — 재생 표시가 없으면 사진과 구분이 안 된다")
+            MediaCard(items: [(.voice, 1, .ok, ""), (.photo, 3, .ok, ""), (.video, 1, .ok, "")],
+                      side: side,
+                      label: "★ 위치 표시 — 사진 우하단 (있을 때만 · 누르는 것은 아니다)",
+                      placePhoto: true)
+            MediaCard(items: [], side: side,
+                      label: "★ 자료가 0개인 기억 — 점선 네모 하나 (㉮)", empty: true)
         }
     }
 
