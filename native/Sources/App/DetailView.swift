@@ -345,11 +345,15 @@ struct DetailView: View {
         //    (`photoRow`가 `#if`를 걷어낸 것과 같은 결: 갈라 두면 한쪽만 고쳐진다).
         #if os(iOS)
         .fullScreenCover(item: $viewerKind) { k in
-            MediaViewer(item: item, kind: k, audio: audio) { viewerKind = nil }
+            // ⛔ **`item`이 아니라 최신 항목이다**(2026-08-24 결함 수정) — 카드만 최신을 받고
+            //    뷰어는 낡은 값을 받고 있었다. 그래서 **뷰어를 한 번 열었다가 상세로 나와 사진을 더 붙이면
+            //    카드의 개수는 늘는데 뷰어에는 새 사진이 없었다**(사용자가 잡았다).
+            //    ★ **C에서 카드는 고치고 뷰어는 빠뜨린 자리다** — 같은 값을 두 곳에서 넘기면 한쪽만 고쳐진다.
+            MediaViewer(item: model.current(item.id) ?? item, kind: k, audio: audio) { viewerKind = nil }
         }
         #else
         .sheet(item: $viewerKind) { k in
-            MediaViewer(item: item, kind: k, audio: audio) { viewerKind = nil }
+            MediaViewer(item: model.current(item.id) ?? item, kind: k, audio: audio) { viewerKind = nil }
                 .frame(minWidth: 520, minHeight: 420)
         }
         #endif

@@ -39,9 +39,12 @@ struct MediaViewer: View {
     @State private var wasPlayingBeforeScrub = false
     /// 지금 보고 있는 것이 **이 종류의 몇 번째**인가.
     @State private var index = 0
-    /// **세로냐 가로냐** — 아이폰에서 가로는 높이가 compact다. 세로에서만 하단 썸네일 줄을 쓴다.
-    @Environment(\.verticalSizeClass) private var vSize
-    private var isPortrait: Bool { vSize != .compact }
+    /// 마지막으로 어느 쪽으로 넘겼나(`+1` 다음 · `-1` 이전) — **전환이 그 방향으로 미끄러진다.**
+    @State private var lastStep = 1
+
+    /// **전환 값** — ⚠️ 재서 정한 값이 아니다. 사용자 판정: *"너무 팍 팍 넘어가. 너무 기계적"*.
+    /// 카드 이동은 0.35초인데(§0 30번) **사진 넘기기는 그보다 빨라야** 연달아 넘길 때 답답하지 않다.
+    private static let slide = Animation.easeInOut(duration: 0.26)
 
     /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaNames`).
     /// ⚠️ 첫째는 **수집 당시의 원본**이다(성역을 먼저 읽는다 · §3-Y-8).
@@ -95,6 +98,11 @@ struct MediaViewer: View {
                 //    (`UIScrollView`가 확대를 들고 있으므로, 같은 뷰를 재사용하면 앞 사진의 확대가 남는다).
                 ZoomableImage(image: ui) { step($0) }   // 끝까지 당기면 넘긴다
                     .id(url.lastPathComponent)
+                    // ★ **미끄러져 들어오고 미끄러져 나간다** — 넘긴 방향으로.
+                    //   `.id`가 바뀌면 뷰가 갈리는데, 그 갈림에 전환을 붙인 것이다.
+                    .transition(.asymmetric(
+                        insertion: .move(edge: lastStep > 0 ? .trailing : .leading).combined(with: .opacity),
+                        removal: .move(edge: lastStep > 0 ? .leading : .trailing).combined(with: .opacity)))
             } else {
                 missing
             }
@@ -199,9 +207,12 @@ struct MediaViewer: View {
     /// 옛 판단은 *"확대 제스처와 싸운다"*였는데, **끝까지 당겼을 때만** 넘기면 안 싸운다
     /// (사용자가 그 조건을 지정했다: *"이동이 다 되어 사진의 끝에 걸리면"*).
     ///
-    /// ⛔ **세로에서는 안 그린다** — 하단 썸네일 줄이 그 일을 한다(사용자: *"`<` `>` 기호는 아래에서는 쓰지말기"*).
+    /// ⛔ **2026-08-24 정정 — 내가 잘못 읽었다.** *"`<` `>` 기호는 아래에서는 쓰지말기"*를
+    /// 「세로에서는 화살표를 안 그린다」로 읽었는데, 뜻은 **「썸네일 줄 안에 화살표를 넣지 말라」**였다.
+    /// 사용자: *"원래 있던 `<` `>` 없어졌어 … **크기 2배로 키우라 했고 그걸로도 다음 사진, 이전 사진 고르기 할거거든.**"*
+    /// → **세로·가로 둘 다 그린다.** 썸네일 줄은 화살표를 **대신하는 것이 아니라 곁들이는 것**이다.
     @ViewBuilder private var arrows: some View {
-        if !names.isEmpty && !(isPortrait && kind == .photo) {
+        if !names.isEmpty {
             HStack {
                 arrow("chevron.left", enabled: index > 0) { step(-1) }
                 Spacer()
@@ -211,11 +222,12 @@ struct MediaViewer: View {
         }
     }
 
-    /// **하단 썸네일 줄** — 세로에서만 · 사진에서만(⏸ **실험이다** · 2026-08-24 사용자).
+    /// **하단 썸네일 줄** — 사진에서만(⏸ **실험이었다 → 남긴다** · 2026-08-24 사용자: *"맘에 들어"*).
+    /// ⛔ **「세로에서만」이 풀렸다**(같은 날) — *"아래 사진은 가로 모두에서도 동작하게 해줘."*
     /// 고른 것에 **초록 테두리** · 터치로 고른다 · 많아지면 좌우로 스크롤된다.
     /// ⚠️ 스크롤은 **이 줄 안에서만** 먹는다 — 사진 영역의 스와이프(넘기기)와 자리가 갈려 안 싸운다.
     @ViewBuilder private var filmstrip: some View {
-        if isPortrait, kind == .photo, !names.isEmpty {
+        if kind == .photo, !names.isEmpty {
             VStack {
                 Spacer()
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -257,7 +269,8 @@ struct MediaViewer: View {
     private func pick(_ i: Int) {
         guard names.indices.contains(i), i != index else { return }
         if kind == .voice { audio.stop() }
-        index = i
+        lastStep = i > index ? 1 : -1
+        withAnimation(Self.slide) { index = i }
     }
 
     private func arrow(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
@@ -277,7 +290,8 @@ struct MediaViewer: View {
         let next = index + delta
         guard names.indices.contains(next) else { return }
         if kind == .voice { audio.stop() }
-        index = next
+        lastStep = delta
+        withAnimation(Self.slide) { index = next }
     }
 
     private var closeButton: some View {
