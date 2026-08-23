@@ -284,6 +284,7 @@ struct MediaCard: View {
     var label: String = ""             // 랩 딱지(계측용 · 화면 문구 아님)
     var placePhoto: Bool = false       // 사진 네모에 위치 표시를 그리나
     var empty: Bool = false            // ★ 자료 0개 — 점선 네모 하나만 (㉮)
+    var trailingPlus: Bool = false     // ★ 추가 네모(+)를 맨 뒤에 (2026-08-23 — 앱은 늘 그렇다)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -292,7 +293,8 @@ struct MediaCard: View {
                     .foregroundStyle(cText3)
             }
             GeometryReader { geo in
-                let need = CGFloat(items.count) * side + CGFloat(max(0, items.count - 1)) * gap
+                let cnt = items.count + (trailingPlus ? 1 : 0)
+                let need = CGFloat(cnt) * side + CGFloat(max(0, cnt - 1)) * gap
                 let overflows = need > geo.size.width + 0.5
                 ZStack(alignment: .trailing) {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -305,6 +307,7 @@ struct MediaCard: View {
                                           hasPlace: it.0 == .photo && placePhoto,
                                           failText: it.3)
                             }
+                            if trailingPlus { EmptyTile(side: side) }
                         }
                     }
                     if overflows && showEdge && edgeStyle != 2 { edgeHint }
@@ -323,7 +326,7 @@ struct MediaCard: View {
                 }
                 .overlay(alignment: .bottomLeading) {
                     // 계측 딱지 — 폭이 얼마고 몇 개가 들어갔나를 화면에서도 읽게 한다.
-                    Text("폭 \(Int(geo.size.width)) · 한 변 \(Int(side)) · \(items.count)개 · 필요 \(Int(need))\(overflows ? " ⟶ 넘침" : "")")
+                    Text("폭 \(Int(geo.size.width)) · 한 변 \(Int(side)) · \(cnt)개 · 필요 \(Int(need))\(overflows ? " ⟶ 넘침" : "")")
                         .font(.system(size: 9)).foregroundStyle(cText3)
                         .offset(y: 11)
                 }
@@ -489,25 +492,40 @@ struct EdgeHeightProbe: View {
     }
 }
 
-// MARK: - 꼴 R: 네모 한 변 스윕 — 여섯이 몇 개까지 보이나
+// MARK: - 꼴 R: 네모 한 변 후보 — 62 · 72 · 88 (2026-08-23 개정)
+//
+// ⛔ **62의 근거가 사라졌다.** 62는 **「다섯이 딱 들어간다」**에서 나온 값인데,
+//    2026-08-23에 **넘침을 받아들이기로** 했고 **추가 네모(+)가 늘 맨 뒤에 붙는다.**
+//    → **몇 개가 들어가나는 더 이상 크기를 정하는 근거가 아니다.**
+// ★ 그래서 이 꼴은 **「커지면 안쪽이 어떻게 되나」**를 보여준다 — 글자·배지·핀이 함께 커진다.
 
 struct MediaSizeProbe: View {
-    private let sides: [CGFloat] = [50, 56, 62, 68, 76, 88]
+    private let sides: [CGFloat] = [62, 72, 88]
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
-                Text("342pt · 여백 8 — 다섯은 62까지, 여섯은 50.3까지 (계산)")
+            VStack(alignment: .leading, spacing: 12) {
+                Text("종류 여섯 + 추가 네모(+) · 폭 342 · 사이 8")
                     .font(.system(size: 11)).foregroundStyle(cText2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 ForEach(sides, id: \.self) { s in
-                    MediaCard(items: MediaKind.allCases.map { ($0, $0 == .photo ? 3 : 1, ThumbState.ok, "") },
-                              side: s, label: "한 변 \(Int(s)) · 종류 6")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(label(s)).font(.system(size: 10, weight: .semibold)).foregroundStyle(cText)
+                        MediaCard(items: MediaKind.allCases.map { ($0, $0 == .photo ? 3 : 1, ThumbState.ok, "") },
+                                  side: s, label: "", placePhoto: true, trailingPlus: true)
+                    }
                 }
             }
             .padding(16)
         }
         .background(cBg)
         .foregroundStyle(cText)
+    }
+
+    /// 한 변이 정하는 안쪽 치수들 — **값이 비율이라 함께 커진다.**
+    private func label(_ s: CGFloat) -> String {
+        let text = s * 0.15 + 2, pin = s * 0.24, badge = s * 0.19
+        let fit = Int((342 + 8) / (s + 8))          // 342 안에 들어가는 개수
+        return String(format: "한 변 %d · 글자 %.1f · 핀 %.1f · 배지 %.1f · 한 화면에 %d개",
+                      Int(s), text, pin, badge, fit)
     }
 }

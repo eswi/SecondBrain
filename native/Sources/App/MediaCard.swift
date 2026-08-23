@@ -190,9 +190,10 @@ struct MediaTile: View {
     }
 }
 
-/// 자료가 하나도 없을 때 — **점선 네모 하나**(㉮ · §0 10번).
-/// ⛔ **추가 경로를 하나로 유지하려는 것이다** — 자료가 있든 없든 「네모를 눌러 뷰어로」가 같다.
-/// ⚠️ 살아있는 항목의 **44%가 여기 해당한다**(2026-08-23 실측 46/105 · 설계 §3-H-7).
+/// **추가 네모** — 점선 + `+`. **자료가 있든 없든 늘 맨 뒤에 있다**(2026-08-23 사용자).
+/// ⛔ **추가 경로를 하나로 유지하려는 것이다** — 그리고 **빈 카드가 다른 화면이 되지 않게** 한다.
+/// ⚠️ 자료 0개인 항목은 살아있는 것의 **44%**다(2026-08-23 실측 46/105 · 설계 §3-H-7) —
+/// 그 항목에서는 **이 네모 하나만** 보인다.
 struct MediaEmptyTile: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -237,22 +238,24 @@ struct MediaCard: View {
     @ViewBuilder private var tiles: some View {
         let kinds = presentKinds
         GeometryReader { geo in
-            let need = CGFloat(kinds.count) * MediaTile.side
-                + CGFloat(max(0, kinds.count - 1)) * Self.gap
+            // ⚠️ **추가 네모(+)를 함께 센다** — 늘 있으므로 **네모 수 = 종류 수 + 1**이다.
+            let n = kinds.count + 1
+            let need = CGFloat(n) * MediaTile.side + CGFloat(n - 1) * Self.gap
             let overflows = need > geo.size.width + 0.5
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Self.gap) {
-                    if kinds.isEmpty {
-                        // ⏸ **아직 안 눌린다** — 이 네모의 일은 **추가**인데 추가는 뷰어에 있고(§0 25번)
-                        //    추가 자체가 나중이다. **누르면 아무 일도 없는 단추를 만들지 않는다** ·
-                        //    **없는 기능을 알리는 문구도 짓지 않는다**(항시 규칙 6).
-                        //    ⛔ 그래서 지금은 **자리 표시**다 — 「여기에 자료가 들어간다」만 말한다.
-                        MediaEmptyTile()
-                    }
                     ForEach(kinds) { k in
                         Button { onTap(k) } label: { tile(k) }
                             .buttonStyle(.plain)
                     }
+                    // ★★ **추가 네모는 늘 맨 뒤에 있다** (2026-08-23 사용자 · §0 10번 개정).
+                    //
+                    // ⛔ **옛 꼴은 「자료가 0개일 때만」 점선 네모를 뒀다** — 그러면
+                    //    **빈 카드가 다른 화면**이 된다(자료가 생기는 순간 추가 자리가 사라졌다).
+                    //    사용자: *"그러면 빈 카드와 자료 있는 카드가 **같은 구조**가 된다."*
+                    // ⏸ **아직 안 눌린다** — 누른 뒤 무엇이 일어나는지는 나중에 정한다(추가 기능과 함께).
+                    //    **누르면 아무 일 없는 단추를 만들지 않고, 없는 기능을 알리는 문구도 짓지 않는다.**
+                    MediaEmptyTile()
                 }
             }
             .overlay(alignment: .bottom) {
@@ -275,8 +278,7 @@ struct MediaCard: View {
     /// 높이를 정하려면 넘치는지 **미리** 알아야 한다(`GeometryReader` 안에서는 늦다).
     /// 폭은 §0 6번의 **342pt**를 쓴다 — 화면 폭 402 − `ScrollView` 16×2 − 카드 14×2.
     private var overflowsNow: Bool {
-        let n = presentKinds.count
-        guard n > 0 else { return false }
+        let n = presentKinds.count + 1        // 추가 네모(+)가 늘 있다
         return CGFloat(n) * MediaTile.side + CGFloat(n - 1) * Self.gap > 342
     }
 
