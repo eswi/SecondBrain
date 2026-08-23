@@ -130,12 +130,22 @@ enum PhotoStore {
     /// `location`이 있으면 **EXIF GPS 태그에 직접 박는다**(사진 안에만 · 그릇엔 안 감 — §5, Stage 3).
     /// 이 압축본이 §4-④의 불변 원본. 성공 시 임시 URL, 실패 시 nil.
     static func saveCaptured(_ image: UIImage, location: CLLocation?, sessionId: String) -> URL? {
-        // 방향 정규화 + 리사이즈(항상 재렌더 → orientation upright, EXIF 회전 불필요).
-        guard let cg = normalized(image, maxEdge: 2048).cgImage else { return nil }
+        // 방향 정규화(항상 재렌더 → orientation upright, EXIF 회전 불필요).
+        //
+        // ⛔ **2026-08-23: 축소를 뺐다** — 옛 코드는 `maxEdge: 2048`로 줄였다.
+        //    사용자 판정: *"현재 사진찍기 코드가 실기기가 만들어내는 사진 품질을 그대로 가지고 오는지
+        //    혹은 해상도를 낮추어서 2048x1536으로 낮추어 가져오는 것인지 체크해서,
+        //    **가능하다면 사진 품질을 그대로 유지**하게 해줘."*
+        //    → **카메라가 준 픽셀 그대로 굽는다**(iPhone 16 Pro에서 4032×3024 · 12MP).
+        //    ⚠️ **상한은 여기가 아니라 `UIImagePickerController`가 정한다** — 그 API는 **12MP**를 준다.
+        //    48MP는 이 경로로 안 온다(`AVCapturePhotoOutput`으로 갈아타야 한다 · 이번 범위 밖).
+        guard let cg = normalized(image, maxEdge: .infinity).cgImage else { return nil }
         let url = newTempURL(sessionId: sessionId)
         guard let dest = CGImageDestinationCreateWithURL(
                 url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.7]
+        // ⛔ **2026-08-23: 0.7 → 0.9** — 축소를 뺐어도 **재인코딩에서 또 깎이면** 뜻이 없다.
+        // ⚠️ **1.0으로 안 올린 이유:** 크기가 크게 늘고 눈으로 갈리지 않는다. **0.9가 관행적 상한**이다.
+        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.9]
         if let loc = location { props[kCGImagePropertyGPSDictionary] = gpsDictionary(loc) }
         CGImageDestinationAddImage(dest, cg, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
@@ -143,6 +153,9 @@ enum PhotoStore {
     }
 
     /// 긴 변이 maxEdge보다 크면 비율 유지 축소. **항상 재렌더**해 카메라 방향 메타를 픽셀로 굽는다(upright).
+    /// ⚠️ `maxEdge: .infinity`면 **축소는 없고 방향만 굽는다**(2026-08-23부터 촬영이 그렇게 부른다).
+    /// ⛔ **재렌더는 촬영 메타(EXIF 렌즈·노출)를 안 남긴다 — 옛 코드도 그랬다.**
+    /// **「품질 그대로」는 픽셀 이야기다.** 촬영 메타까지 남기려면 `info[.mediaMetadata]`를 합쳐야 한다(안 했다).
     private static func normalized(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
         let w = image.size.width, h = image.size.height
         let longest = max(w, h)

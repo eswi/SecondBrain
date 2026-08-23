@@ -29,6 +29,12 @@ struct MediaViewer: View {
     var onClose: () -> Void
 
     @State private var zoom: CGFloat = 1          // 확대 배율(1 = 전체 보기)
+    /// ★ **두 번 두드리면 꽉 채우기**(㉯ · 2026-08-23 사용자).
+    /// **사진은 4:3이고 화면은 2.17:1이라 전체 보기로는 절대 안 찬다**(설계 §3-P-3) —
+    /// 꽉 채우려면 **잘라야** 하므로 **기본은 전체 보기**로 두고 **두 번 두드릴 때만** 채운다.
+    @State private var fill = false
+    /// 막대를 끌기 **직전에** 듣고 있었나 — 손을 떼고 이어 들을지 정한다.
+    @State private var wasPlayingBeforeScrub = false
     @State private var zoomBase: CGFloat = 1
     @State private var pan: CGSize = .zero
     @State private var panBase: CGSize = .zero
@@ -62,7 +68,8 @@ struct MediaViewer: View {
     @ViewBuilder private var photoBody: some View {
         if let url = PhotoStore.url(forId: item.id),
            let img = PlatformMedia.image(contentsOfFile: url.path) {
-            img.resizable().scaledToFit()
+            img.resizable()
+                .aspectRatio(contentMode: fill ? .fill : .fit)
                 .scaleEffect(zoom)
                 .offset(pan)
                 .gesture(
@@ -82,10 +89,14 @@ struct MediaViewer: View {
                         }
                         .onEnded { _ in panBase = pan }
                 )
-                // 두 번 두드리면 전체 보기로 돌아온다 — **되돌릴 길이 없으면 확대가 함정이 된다.**
+                // 두 번 두드리면 **꽉 채우기 ↔ 전체 보기**를 오간다(㉯).
+                // ⚠️ **핀치로 키운 배율은 함께 되돌린다** — 안 그러면 채운 위에 배율이 겹쳐 어디가 어딘지 모른다.
+                // ★ **되돌릴 길이 있어야 확대가 함정이 안 된다** — 두 번 두드리기가 그 길이다.
                 .onTapGesture(count: 2) {
+                    fill.toggle()
                     zoom = 1; zoomBase = 1; pan = .zero; panBase = .zero
                 }
+                .clipped()
         } else {
             missing
         }
@@ -104,9 +115,20 @@ struct MediaViewer: View {
                     .font(.system(size: 30, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(.white)
                 // ★ **끌어서 자리를 옮긴다** — `ProgressView`는 못 끈다. `Slider`라야 한다.
+                // ⛔ **끄는 동안은 소리를 멈춘다** (2026-08-23 사용자):
+                //    *"slider를 움직이는 동안에는 소리가 안 나게 해줘. **듣기 싫은 소리가 남**."*
+                //    끌기 시작하면 멈추고, 손을 떼면 **끌기 전에 듣고 있었을 때만** 이어 듣는다.
                 Slider(value: Binding(get: { audio.progress },
                                       set: { audio.seek(toFraction: $0) }),
-                       in: 0...1)
+                       in: 0...1,
+                       onEditingChanged: { editing in
+                           if editing {
+                               wasPlayingBeforeScrub = audio.isPlaying
+                               if audio.isPlaying { audio.pause() }
+                           } else if wasPlayingBeforeScrub {
+                               audio.toggle(url: url)        // 멈춰 있던 자리에서 이어 듣는다
+                           }
+                       })
                     .tint(Palette.accent)
                     .frame(width: 260)
                 // ★ **정지가 아니라 일시정지다** — 다시 누르면 **그 자리에서** 이어 듣는다.

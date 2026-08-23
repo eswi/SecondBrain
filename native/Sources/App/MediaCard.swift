@@ -1,6 +1,7 @@
 import SwiftUI
 import SecondBrainCore
 import AVFoundation
+import ImageIO
 #if os(iOS)
 import UIKit
 #endif
@@ -296,7 +297,7 @@ struct MediaCard: View {
                       count: 1, duration: MediaCard.durationText(aurl))
         case .photo:
             let url = PhotoStore.url(forId: item.id)
-            let img = url.flatMap { PlatformMedia.image(contentsOfFile: $0.path) }
+            let img = url.flatMap { MediaCard.thumbnail($0, side: MediaTile.side) }
             MediaTile(kind: .photo,
                       state: state(photoFetch, url: url, drawable: img != nil),
                       count: 1, image: img,
@@ -327,6 +328,24 @@ struct MediaCard: View {
         case .notDownloaded: return .notDownloaded
         case .absent:        return .absent
         }
+    }
+
+    /// ★ **네모용 축소본** — 원본을 통째로 디코드하지 않는다 (2026-08-23).
+    ///
+    /// ⛔ **왜 필요해졌나:** 같은 날 촬영이 **축소를 그만뒀다**(4032×3024). 옛 코드처럼
+    /// `PlatformMedia.image(contentsOfFile:)`로 **전체를 디코드해서 62pt 네모에 그리면**
+    /// **12MP를 메모리에 펼친 뒤 버리는 꼴**이다. `CGImageSource`의 **썸네일 생성**은 그 일을 안 한다.
+    /// ⚠️ **뷰어는 여전히 원본을 쓴다** — 거기서는 **확대하니까** 픽셀이 필요하다.
+    static func thumbnail(_ url: URL, side: CGFloat) -> Image? {
+        let px = Int(side * 3)          // @3x 기준 — 62pt면 186px
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,      // 방향 반영
+            kCGImageSourceThumbnailMaxPixelSize: px,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return Image(decorative: cg, scale: 3)
     }
 
     /// 음성 길이 — 「0:37」. 파일이 없으면 nil.
