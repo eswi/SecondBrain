@@ -44,12 +44,14 @@ struct MediaViewer: View {
     /// 손이 닿을 때마다 늘어난다 — **이 값이 바뀌면 사라짐 시계가 처음부터 다시 간다.**
     @State private var touchTick = 0
 
-    /// **손을 뗀 뒤 얼마나 있다 사라지나.** 사용자가 *"3초쯤"*이라고 정했다.
-    private static let stripHideAfter: Duration = .seconds(3)
+    /// **손을 뗀 뒤 얼마나 있다 사라지나.** **5초**(2026-08-24 사용자 — 처음엔 *"3초쯤"*이었다).
+    private static let stripHideAfter: Duration = .seconds(5)
     /// 사라짐·나타남은 **천천히** — 사용자: *"서서히 사라지게"*. ⚠️ 0.45는 재서 정한 값이 아니다.
     private static let fade = Animation.easeInOut(duration: 0.45)
-    /// 썸네일 줄이 **따라 움직일 때** — 사진 전환보다 조금 무르게(사용자: *"좀 부드럽게"*).
-    private static let stripScroll = Animation.spring(response: 0.38, dampingFraction: 0.9)
+    /// 썸네일 줄이 **따라 움직일 때** — 사진 전환보다 무르게.
+    /// ⚠️ **두 번 고쳤다:** `0.38 / 0.9` → 사용자 *"좀 뻑뻑하고"*(2026-08-24) → **`0.55 / 0.82`**.
+    /// **되돌림이 아니라 같은 방향으로 한 걸음 더 간 것이다**(팍팍 → 부드럽게 → 더 부드럽게).
+    private static let stripScroll = Animation.spring(response: 0.55, dampingFraction: 0.82)
 
     /// 마지막으로 어느 쪽으로 넘겼나(`+1` 다음 · `-1` 이전) — **전환이 그 방향으로 미끄러진다.**
     @State private var lastStep = 1
@@ -84,7 +86,13 @@ struct MediaViewer: View {
         .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in wake() })
         // 손이 닿을 때마다 이 작업이 취소되고 새로 시작한다 = **마지막 손댐부터 3초.**
         .task(id: touchTick) {
-            try? await Task.sleep(for: Self.stripHideAfter)
+            // ⛔⛔ **`try?`로 삼키면 안 된다 — 2026-08-24에 여기가 결함이었다.**
+            //    `Task.sleep`은 **취소되면 곧바로 던진다.** `try?`는 그것을 nil로 삼키고
+            //    **다음 줄이 그대로 실행된다** → 손이 움직이는 동안 `touchTick`이 수십 번 바뀌며
+            //    앞 작업이 취소될 때마다 **즉시 「사라져라」가 돌았다.**
+            //    사용자 판정: *"자꾸 1초도 안 되어 사라지는 일이 생겨."*
+            // ✅ **취소면 아무것도 하지 않는다** — 사라짐은 **끝까지 잔 작업만** 낸다.
+            do { try await Task.sleep(for: Self.stripHideAfter) } catch { return }
             withAnimation(Self.fade) { stripVisible = false }
         }
         #if os(iOS)
