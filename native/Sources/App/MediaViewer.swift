@@ -28,16 +28,10 @@ struct MediaViewer: View {
     @ObservedObject var audio: AudioPlayer
     var onClose: () -> Void
 
-    @State private var zoom: CGFloat = 1          // 확대 배율(1 = 전체 보기)
-    /// ★ **두 번 두드리면 꽉 채우기**(㉯ · 2026-08-23 사용자).
-    /// **사진은 4:3이고 화면은 2.17:1이라 전체 보기로는 절대 안 찬다**(설계 §3-P-3) —
-    /// 꽉 채우려면 **잘라야** 하므로 **기본은 전체 보기**로 두고 **두 번 두드릴 때만** 채운다.
-    @State private var fill = false
     /// 막대를 끌기 **직전에** 듣고 있었나 — 손을 떼고 이어 들을지 정한다.
     @State private var wasPlayingBeforeScrub = false
-    @State private var zoomBase: CGFloat = 1
-    @State private var pan: CGSize = .zero
-    @State private var panBase: CGSize = .zero
+    // ⛔ **확대 상태(`zoom`·`pan`…)는 여기 없다** — `UIScrollView`가 들고 있다(`ZoomableImage`).
+    //    옛 꼴이 그것을 SwiftUI `@State`로 들다가 **경계가 없어 사진이 화면 밖으로 나갔다.**
 
     var body: some View {
         ZStack {
@@ -66,37 +60,24 @@ struct MediaViewer: View {
     // ★ **카드와 반대다** — 카드의 네모는 **자르고**(정사각형), 뷰어는 **안 자른다**(§0 23번).
     //   그래서 **썸네일과 실물이 다르게 보이는 것이 정상이다.**
     @ViewBuilder private var photoBody: some View {
-        if let url = PhotoStore.url(forId: item.id),
-           let img = PlatformMedia.image(contentsOfFile: url.path) {
-            img.resizable()
-                .aspectRatio(contentMode: fill ? .fill : .fit)
-                .scaleEffect(zoom)
-                .offset(pan)
-                .gesture(
-                    MagnificationGesture()
-                        .onChanged { v in zoom = min(max(zoomBase * v, 1), 6) }
-                        .onEnded { _ in
-                            zoomBase = zoom
-                            if zoom <= 1 { pan = .zero; panBase = .zero }
-                        }
-                )
-                .simultaneousGesture(
-                    DragGesture()
-                        .onChanged { v in
-                            guard zoom > 1 else { return }
-                            pan = CGSize(width: panBase.width + v.translation.width,
-                                         height: panBase.height + v.translation.height)
-                        }
-                        .onEnded { _ in panBase = pan }
-                )
-                // 두 번 두드리면 **꽉 채우기 ↔ 전체 보기**를 오간다(㉯).
-                // ⚠️ **핀치로 키운 배율은 함께 되돌린다** — 안 그러면 채운 위에 배율이 겹쳐 어디가 어딘지 모른다.
-                // ★ **되돌릴 길이 있어야 확대가 함정이 안 된다** — 두 번 두드리기가 그 길이다.
-                .onTapGesture(count: 2) {
-                    fill.toggle()
-                    zoom = 1; zoomBase = 1; pan = .zero; panBase = .zero
-                }
-                .clipped()
+        if let url = PhotoStore.url(forId: item.id) {
+            #if os(iOS)
+            // ⛔ **손으로 만든 확대를 버리고 `UIScrollView`로 갔다** (2026-08-23 · 실기기 판정).
+            //    셋이 함께 풀린다: **두드린 지점 중심** · **부드러운 확대/축소** · **경계 제한**.
+            //    전말은 `ZoomableImage.swift` 머리주석 · 설계 §3-R.
+            if let ui = UIImage(contentsOfFile: url.path) {
+                ZoomableImage(image: ui)
+            } else {
+                missing
+            }
+            #else
+            // 맥은 전체 보기로 남는다(`UIViewRepresentable`은 iOS 전용).
+            if let img = PlatformMedia.image(contentsOfFile: url.path) {
+                img.resizable().scaledToFit()
+            } else {
+                missing
+            }
+            #endif
         } else {
             missing
         }
