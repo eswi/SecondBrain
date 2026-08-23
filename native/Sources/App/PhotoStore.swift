@@ -89,6 +89,30 @@ enum PhotoStore {
         }
     }
 
+    /// **자료 추가로 붙이는 사진을 확정한다** — 이름은 **`<항목id>-<자료id>.jpg`**(§3-W-6).
+    ///
+    /// ⛔ **수집의 `finalize`와 다른 함수인 이유:** 수집은 **성역**(create 블록)에 찍고 이름이 `<항목id>.jpg`다.
+    /// 추가는 **op으로 붙고**(성역 아니다 · 2026-08-23 사용자 결정 · 제약 10) 이름에 **자료 id가 들어간다.**
+    /// ★ **그래서 한 항목에 여럿이 될 수 있다** — 자료 id가 UUID라 두 기기가 동시에 붙여도 안 겹친다.
+    ///
+    /// 돌려주는 값 = **포인터에 적을 파일명.** 실패면 nil(→ 이벤트를 안 쓴다).
+    /// **파일은 write-once** — 확정한 뒤 다시 안 건드린다(`edit-policy.md` §6).
+    @discardableResult
+    static func finalizeAdded(temp: URL, itemId: String, assetId: String) -> String? {
+        guard let dir = localPhotoDir() else { return nil }
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: temp.path) else { return nil }
+        let name = MediaPointer.filename(.photo, itemId: itemId, assetId: assetId)
+        let dest = dir.appendingPathComponent(name)
+        do {
+            if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }   // 방어(자료 id 충돌은 사실상 없다)
+            try fm.moveItem(at: temp, to: dest)
+            return name
+        } catch {
+            return nil
+        }
+    }
+
     /// 이 기기에서 볼 수 있는 사진 파일 URL. **로컬만 본다.** `AudioStore.url(forId:)`의 미러 —
     /// **iCloud URL을 돌려주지 않는 이유는 그쪽 주석에 있다**(§2-A C안 · 2026-08-20).
     ///

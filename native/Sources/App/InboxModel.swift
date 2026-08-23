@@ -611,6 +611,25 @@ final class InboxModel: ObservableObject {
         else { append(.edit(id: item.id, hlc: tick(), ["type": ""])) }
     }
 
+    // MARK: 자료 추가 (2026-08-23 · 3단계)
+
+    /// **있는 기억에 사진을 붙인다** — 파일을 확정하고 **op 이벤트**로 포인터를 쓴다.
+    ///
+    /// ## ⛔ 성역이 아니다 (2026-08-23 사용자 결정 · 제약 10)
+    /// 성역은 **create 블록**이고 그 블록은 **이미 파일에 적혀 있다**(append-only) — 나중에 못 고친다.
+    /// 그래서 추가한 자료는 **op(`Event.edit`)으로** 붙고, **「수집 당시의 원본」과 데이터에서 갈린다.**
+    /// ✅ **파일 자체는 그대로 불변**이다 — 바뀌는 것은 「수집 당시의 것이다」라는 보장뿐이다.
+    ///
+    /// **필드 이름 = `photo.<자료id>`**(§3-W) — 자료마다 다른 필드라 **두 기기가 각각 붙여도 둘 다 산다.**
+    func addPhoto(to itemId: String, temp: URL) {
+        let assetId = MediaPointer.newAssetId()
+        guard let name = PhotoStore.finalizeAdded(temp: temp, itemId: itemId, assetId: assetId) else {
+            PhotoStore.deleteTemp(temp)   // 확정 실패 → 임시 파일을 남기지 않는다(고아 방지)
+            return
+        }
+        append(.edit(id: itemId, hlc: tick(), [MediaPointer.key(.photo, assetId): name]))
+    }
+
     private func tick() -> HLC {
         let h = clock.send(now: nowMillis())
         DeviceStore.saveLastHLC(clock.last)

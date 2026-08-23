@@ -236,8 +236,10 @@ struct MediaCard: View {
     let item: ResolvedItem
     @ObservedObject var audioFetch: MediaFetch
     @ObservedObject var photoFetch: MediaFetch
-    /// 네모를 눌렀을 때 — **뷰어로 간다**(§0 24~26번). 다음 커밋에서 채운다.
+    /// 네모를 눌렀을 때 — **뷰어로 간다**(§0 24~26번).
     var onTap: (MediaCardKind) -> Void = { _ in }
+    /// **추가 네모(`+`)를 눌렀을 때** — 종류를 고르는 시트로 간다(2026-08-23 · 3단계).
+    var onAdd: () -> Void = {}
 
     private static let gap: CGFloat = 8        // §0 6번
 
@@ -278,9 +280,14 @@ struct MediaCard: View {
                     // ⛔ **옛 꼴은 「자료가 0개일 때만」 점선 네모를 뒀다** — 그러면
                     //    **빈 카드가 다른 화면**이 된다(자료가 생기는 순간 추가 자리가 사라졌다).
                     //    사용자: *"그러면 빈 카드와 자료 있는 카드가 **같은 구조**가 된다."*
-                    // ⏸ **아직 안 눌린다** — 누른 뒤 무엇이 일어나는지는 나중에 정한다(추가 기능과 함께).
-                    //    **누르면 아무 일 없는 단추를 만들지 않고, 없는 기능을 알리는 문구도 짓지 않는다.**
-                    MediaEmptyTile()
+                    // ✅ **2026-08-23부터 눌린다** — `MediaAddSheet`(종류를 먼저 고른다)로 간다.
+                    //    ⛔ **옛 서술(지우지 않는다):** *"⏸ 아직 안 눌린다 … 누르면 아무 일 없는 단추를
+                    //    만들지 않고, 없는 기능을 알리는 문구도 짓지 않는다."*
+                    //    ⚠️ **뒷문장이 뒤집혔다**(사용자 결정): 시트는 **종류 여섯을 다 보이고**
+                    //    아직 안 되는 다섯을 누르면 **「아직 못 담아요」**를 그 줄에 띄운다.
+                    //    **앞문장은 유지된다** — `+` 자체는 이제 **실제로 무언가를 연다.**
+                    Button { onAdd() } label: { MediaEmptyTile() }
+                        .buttonStyle(.plain)
                 }
             }
             .overlay(alignment: .bottom) {

@@ -100,6 +100,12 @@ struct DetailView: View {
     @StateObject private var audio = AudioPlayer()
     /// 뷰어에 무엇을 띄웠나 — nil이면 안 떠 있다(§0 22~26번 · `MediaViewer.swift`).
     @State private var viewerKind: MediaCardKind?
+    // 자료 추가(3단계 · 2026-08-23) — `+` → 종류 시트 → 카메라/앨범.
+    // ⚠️ **시트 위에 시트를 겹치지 않는다** — 종류 시트가 닫힌 **뒤** 여는 것이 `pendingAdd`의 몫이다.
+    @State private var showAddSheet = false
+    @State private var pendingAdd: MediaAddRoute?
+    @State private var showCamera = false
+    @State private var showAlbum = false
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -243,8 +249,16 @@ struct DetailView: View {
                         case .metaType:           metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
                         case .media:
                             // **보조 자료** — 자료를 성역에서 뗀 카드(§0 0-1·0-2 · `MediaCard.swift`).
-                            MediaCard(item: item, audioFetch: audioFetch, photoFetch: photoFetch,
-                                      onTap: { viewerKind = $0 })
+                            // ⚠️ **`item`이 아니라 최신 항목을 넘긴다** — 자료를 붙인 직후에 카드가
+                            //    다시 그려져야 한다(값으로 받은 `item`은 그때 낡아 있다).
+                            MediaCard(item: model.current(item.id) ?? item,
+                                      audioFetch: audioFetch, photoFetch: photoFetch,
+                                      onTap: { viewerKind = $0 },
+                                      onAdd: {
+                                          #if os(iOS)
+                                          showAddSheet = true
+                                          #endif
+                                      })
                         // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
                         case .question:
                             if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
@@ -299,6 +313,34 @@ struct DetailView: View {
         // (다른 대화상자들은 글자만 담아 높이가 안 흔들리므로 굳이 안 건드린다.)
         .overlay { if let f = editingTime { timeDialog(f).ignoresSafeArea() } }
         .overlay { if let msg = noticeDialog { noticeDialogView(msg) } }
+        // **자료 추가** — 카드의 `+` → 종류 시트 → (사진 찍기 | 앨범에서 고르기).
+        // ⚠️ 시트가 **닫힌 뒤** 다음 화면을 연다(`onDismiss`) — 겹쳐 띄우면 iOS가 둘째를 무시한다.
+        #if os(iOS)
+        .sheet(isPresented: $showAddSheet, onDismiss: {
+            switch pendingAdd {
+            case .camera: showCamera = true
+            case .album:  showAlbum = true
+            case nil:     break
+            }
+            pendingAdd = nil
+        }) {
+            MediaAddSheet(onCamera: { pendingAdd = .camera; showAddSheet = false },
+                          onAlbum:  { pendingAdd = .album;  showAddSheet = false })
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraCapture { img in
+                // ⚠️ **위치를 안 넘긴다** — 수집 화면은 위치를 함께 박지만(§5 Stage 3) 상세에는
+                //    그 장치가 없다. **추가로 찍은 사진에는 EXIF 위치가 없다**(⏸ 후속 · §3-Y-4).
+                if let temp = PhotoStore.saveCaptured(img, location: nil, sessionId: UUID().uuidString) {
+                    model.addPhoto(to: item.id, temp: temp)
+                }
+            }
+        }
+        .sheet(isPresented: $showAlbum) {
+            // 앨범에서 온 파일은 **원본 EXIF를 품고 온다** — 위치가 있으면 그대로 살아 있다.
+            AlbumPicker { temp in model.addPhoto(to: item.id, temp: temp) }
+        }
+        #endif
         // **뷰어** — 네모를 누르면 전체 화면으로 연다(§0 22~26번).
         // ⚠️ `fullScreenCover`는 iOS 전용이라 맥은 시트로 연다 — **판정·내용은 같은 코드**다
         //    (`photoRow`가 `#if`를 걷어낸 것과 같은 결: 갈라 두면 한쪽만 고쳐진다).
