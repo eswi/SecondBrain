@@ -101,6 +101,12 @@ struct DetailView: View {
     /// 뷰어에 무엇을 띄웠나 — nil이면 안 떠 있다(§0 22~26번 · `MediaViewer.swift`).
     @State private var viewerKind: MediaCardKind?
 
+    /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
+    ///
+    /// ⚠️ **앞으로 애니메이션을 넣을 때마다 이 자리를 함께 본다** — 빠지면 **앱 안에서 동작 정책이 갈린다**
+    /// (「어디는 되고 어디는 안 되는」이 된다). **첫 자리가 규칙이 되는 꼴이다.**
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     init(item: ResolvedItem, model: InboxModel) {
         self.item = item
         self.model = model
@@ -1343,7 +1349,7 @@ struct DetailView: View {
         ConfirmDialog(title: "정말로 기억하시겠습니까?",
                       cancelTitle: "취소하기", confirmTitle: "기억하기",
                       onCancel: { showRememberConfirm = false },
-                      onConfirm: { showRememberConfirm = false; remember() })
+                      onConfirm: { showRememberConfirm = false; rememberAfterDialog() })
     }
 
     /// 원칙 지정 시 기억하기 자동 결정 안내 — 공용 대화상자, 안내형 단일 버튼.
@@ -1477,6 +1483,25 @@ struct DetailView: View {
     /// **순서: 커밋 → 확정.** 두 이벤트로 나눠 붙인다(제어 필드 `confirmed`는 편집 이벤트에 섞지 않는다는
     /// 규약을 지킨다 — `EditDiff`가 그것을 보장하고 `MergeEngine`이 별도 OR-머지로 읽는다).
     /// `commitEdits`가 임시일 때 `raw`·`type`만 통과시키므로 활용 칸이 새 들어갈 여지도 없다.
+    /// **[기억하기]를 누른 뒤의 움직임** (설계 §0 28~32번 · 커밋 ②-2).
+    ///
+    /// **무엇이 움직이나:** 확정되면 `decideRow`가 사라지고 **보조 자료 카드가 위로 올라가며**,
+    /// 시간 설정·반복 설정·수정 이력(그리고 조건이 맞으면 배너)이 **새로 나타난다.**
+    /// **한 단계로 둔다** — 있던 카드는 미끄러지고 **새것은 기본 페이드**다(§0 28번).
+    /// ⛔ **두 단계로 나누지 말 것** — 랩에서 재보니 배너가 뜨는 경우 **「올라갔다 다시 내려온다」**로
+    /// 더 나빴다(설계 §3-H-1의 세 줄).
+    ///
+    /// **0.15초 늦추는 이유:** 재확인 대화상자는 **`black.opacity(0.4)` 스크림**을 깔고 **0.15초**에 걷힌다
+    /// (`StandardDialog` · 이 파일의 `.animation(…0.15…)`). 같은 프레임에 시작하면
+    /// **움직임의 앞부분이 막 아래에서 일어나** 「어디서 왔는지」가 약해진다.
+    /// ⛔ **스크림 값을 줄이지 않는다** — **대화상자 여섯이 같은 값을 쓴다**(§0 31번 · §3-I-3).
+    private func rememberAfterDialog() {
+        guard !reduceMotion else { remember(); return }   // 동작 줄이기 — 지연도 애니메이션도 없다
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.easeInOut(duration: 0.35)) { remember() }
+        }
+    }
+
     private func remember() {
         let saving = changes
         if !saving.isEmpty { model.commitEdits(item, changes: saving) }
