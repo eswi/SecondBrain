@@ -230,17 +230,27 @@ struct MediaViewer: View {
         if kind == .photo, !names.isEmpty {
             VStack {
                 Spacer()
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(names.enumerated()), id: \.element) { i, n in
-                            Button { pick(i) } label: { thumb(n, selected: i == index) }
-                                .buttonStyle(.plain)
+                // ★ **고른 것이 화면 밖으로 나가지 않게 따라 스크롤한다**(2026-08-24 사용자):
+                //   *"사진을 계속 넘겨서 … 결국 초록 테두리는 화면 밖으로 나가버려."*
+                //   `ScrollViewReader`가 그 일을 한다 — **가운데로 모은다**(anchor: .center)라
+                //   앞뒤가 함께 보여 「어디쯤인가」가 읽힌다.
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(names.enumerated()), id: \.element) { i, n in
+                                Button { pick(i) } label: { thumb(n, selected: i == index) }
+                                    .buttonStyle(.plain)
+                                    .id(n)
+                            }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.55))
+                    // 넘길 때마다 · 그리고 열 때 한 번(대표가 첫째가 아닐 수도 있는 자리를 위해).
+                    .onChange(of: index) { _, _ in scrollToCurrent(proxy) }
+                    .onAppear { scrollToCurrent(proxy) }
                 }
-                .background(.black.opacity(0.55))
             }
         }
     }
@@ -264,6 +274,12 @@ struct MediaViewer: View {
                 .strokeBorder(selected ? Palette.selected : .white.opacity(0.15),
                               lineWidth: selected ? 2.5 : 1)
         )
+    }
+
+    /// 지금 것을 **가운데로** 끌어온다. 목록이 짧아 스크롤할 여지가 없으면 아무 일도 안 난다.
+    private func scrollToCurrent(_ proxy: ScrollViewProxy) {
+        guard let n = name else { return }
+        withAnimation(Self.slide) { proxy.scrollTo(n, anchor: .center) }
     }
 
     private func pick(_ i: Int) {
