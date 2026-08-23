@@ -6,7 +6,12 @@ import AVFoundation
 @MainActor
 final class AudioPlayer: NSObject, ObservableObject {
     @Published private(set) var isPlaying = false
+    /// ★ **2026-08-23 추가 — 뷰어의 진행 막대**(설계 §0 23번의 「음성 재생기」).
+    /// 카드의 네모는 **길이만** 보이고(§0 11번), **진행은 뷰어의 것**이다.
+    @Published private(set) var progress: Double = 0      // 0…1
+    @Published private(set) var duration: TimeInterval = 0
     private var player: AVAudioPlayer?
+    private var ticker: Timer?
 
     /// 재생/정지 토글. 재생 중이면 멈추고, 아니면 url을 처음부터 재생.
     func toggle(url: URL) {
@@ -20,16 +25,28 @@ final class AudioPlayer: NSObject, ObservableObject {
             p.delegate = self
             guard p.play() else { return }
             player = p
+            duration = p.duration
+            progress = 0
             isPlaying = true
+            // 0.2초마다 진행을 올린다 — 폴링 값은 `MediaFetch.pollSeconds`와 같은 결(§6).
+            ticker?.invalidate()
+            ticker = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, let p = self.player, p.duration > 0 else { return }
+                    self.progress = p.currentTime / p.duration
+                }
+            }
         } catch {
             isPlaying = false
         }
     }
 
     func stop() {
+        ticker?.invalidate(); ticker = nil
         player?.stop()
         player = nil
         isPlaying = false
+        progress = 0
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif

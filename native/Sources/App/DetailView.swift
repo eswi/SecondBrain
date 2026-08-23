@@ -98,6 +98,8 @@ struct DetailView: View {
 
     /// 원본 음성 "다시 듣기" 재생기(성역 카드).
     @StateObject private var audio = AudioPlayer()
+    /// 뷰어에 무엇을 띄웠나 — nil이면 안 떠 있다(§0 22~26번 · `MediaViewer.swift`).
+    @State private var viewerKind: MediaCardKind?
 
     init(item: ResolvedItem, model: InboxModel) {
         self.item = item
@@ -235,7 +237,8 @@ struct DetailView: View {
                         case .metaType:           metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
                         case .media:
                             // **보조 자료** — 자료를 성역에서 뗀 카드(§0 0-1·0-2 · `MediaCard.swift`).
-                            MediaCard(item: item, audioFetch: audioFetch, photoFetch: photoFetch)
+                            MediaCard(item: item, audioFetch: audioFetch, photoFetch: photoFetch,
+                                      onTap: { viewerKind = $0 })
                         // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
                         case .question:
                             if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
@@ -290,6 +293,19 @@ struct DetailView: View {
         // (다른 대화상자들은 글자만 담아 높이가 안 흔들리므로 굳이 안 건드린다.)
         .overlay { if let f = editingTime { timeDialog(f).ignoresSafeArea() } }
         .overlay { if let msg = noticeDialog { noticeDialogView(msg) } }
+        // **뷰어** — 네모를 누르면 전체 화면으로 연다(§0 22~26번).
+        // ⚠️ `fullScreenCover`는 iOS 전용이라 맥은 시트로 연다 — **판정·내용은 같은 코드**다
+        //    (`photoRow`가 `#if`를 걷어낸 것과 같은 결: 갈라 두면 한쪽만 고쳐진다).
+        #if os(iOS)
+        .fullScreenCover(item: $viewerKind) { k in
+            MediaViewer(item: item, kind: k, audio: audio) { viewerKind = nil }
+        }
+        #else
+        .sheet(item: $viewerKind) { k in
+            MediaViewer(item: item, kind: k, audio: audio) { viewerKind = nil }
+                .frame(minWidth: 520, minHeight: 420)
+        }
+        #endif
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
         .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
         .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)

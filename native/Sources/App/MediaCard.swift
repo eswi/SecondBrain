@@ -75,9 +75,22 @@ struct MediaTile: View {
             if count > 1 { badge }     // §0 8번 — ⚠️ 지금 데이터에서는 늘 1이라 안 뜬다
         }
         .frame(width: side, height: side)
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(state == .ready ? Palette.border : Palette.overdue.opacity(0.55)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// 테두리 색 — ⛔ **②만 무채색이다**(2026-08-23 사용자 · §0 20번의 뜻을 테두리까지 넓혔다).
+    ///
+    /// **왜:** ②는 **「고장」이 아니라 「아직」**이다. 아이콘·글자만 무채색으로 두고 테두리를 coral로 두니
+    /// **화면에서 테두리가 가장 크게 보여 그 뜻을 덮었다** — 자료가 둘 다 ②인 항목에서 **「고장 둘」로 읽혔다.**
+    /// ⚠️ **랩에서는 안 보였다** — 꼴 X는 ①②③을 나란히 두어 **아이콘 차이로 갈렸는데**,
+    /// 실제 화면은 **②만 여럿**이라 비교 대상이 없었다. **나란히 두면 갈리고 혼자 있으면 안 갈린다.**
+    private var borderColor: Color {
+        switch state {
+        case .ready:       return Palette.border
+        case .notFetched:  return Palette.border          // ② — 「아직」이라 조용하다
+        case .cannotDraw, .unsupported: return Palette.overdue.opacity(0.55)
+        }
     }
 
     @ViewBuilder private var face: some View {
@@ -201,8 +214,11 @@ struct MediaCard: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Self.gap) {
                     if kinds.isEmpty {
-                        Button { onTap(.other) } label: { MediaEmptyTile() }
-                            .buttonStyle(.plain)
+                        // ⏸ **아직 안 눌린다** — 이 네모의 일은 **추가**인데 추가는 뷰어에 있고(§0 25번)
+                        //    추가 자체가 나중이다. **누르면 아무 일도 없는 단추를 만들지 않는다** ·
+                        //    **없는 기능을 알리는 문구도 짓지 않는다**(항시 규칙 6).
+                        //    ⛔ 그래서 지금은 **자리 표시**다 — 「여기에 자료가 들어간다」만 말한다.
+                        MediaEmptyTile()
                     }
                     ForEach(kinds) { k in
                         Button { onTap(k) } label: { tile(k) }
