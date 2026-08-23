@@ -47,11 +47,17 @@ enum MediaCardKind: Int, CaseIterable, Identifiable {
 
 /// 네모의 상태 — **§0 20번의 실패 셋**과 「보인다」.
 enum MediaTileState {
-    case ready                 // 그림(또는 음성 아이콘)이 있다
-    case cannotDraw            // ① 자료는 있고 그림만 못 만들었다 — **눌러 들어가면 볼 수 있다**
-    case notFetched            // ② 가져오지 못했다 (`notDownloaded`·`absent`를 **하나로** 본다 · §0 21번)
-    case unsupported           // ③ 포맷 지원이 안 된다
+    case ready                 // 정상 — 그림(또는 음성 아이콘)이 있다
+    case notDownloaded         // 파일은 iCloud에 있는데 **아직 못 받았다** → 앰버
+    case absent                // **어디에도 없다** → 빨강
+    case cannotDraw            // 파일은 있는데 **그림을 못 만들었다** → 빨강
+    case unsupported           // 포맷 지원이 안 된다 → 빨강
 }
+
+/// ⚠️ **2026-08-23에 `notFetched` 하나를 둘(`notDownloaded`·`absent`)로 갈랐다** — **색이 갈라야 해서다**
+/// (사용자: *"파일이 존재하지 않는 경우 … 빨간색, 파일이 있으나 아직 가져오지 못한 경우 앰버"*).
+/// ⛔ **§0 21번(「②는 하나로 본다」)이 통째로 뒤집힌 것이 아니다** — **문구는 아직 하나**이고
+/// **색만 갈렸다.** 문구를 가를지는 사용자 결정 대기(설계 §3-N).
 
 /// 62pt 정사각형 하나. **한 변이 값이라 안쪽 치수는 전부 그 비율이다**(§0 6·16·18번).
 struct MediaTile: View {
@@ -85,20 +91,26 @@ struct MediaTile: View {
     /// **화면에서 테두리가 가장 크게 보여 그 뜻을 덮었다** — 자료가 둘 다 ②인 항목에서 **「고장 둘」로 읽혔다.**
     /// ⚠️ **랩에서는 안 보였다** — 꼴 X는 ①②③을 나란히 두어 **아이콘 차이로 갈렸는데**,
     /// 실제 화면은 **②만 여럿**이라 비교 대상이 없었다. **나란히 두면 갈리고 혼자 있으면 안 갈린다.**
+    /// ★ **색 규칙 (2026-08-23 사용자)** — 세 갈래다:
+    /// **정상 = 밝은 무채색** · **아직 못 받음 = 앰버**(파일은 iCloud에 있다) ·
+    /// **없거나 못 보는 것 = 빨강**(어디에도 없다 · 파일이 잘못됐다 · 포맷 미지원).
+    /// ⚠️ 앞선 판단(「②는 무채색」)에서 **한 칸 갈렸다** — 「아직」과 「없음」이 **같은 색이면 안 된다.**
     private var borderColor: Color {
         switch state {
-        case .ready:       return Palette.border
-        case .notFetched:  return Palette.border          // ② — 「아직」이라 조용하다
-        case .cannotDraw, .unsupported: return Palette.overdue.opacity(0.55)
+        case .ready:          return Palette.textTertiary          // 밝은 무채색
+        case .notDownloaded:  return Palette.today                 // 앰버 — 「아직」
+        case .absent, .cannotDraw, .unsupported:
+            return Palette.overdue.opacity(0.75)                   // 빨강 — 없거나 못 본다
         }
     }
 
     @ViewBuilder private var face: some View {
         switch state {
-        case .ready:       readyFace
-        case .cannotDraw:  failFace("hand.tap.fill", "눌러서\n보기", Palette.overdue)
-        case .notFetched:  failFace("icloud.and.arrow.down", "아직\n못 받음", Palette.textSecondary)
-        case .unsupported: failFace("nosign", "지원\n안 함", Palette.overdue)
+        case .ready:          readyFace
+        case .cannotDraw:     failFace("hand.tap.fill", "눌러서\n보기", Palette.overdue)
+        case .notDownloaded:  failFace("icloud.and.arrow.down", "아직\n못 받음", Palette.today)
+        case .absent:         failFace("icloud.and.arrow.down", "아직\n못 받음", Palette.overdue)
+        case .unsupported:    failFace("nosign", "지원\n안 함", Palette.overdue)
         }
     }
 
@@ -262,13 +274,15 @@ struct MediaCard: View {
     @ViewBuilder private func tile(_ k: MediaCardKind) -> some View {
         switch k {
         case .voice:
-            MediaTile(kind: .voice, state: state(audioFetch, url: AudioStore.url(forId: item.id)),
-                      count: 1, duration: MediaCard.durationText(AudioStore.url(forId: item.id)))
+            let aurl = AudioStore.url(forId: item.id)
+            MediaTile(kind: .voice,
+                      state: state(audioFetch, url: aurl, drawable: aurl != nil),   // 음성은 그림이 없다
+                      count: 1, duration: MediaCard.durationText(aurl))
         case .photo:
             let url = PhotoStore.url(forId: item.id)
             let img = url.flatMap { PlatformMedia.image(contentsOfFile: $0.path) }
             MediaTile(kind: .photo,
-                      state: img != nil ? .ready : state(photoFetch, url: url),
+                      state: state(photoFetch, url: url, drawable: img != nil),
                       count: 1, image: img,
                       hasPlace: PhotoStore.coordinate(forId: item.id) != nil)
         default:
@@ -278,11 +292,20 @@ struct MediaCard: View {
 
     /// 세 갈래를 **네모의 두 상태로 접는다**(§0 21번) — `notDownloaded`·`absent`는 **하나로**.
     /// ⛔ 「다시 시도」를 안 쓰는 이유가 이것이다: `absent`에서 거짓말이 된다(설계 §3-E-3).
-    private func state(_ fetch: MediaFetch, url: URL?) -> MediaTileState {
+    /// ⛔ **2026-08-23 결함 수정** — 옛 코드는 `.here`이고 파일이 있으면 **무조건 `.cannotDraw`**를 냈다.
+    /// 사진에서는 맞았지만(그림 디코드가 실패했을 때만 여기 온다) **음성에서는 틀렸다** —
+    /// **파일이 멀쩡히 있는데 「눌러서 보기」(빨강)로 그렸다.**
+    /// ⚠️ **시뮬에서는 안 드러났다** — 샘플에 **파일이 없어서** 늘 「아직 못 받음」으로 빠졌다.
+    /// ★ **포인터만 있고 파일이 없는 표본은 이 갈래를 못 가른다**(설계 §3-N-2).
+    ///
+    /// - `drawable`: **그림까지 만들어졌나.** 음성은 그림이 필요 없으므로 **파일이 있으면 참**이다.
+    private func state(_ fetch: MediaFetch, url: URL?, drawable: Bool) -> MediaTileState {
         switch fetch.state {
-        case .here:          return url == nil ? .notFetched : .cannotDraw
-        case .notDownloaded: return .notFetched
-        case .absent:        return .notFetched
+        case .here:
+            if url == nil { return .absent }        // 판정과 파일이 어긋난 순간(evict 직후 등)
+            return drawable ? .ready : .cannotDraw
+        case .notDownloaded: return .notDownloaded
+        case .absent:        return .absent
         }
     }
 
