@@ -98,14 +98,20 @@ struct MediaViewer: View {
                 Image(systemName: "waveform")
                     .font(.system(size: 96, weight: .regular))
                     .foregroundStyle(Palette.accent)
-                Text(MediaCard.durationText(url) ?? "")
-                    .font(.system(size: 34, weight: .semibold)).monospacedDigit()
+                // ★ **경과 / 길이** — 옛 꼴은 길이만 보여서 **막대는 움직이는데 숫자가 안 변했다**
+                //   (2026-08-23 실기기에서 사용자가 잡았다).
+                Text("\(MediaViewer.clock(audio.currentTime)) / \(MediaViewer.clock(total(url)))")
+                    .font(.system(size: 30, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(.white)
-                ProgressView(value: audio.progress)
+                // ★ **끌어서 자리를 옮긴다** — `ProgressView`는 못 끈다. `Slider`라야 한다.
+                Slider(value: Binding(get: { audio.progress },
+                                      set: { audio.seek(toFraction: $0) }),
+                       in: 0...1)
                     .tint(Palette.accent)
-                    .frame(width: 240)
+                    .frame(width: 260)
+                // ★ **정지가 아니라 일시정지다** — 다시 누르면 **그 자리에서** 이어 듣는다.
                 Button { audio.toggle(url: url) } label: {
-                    Image(systemName: audio.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                    Image(systemName: audio.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 64))
                         .foregroundStyle(Palette.accent)
                 }
@@ -114,6 +120,17 @@ struct MediaViewer: View {
         } else {
             missing
         }
+    }
+
+    /// 「0:37」 꼴. ⚠️ **카드의 길이 표시와 같은 꼴이어야 한다**(`MediaCard.durationText`).
+    static func clock(_ t: TimeInterval) -> String {
+        let s = Int(t.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// 총 길이 — 재생 전에는 `AudioPlayer`가 모르므로 파일에서 읽는다.
+    private func total(_ url: URL) -> TimeInterval {
+        audio.duration > 0 ? audio.duration : (MediaCard.durationSeconds(url) ?? 0)
     }
 
     /// 파일이 없을 때 — **카드가 이미 「아직 못 받음」으로 말한 상태**다. 여기서도 같은 뜻만 보인다.

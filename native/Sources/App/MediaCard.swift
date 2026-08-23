@@ -218,8 +218,11 @@ struct MediaCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("보조 자료")                                   // §0 2번 — 사용자가 고른 말
-                .font(.callout.weight(.semibold))
+            // §0 2번 — 사용자가 고른 말. ⚠️ **글꼴은 다른 카드 제목과 같아야 한다**
+            // (`DetailView.sectionLabel` = `.caption.weight(.semibold)` + `textSecondary`).
+            // ⛔ 처음엔 `.callout`으로 넣었더니 **이 카드만 제목이 컸다**(2026-08-23 실기기에서 사용자가 잡았다).
+            Text("보조 자료")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(Palette.textSecondary)
             tiles
         }
@@ -329,8 +332,14 @@ struct MediaCard: View {
     /// 음성 길이 — 「0:37」. 파일이 없으면 nil.
     /// ⚠️ **로컬 파일에서 바로 읽는다**(`AVAudioPlayer`) — 네트워크·iCloud 대기 없음.
     static func durationText(_ url: URL?) -> String? {
+        guard let s = durationSeconds(url) else { return nil }
+        let n = Int(s.rounded())
+        return String(format: "%d:%02d", n / 60, n % 60)
+    }
+
+    /// 초 단위 길이 — 뷰어가 「경과 / 길이」를 그릴 때도 쓴다.
+    static func durationSeconds(_ url: URL?) -> TimeInterval? {
         guard let url, let p = try? AVAudioPlayer(contentsOf: url) else { return nil }
-        let s = Int(p.duration.rounded())
-        return String(format: "%d:%02d", s / 60, s % 60)
+        return p.duration
     }
 }
