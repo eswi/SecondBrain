@@ -146,6 +146,38 @@ struct DetailView: View {
     /// (사진 촬영이 본문 선행을 요구하는 규칙·capture의 원문 선행과 정합). → 저장 차단.
     private var rawEmpty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+    // MARK: 본문 순서 (2026-08-23 신설 — 자료 확장 ② 커밋 ①)
+
+    /// 본문 안쪽 카드들의 **자리**. ⛔ **`id`가 고정이라 SwiftUI가 「같은 것이 옮겨간 것」으로 본다** —
+    /// 그것이 이 배열의 존재 이유다(설계 §3-G-4 · §0의 29번).
+    /// ⚠️ **원문(`rawSection`)은 이 배열 밖이다** — 바깥 `VStack`에 그대로 있다(제스처 그룹이 다르다).
+    private enum BodySection: String, Identifiable, CaseIterable {
+        case pausedBanner, missedBanner, overdueHiddenBanner, anchorBanner, leadClampedBanner
+        case metaType, question, time, recurrence, history, decide
+        var id: String { rawValue }
+    }
+
+    /// 지금 상태에서 **무엇이 어느 순서로 그려지나.**
+    /// ⛔ **옛 코드와 같은 순서·같은 조건이다** — 커밋 ①은 화면을 바꾸지 않는다.
+    /// **대조표(옛 → 새):**
+    /// `if isRemembered { 배너 다섯 }` → 앞의 다섯 · `metaTypeRow` → `.metaType` ·
+    /// `if let q = …question` → `.question` · `if isRemembered { time·recurrence·history }` → 셋 ·
+    /// `else { decideRow }` → `.decide`.
+    private var bodyOrder: [BodySection] {
+        var out: [BodySection] = []
+        if isRemembered {
+            out += [.pausedBanner, .missedBanner, .overdueHiddenBanner, .anchorBanner, .leadClampedBanner]
+        }
+        out.append(.metaType)
+        if let q = item.fields["question"], !q.isEmpty { out.append(.question) }
+        if isRemembered {
+            out += [.time, .recurrence, .history]
+        } else {
+            out.append(.decide)
+        }
+        return out
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -170,22 +202,33 @@ struct DetailView: View {
                     //
                     // ⚠️ **배너 다섯은 G-7이 검사하는 자리다**(아래 MARK 규약) — 입력을 바꾸지 않고
                     // **그릴지 말지만** 갈랐다. 확정 항목에서는 다섯이 그대로 같은 입력(`saved`)을 본다.
-                    if isRemembered {
-                        pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
-                        missedBanner   // N일 놓침 주의(§4)
-                        overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
-                        anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
-                        leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
-                    }
-                    metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
-                    // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
-                    if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
-                    if isRemembered {
-                        timeSection          // '시간 설정'(기준 날짜) — 위 (첫 카드 위치 통일)
-                        recurrenceSection    // '반복 설정'(주기·자동완성·꺼두기) — 아래
-                        historyRow
-                    } else {
-                        decideRow            // [삭제하기] · [기억하기] — 살릴지 버릴지 결정을 내민다
+                    // ★★ **순서를 배열로 든다** (2026-08-23 · 자료 확장 ② 커밋 ①).
+                    //
+                    // ⛔ **이 커밋에서 화면 결과는 바뀌지 않는다.** 아래 `bodyOrder`가 내는 순서·조건은
+                    //    옛 코드(`if isRemembered { 배너 다섯 } · metaTypeRow · question · if/else`)와 **같다.**
+                    //
+                    // **왜 바꾸나:** 다음 커밋에서 **보조 자료 카드**가 들어오는데, 그 카드는
+                    // **자리가 상태에 따라 다르다** — **확정이면 성역 바로 아래**, **미확정이면 본문 맨 끝**
+                    // ([기억하기] 아래 · `media-expansion-design.md` §3-F-2).
+                    // 두 자리에 **각각 두면**(`if`/`else`) SwiftUI가 **다른 뷰로 보고 사라졌다 나타난다** —
+                    // 랩 실측에서 **빈 프레임 셋**이 찍혔다(설계 §3-G-4의 A안).
+                    // **고정 `id`를 가진 배열이라야 「같은 것이 옮겨간다」로 보고 미끄러진다**(B안 · 연속 사다리).
+                    ForEach(bodyOrder) { s in
+                        switch s {
+                        case .pausedBanner:       pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
+                        case .missedBanner:       missedBanner   // N일 놓침 주의(§4)
+                        case .overdueHiddenBanner: overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
+                        case .anchorBanner:       anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
+                        case .leadClampedBanner:  leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
+                        case .metaType:           metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
+                        // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
+                        case .question:
+                            if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
+                        case .time:               timeSection          // '시간 설정'(기준 날짜) — 위 (첫 카드 위치 통일)
+                        case .recurrence:         recurrenceSection    // '반복 설정'(주기·자동완성·꺼두기) — 아래
+                        case .history:            historyRow
+                        case .decide:             decideRow            // [삭제하기] · [기억하기] — 살릴지 버릴지 결정을 내민다
+                        }
                     }
                 }
                 .contentShape(Rectangle())

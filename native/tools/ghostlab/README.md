@@ -190,3 +190,26 @@ swift ../measure-ui.swift /tmp/Q.png 1100 1120     # 카드 높이 — 열 둘�
 
 **⛔ 이 랩이 답할 수 없는 것 하나 더:** `canPreview`를 **dataless 파일**에 물어본 값.
 「없는 파일」과 다르고(이름·크기가 있다) **재면 상태가 바뀔 위험이 있다.** → 설계 §3-D-1.
+
+---
+
+## ★ 꼴 둘과 도구 하나를 더했다 — **리팩터가 화면을 바꿨나** (2026-08-23 · 자료 확장 ② 커밋 ①)
+
+| | 무엇 |
+|---|---|
+| **OA 옛꼴** | 본문을 **`if`/`else`**로 그린 꼴 (커밋 전 `DetailView` 구조) |
+| **OB 새꼴** | 같은 것을 **순서 배열 + `ForEach`(고정 id)**로 그린 꼴 |
+| **`measure-diff.swift`** | **스크린샷 두 장의 다른 픽셀을 센다** — `--tol` · `--skip-y` |
+
+⛔ **진짜 위험은 「아무것도 안 그리는 자식」이었다.** 배너 다섯은 조건이 안 맞으면 `EmptyView`를 낸다 —
+**옛 구조에서는 `VStack`의 자식이고 새 구조에서는 `ForEach`의 한 칸**이라 **여백을 다르게 먹을 수 있다.**
+그래서 꼴 둘 다 **배너 다섯 중 둘만 뜨게** 그려 두었다.
+
+```sh
+xcrun simctl launch $SIM kr.teri.GhostLab -ghostmode OA; xcrun simctl io $SIM screenshot /tmp/OA.png
+xcrun simctl launch $SIM kr.teri.GhostLab -ghostmode OB; xcrun simctl io $SIM screenshot /tmp/OB.png
+swift measure-diff.swift /tmp/OA.png /tmp/OB.png --skip-y 0,310   # 랩 자신의 꼴 고르개를 뺀다
+```
+
+**2026-08-23 결과: 본문 「다른 픽셀 0」.** 달랐던 것은 **랩 자신의 꼴 고르개**(y 251~299px)뿐이다 —
+**어느 글자가 선택돼 있나가 다르다.** ⚠️ **그래서 `--skip-y`가 필요하다** — 안 빼면 **거짓 실패**가 난다.

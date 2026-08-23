@@ -80,6 +80,8 @@ enum Mode: String, CaseIterable, Identifiable {
     case edgeH   = "Y 높이"          // ★ 「더 있음」 세 꼴의 카드 높이 대조군
     case move    = "Z 이동"          // ★ 기억하기 때 카드가 올라가는 움직임 (세 방법)
     case move2   = "ZE 여덟"         // ★ 화면 전체 재배치 — 전형/최악 · 한 단계/두 단계
+    case ordOld  = "OA 옛꼴"         // ★ 커밋 ① 확인 — if/else 구조
+    case ordNew  = "OB 새꼴"         // ★ 커밋 ① 확인 — 순서 배열
     var id: String { rawValue }
 
     /// ★ **화면을 눌러서 고르는 것을 CLI로 고른다** (2026-08-21 신설).
@@ -133,6 +135,8 @@ struct ContentView: View {
             case .edgeH:   EdgeHeightProbe()
             case .move:    MoveProbe()
             case .move2:   MoveProbe2()
+            case .ordOld:  OrderProbe(useArray: false)
+            case .ordNew:  OrderProbe(useArray: true)
             }
         }
     }
