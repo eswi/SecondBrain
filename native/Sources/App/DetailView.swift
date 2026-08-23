@@ -104,7 +104,6 @@ struct DetailView: View {
     // ⚠️ **시트 위에 시트를 겹치지 않는다** — 종류 시트가 닫힌 **뒤** 여는 것이 `pendingAdd`의 몫이다.
     @State private var showAddSheet = false
     @State private var pendingAdd: MediaAddRoute?
-    @State private var showCamera = false
     @State private var showAlbum = false
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
@@ -318,7 +317,16 @@ struct DetailView: View {
         #if os(iOS)
         .sheet(isPresented: $showAddSheet, onDismiss: {
             switch pendingAdd {
-            case .camera: showCamera = true
+            case .camera:
+                // ⛔ **커버로 감싸지 않는다 — 모달로 띄운다**(2026-08-24 · `SystemCamera` 머리주석).
+                // ⚠️ **위치를 안 넘긴다** — 수집 화면은 위치를 함께 박지만(§5 Stage 3) 상세에는
+                //    그 장치가 없다. **추가로 찍은 사진에는 EXIF 위치가 없다**(⏸ 후속 · §3-Y-9).
+                SystemCamera.present { img in
+                    if let temp = PhotoStore.saveCaptured(img, location: nil,
+                                                          sessionId: UUID().uuidString) {
+                        model.addPhoto(to: item.id, temp: temp)
+                    }
+                }
             case .album:  showAlbum = true
             case nil:     break
             }
@@ -326,15 +334,6 @@ struct DetailView: View {
         }) {
             MediaAddSheet(onCamera: { pendingAdd = .camera; showAddSheet = false },
                           onAlbum:  { pendingAdd = .album;  showAddSheet = false })
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraCapture { img in
-                // ⚠️ **위치를 안 넘긴다** — 수집 화면은 위치를 함께 박지만(§5 Stage 3) 상세에는
-                //    그 장치가 없다. **추가로 찍은 사진에는 EXIF 위치가 없다**(⏸ 후속 · §3-Y-4).
-                if let temp = PhotoStore.saveCaptured(img, location: nil, sessionId: UUID().uuidString) {
-                    model.addPhoto(to: item.id, temp: temp)
-                }
-            }
         }
         .sheet(isPresented: $showAlbum) {
             // 앨범에서 온 파일은 **원본 EXIF를 품고 온다** — 위치가 있으면 그대로 살아 있다.

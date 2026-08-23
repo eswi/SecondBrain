@@ -13,7 +13,6 @@ struct CaptureSheet: View {
     @State private var saved = false   // [저장]으로 확정됐는지 — onDisappear의 임시 음성·사진 정리 판단용
     #if os(iOS)
     @StateObject private var speech = SpeechCapture()
-    @State private var showCamera = false
     @State private var photoTemp: URL?                       // 촬영한 임시 사진(저장 시 확정 / 취소 시 삭제)
     @StateObject private var location = LocationProvider()   // 촬영 위치(사진 EXIF에만 · 그릇엔 안 감)
     #endif
@@ -71,16 +70,6 @@ struct CaptureSheet: View {
                 speech.cancelAndDiscard()
                 if let p = photoTemp { PhotoStore.deleteTemp(p) }
             }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraCapture { img in
-                if let old = photoTemp { PhotoStore.deleteTemp(old) }   // 다시 찍기 → 이전 임시 삭제(고아 방지)
-                // 촬영마다 **고유** 임시 경로 → photoTemp(URL)이 바뀌어 SwiftUI가 새 썸네일을 다시 그린다.
-                // (같은 경로에 덮으면 URL 불변 → 재렌더 안 돼 옛 썸네일이 남는 버그.)
-                // 촬영 위치를 사진 EXIF에 박는다(있으면). 없으면 GPS 없이 저장(graceful).
-                photoTemp = PhotoStore.saveCaptured(img, location: location.last, sessionId: UUID().uuidString)
-            }
-            .ignoresSafeArea()
         }
         #endif
     }
@@ -179,7 +168,16 @@ struct CaptureSheet: View {
                 Button {
                     if speech.isRecording { speech.stop() }   // 방어(활성 조건상 이미 정지)
                     location.begin()                          // 프레이밍하는 동안 촬영 위치 취득(EXIF용)
-                    showCamera = true
+                    // ⛔ **커버로 감싸지 않는다 — 모달로 띄운다**(2026-08-24 · `SystemCamera` 머리주석).
+                    //    임베드하면 **가로에서 미리보기가 띠로 눌려 촬영이 안 된다.**
+                    SystemCamera.present { img in
+                        if let old = photoTemp { PhotoStore.deleteTemp(old) }   // 다시 찍기 → 이전 임시 삭제(고아 방지)
+                        // 촬영마다 **고유** 임시 경로 → photoTemp(URL)이 바뀌어 SwiftUI가 새 썸네일을 다시 그린다.
+                        // (같은 경로에 덮으면 URL 불변 → 재렌더 안 돼 옛 썸네일이 남는 버그.)
+                        // 촬영 위치를 사진 EXIF에 박는다(있으면). 없으면 GPS 없이 저장(graceful).
+                        photoTemp = PhotoStore.saveCaptured(img, location: location.last,
+                                                            sessionId: UUID().uuidString)
+                    }
                 } label: {
                     Label(photoTemp == nil ? "사진 찍기" : "다시 찍기", systemImage: "camera.fill")
                         .font(.callout)
