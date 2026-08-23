@@ -115,8 +115,11 @@ struct MediaTile: View {
         case .ready:          readyFace
         case .cannotDraw:     failFace("hand.tap.fill", "눌러서\n보기")
         case .notDownloaded:  failFace("icloud.and.arrow.down", "아직\n못 받음")
-        case .absent:         failFace("icloud.and.arrow.down", "아직\n못 받음")   // ⏸ 문구 미정 → §3-N-3 ㉡
-        case .unreadable:     failFace("exclamationmark.triangle.fill", "")        // ⏸ 문구 미정 — 아이콘만
+        // ★ **빨강이 여럿이라 글자가 「왜 빨간가」를 말해야 한다**(사용자 2026-08-23):
+        //   *"빨간색인 경우가 여럿이라 왜 빨간 테두리인지 못 알아채면 곤란하잖아?"*
+        //   ⚠️ **아래 둘은 내가 고른 임시 문구다** — 사용자가 확정하면 바꾼다(항시 규칙 6 · 설계 §3-N-5).
+        case .absent:         failFace("icloud.and.arrow.down", "못 찾음")          // ⏸ 임시
+        case .unreadable:     failFace("exclamationmark.triangle.fill", "깨진\n파일") // ⏸ 임시
         case .unsupported:    failFace("nosign", "지원\n안 함")
         }
     }
