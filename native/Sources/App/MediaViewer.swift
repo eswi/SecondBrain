@@ -39,6 +39,9 @@ struct MediaViewer: View {
     @State private var wasPlayingBeforeScrub = false
     /// 지금 보고 있는 것이 **이 종류의 몇 번째**인가.
     @State private var index = 0
+    /// **세로냐 가로냐** — 아이폰에서 가로는 높이가 compact다. 세로에서만 하단 썸네일 줄을 쓴다.
+    @Environment(\.verticalSizeClass) private var vSize
+    private var isPortrait: Bool { vSize != .compact }
 
     /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaNames`).
     /// ⚠️ 첫째는 **수집 당시의 원본**이다(성역을 먼저 읽는다 · §3-Y-8).
@@ -58,6 +61,7 @@ struct MediaViewer: View {
             closeButton
             counter
             arrows
+            filmstrip
         }
         #if os(iOS)
         .statusBarHidden(true)
@@ -89,7 +93,7 @@ struct MediaViewer: View {
             if let ui = UIImage(contentsOfFile: url.path) {
                 // ⚠️ **`id`를 이름으로 준다** — 넘기면 확대 상태가 **새로 시작**한다
                 //    (`UIScrollView`가 확대를 들고 있으므로, 같은 뷰를 재사용하면 앞 사진의 확대가 남는다).
-                ZoomableImage(image: ui)
+                ZoomableImage(image: ui) { step($0) }   // 끝까지 당기면 넘긴다
                     .id(url.lastPathComponent)
             } else {
                 missing
@@ -168,12 +172,16 @@ struct MediaViewer: View {
     }
 
     /// **「2 / 3」** — 사용자 결정(2026-08-24). **음성의 「경과 / 길이」와 같은 꼴**이라 새 문구가 아니다.
-    /// 하나뿐이면 **안 보인다**(셀 것이 없다).
+    ///
+    /// ⛔ **「하나뿐이면 안 보인다」가 뒤집혔다**(2026-08-24 사용자 판정):
+    /// *"사진이 하나뿐일 경우 … `<` `>` 안 보이는데, **옳지않아.** 같은 색으로 흐리게 보이게 해줘.
+    /// **1/1도 표시**해주고. **UI의 일관성**이야."*
+    /// ★ 내 판단은 「셀 것이 없으면 감춘다」였고, 사용자 기준은 **「자리가 늘 같아야 한다」**였다.
     @ViewBuilder private var counter: some View {
-        if names.count > 1 {
+        if !names.isEmpty {
             VStack {
                 Text("\(min(index, names.count - 1) + 1) / \(names.count)")
-                    .font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .font(.body.weight(.semibold)).monospacedDigit()   // subheadline보다 2pt 크다(사용자 요구)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(Capsule().fill(.black.opacity(0.45)))
@@ -185,9 +193,15 @@ struct MediaViewer: View {
 
     /// `‹` `›` — **같은 종류 안에서만**(§0 24번). 좌우 가장자리 세로 중앙 · 닫기(X)와 같은 꼴.
     /// **끝에서는 흐려지고 안 눌린다** — 순환하지 않는다(사진 앱과 같은 결).
-    /// ⛔ **스와이프는 안 넣는다**(사용자 결정) — 확대 제스처와 싸운다.
+    /// **하나뿐이어도 흐리게 보인다** — 자리가 늘 같아야 한다(사용자 판정 · 위 `counter` 참고).
+    ///
+    /// ⛔ **「단추만」이 뒤집혔다**(2026-08-24) — **스와이프도 넣었다**(`ZoomableImage.onStep`).
+    /// 옛 판단은 *"확대 제스처와 싸운다"*였는데, **끝까지 당겼을 때만** 넘기면 안 싸운다
+    /// (사용자가 그 조건을 지정했다: *"이동이 다 되어 사진의 끝에 걸리면"*).
+    ///
+    /// ⛔ **세로에서는 안 그린다** — 하단 썸네일 줄이 그 일을 한다(사용자: *"`<` `>` 기호는 아래에서는 쓰지말기"*).
     @ViewBuilder private var arrows: some View {
-        if names.count > 1 {
+        if !names.isEmpty && !(isPortrait && kind == .photo) {
             HStack {
                 arrow("chevron.left", enabled: index > 0) { step(-1) }
                 Spacer()
@@ -197,10 +211,59 @@ struct MediaViewer: View {
         }
     }
 
+    /// **하단 썸네일 줄** — 세로에서만 · 사진에서만(⏸ **실험이다** · 2026-08-24 사용자).
+    /// 고른 것에 **초록 테두리** · 터치로 고른다 · 많아지면 좌우로 스크롤된다.
+    /// ⚠️ 스크롤은 **이 줄 안에서만** 먹는다 — 사진 영역의 스와이프(넘기기)와 자리가 갈려 안 싸운다.
+    @ViewBuilder private var filmstrip: some View {
+        if isPortrait, kind == .photo, !names.isEmpty {
+            VStack {
+                Spacer()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(names.enumerated()), id: \.element) { i, n in
+                            Button { pick(i) } label: { thumb(n, selected: i == index) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                }
+                .background(.black.opacity(0.55))
+            }
+        }
+    }
+
+    private static let thumbSide: CGFloat = 56
+
+    @ViewBuilder private func thumb(_ name: String, selected: Bool) -> some View {
+        let img = PhotoStore.url(name: name).flatMap { MediaCard.thumbnail($0, side: Self.thumbSide) }
+        ZStack {
+            if let img {
+                img.resizable().scaledToFill()
+            } else {
+                // 파일이 없거나 그림을 못 만든 것 — 카드와 같은 뜻만 보인다(새 문구를 안 짓는다).
+                Image(systemName: "photo").font(.system(size: 18)).foregroundStyle(.white.opacity(0.5))
+            }
+        }
+        .frame(width: Self.thumbSide, height: Self.thumbSide)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(selected ? Palette.selected : .white.opacity(0.15),
+                              lineWidth: selected ? 2.5 : 1)
+        )
+    }
+
+    private func pick(_ i: Int) {
+        guard names.indices.contains(i), i != index else { return }
+        if kind == .voice { audio.stop() }
+        index = i
+    }
+
     private func arrow(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.title3.weight(.semibold))
+                .font(.system(size: 40, weight: .semibold))   // title3(20pt)의 2배 — 사용자 요구
                 .foregroundStyle(.white.opacity(enabled ? 1 : 0.25))
                 .padding(14)
                 .background(Circle().fill(.black.opacity(enabled ? 0.45 : 0.2)))

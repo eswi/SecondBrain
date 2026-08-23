@@ -25,19 +25,33 @@ import UIKit
 /// 확대/축소가 되는 사진 한 장. **두 번 두드리면 그 지점을 중심으로 꽉 채우고, 다시 두드리면 전체 보기다.**
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
+    /// **끝까지 당기면 넘긴다** — `-1`(이전) / `+1`(다음). 사용자 요구(2026-08-24):
+    /// *"스와이프는 보여지는 사진 영역의 이동시키는 것이지만 이동이 다 되어 사진의 끝에 걸리면
+    /// (좌 우 어느쪽이든) 이전 혹은 이후 사진으로 넘어가게 해줘."*
+    var onStep: (Int) -> Void = { _ in }
 
     func makeUIView(context: Context) -> ZoomScrollView {
         let v = ZoomScrollView()
         v.set(image: image)
+        v.onStep = onStep
         return v
     }
 
-    func updateUIView(_ v: ZoomScrollView, context: Context) {}
+    func updateUIView(_ v: ZoomScrollView, context: Context) { v.onStep = onStep }
 }
 
 final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private let imageView = UIImageView()
     private var didFirstLayout = false
+    /// 앞 배치의 화면 크기 — **회전을 알아채는 유일한 신호**다(아래 ⛔).
+    private var lastSize: CGSize = .zero
+    /// 끝까지 당겨 넘기기 콜백 · 한 번의 끌기에 **한 번만** 넘긴다.
+    var onStep: (Int) -> Void = { _ in }
+    private var steppedInThisDrag = false
+
+    /// **끝을 넘어 얼마나 당기면 넘길 것인가.** ⚠️ **재서 정한 값이 아니다** — 손끝 감으로 골랐다.
+    /// 너무 작으면 확대 중에 실수로 넘어가고, 너무 크면 안 넘어간다. 판정 뒤 조정할 자리다.
+    private static let stepThreshold: CGFloat = 70
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -45,6 +59,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
         bouncesZoom = true
+        // ⚠️ **꽉 안 찬 사진도 좌우로 당겨져야 한다** — 그러지 않으면 「끝까지 당기면 넘긴다」가
+        //    **전체 보기에서 아예 안 먹는다**(스크롤할 여지가 없어 끌기 자체가 안 생긴다).
+        alwaysBounceHorizontal = true
         backgroundColor = .clear
         contentInsetAdjustmentBehavior = .never
         imageView.contentMode = .scaleAspectFit
@@ -71,6 +88,8 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
         // **전체 보기 배율**(fit)이 최소, 그 6배가 최대.
         let fit = min(bounds.width / img.size.width, bounds.height / img.size.height)
+        // ⛔ **먼저 「전체 보기였나」를 본다** — minimumZoomScale을 갱신한 뒤에는 알 수 없다.
+        let wasFit = abs(zoomScale - minimumZoomScale) < 0.0001
         if abs(minimumZoomScale - fit) > 0.0001 {
             minimumZoomScale = fit
             maximumZoomScale = fit * 6
@@ -78,7 +97,19 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         if !didFirstLayout {
             didFirstLayout = true
             zoomScale = fit                     // 열면 전체 보기 — §0 23번
+        } else if bounds.size != lastSize {
+            // ## ⛔ 회전 — **2026-08-24에 여기가 결함이었다**
+            // 옛 코드는 **최소 배율만 새로 계산하고 현재 배율은 옛 값에 뒀다.**
+            // 세로에서 열어 가로로 돌리면 **세로 fit(작은 값)으로 가로 화면을 그려** 사진이 작게 남았다
+            // (`UIScrollView`는 minimumZoomScale을 바꿔도 현재 배율을 끌어올리지 않는다).
+            // 사용자 판정: *"1/5 숫자 영역 만큼 사진이 작게 나와 … 처음부터 가로모드로 놓고 보면 제대로"*
+            // — **처음부터 가로면 첫 배치라 fit이 맞았다.** 그래서 「돌렸을 때만」 틀렸다.
+            //
+            // ✅ **전체 보기로 보고 있었으면 새 전체 보기로 따라간다.**
+            //    확대해 놓고 돌린 것이면 **배율을 지키되 최소보다 작아지지 않게만** 한다.
+            zoomScale = wasFit ? fit : max(zoomScale, fit)
         }
+        lastSize = bounds.size
         centerContent()
     }
 
@@ -113,5 +144,23 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     // MARK: UIScrollViewDelegate
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
     func scrollViewDidZoom(_ scrollView: UIScrollView) { centerContent() }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { steppedInThisDrag = false }
+
+    /// **좌우 끝을 넘어 당기면 넘긴다**(사용자 요구 · 2026-08-24).
+    /// ★ 확대 중이면 **먼저 사진 안을 이동**하고, 더 갈 곳이 없을 때에만 여기 걸린다 —
+    /// 「이동이 다 되어 끝에 걸리면」이 그 뜻이다. 전체 보기에서는 처음부터 끝이라 바로 걸린다.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard isDragging, !steppedInThisDrag else { return }
+        let left = -(contentOffset.x + contentInset.left)                       // 왼쪽으로 넘어간 양
+        let right = (contentOffset.x + bounds.width) - (contentSize.width + contentInset.right)
+        if left > Self.stepThreshold {
+            steppedInThisDrag = true
+            onStep(-1)
+        } else if right > Self.stepThreshold {
+            steppedInThisDrag = true
+            onStep(1)
+        }
+    }
 }
 #endif

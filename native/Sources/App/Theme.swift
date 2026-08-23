@@ -21,6 +21,11 @@ enum Palette {
     static let today   = Color(hex: 0xFBBF24)       // 오늘(amber)
     static let neutral = Color(hex: 0x746F82)       // 미래(무채색)
 
+    /// **고른 것을 두르는 초록** — 뷰어 하단 썸네일 줄의 선택 테두리(2026-08-24 사용자가 색을 지정했다).
+    /// ⚠️ 이 팔레트에 초록이 **없었다** — 상태 색 셋(coral·amber·무채색)은 「시점」을 말하는 색이고,
+    /// 이것은 **「지금 보고 있는 것」**을 말한다. 뜻이 달라 그 셋에 섞지 않는다.
+    static let selected = Color(hex: 0x4ADE80)
+
     static let radius: CGFloat = 14
 }
 
