@@ -39,6 +39,18 @@ struct MediaViewer: View {
     @State private var wasPlayingBeforeScrub = false
     /// 지금 보고 있는 것이 **이 종류의 몇 번째**인가.
     @State private var index = 0
+    /// **썸네일 줄이 보이나** — 손을 뗀 지 잠깬 지나면 스스로 사라진다(2026-08-24 사용자).
+    @State private var stripVisible = true
+    /// 손이 닿을 때마다 늘어난다 — **이 값이 바뀌면 사라짐 시계가 처음부터 다시 간다.**
+    @State private var touchTick = 0
+
+    /// **손을 뗀 뒤 얼마나 있다 사라지나.** 사용자가 *"3초쯤"*이라고 정했다.
+    private static let stripHideAfter: Duration = .seconds(3)
+    /// 사라짐·나타남은 **천천히** — 사용자: *"서서히 사라지게"*. ⚠️ 0.45는 재서 정한 값이 아니다.
+    private static let fade = Animation.easeInOut(duration: 0.45)
+    /// 썸네일 줄이 **따라 움직일 때** — 사진 전환보다 조금 무르게(사용자: *"좀 부드럽게"*).
+    private static let stripScroll = Animation.spring(response: 0.38, dampingFraction: 0.9)
+
     /// 마지막으로 어느 쪽으로 넘겼나(`+1` 다음 · `-1` 이전) — **전환이 그 방향으로 미끄러진다.**
     @State private var lastStep = 1
 
@@ -65,6 +77,15 @@ struct MediaViewer: View {
             counter
             arrows
             filmstrip
+        }
+        // ★ **어떤 목적으로 손을 대든** 썸네일 줄이 다시 나타난다(사용자 문장).
+        //   `minimumDistance: 0`이라 **누르는 순간** 걸리고, `simultaneousGesture`라
+        //   ⛔ **확대·끌기·단추를 막지 않는다**(막으면 뷰어가 통째로 죽는다).
+        .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in wake() })
+        // 손이 닿을 때마다 이 작업이 취소되고 새로 시작한다 = **마지막 손댐부터 3초.**
+        .task(id: touchTick) {
+            try? await Task.sleep(for: Self.stripHideAfter)
+            withAnimation(Self.fade) { stripVisible = false }
         }
         #if os(iOS)
         .statusBarHidden(true)
@@ -234,23 +255,34 @@ struct MediaViewer: View {
                 //   *"사진을 계속 넘겨서 … 결국 초록 테두리는 화면 밖으로 나가버려."*
                 //   `ScrollViewReader`가 그 일을 한다 — **가운데로 모은다**(anchor: .center)라
                 //   앞뒤가 함께 보여 「어디쯤인가」가 읽힌다.
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(Array(names.enumerated()), id: \.element) { i, n in
-                                Button { pick(i) } label: { thumb(n, selected: i == index) }
-                                    .buttonStyle(.plain)
-                                    .id(n)
+                GeometryReader { geo in
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Array(names.enumerated()), id: \.element) { i, n in
+                                    Button { pick(i) } label: { thumb(n, selected: i == index) }
+                                        .buttonStyle(.plain)
+                                        .id(n)
+                                }
                             }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            // ★ **넘치지 않으면 가운데로 모인다**(2026-08-24 사용자: *"왼편에 붙어서 보여"*).
+                            //   줄을 **최소 화면 폭**으로 넓히면 남는 자리가 양쪽으로 갈린다.
+                            //   넘치면 이 최소값이 무의미해져 **그대로 스크롤된다.**
+                            .frame(minWidth: geo.size.width, alignment: .center)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.55))
+                        // 넘길 때마다 · 그리고 열 때 한 번(대표가 첫째가 아닐 수도 있는 자리를 위해).
+                        .onChange(of: index) { _, _ in scrollToCurrent(proxy) }
+                        .onAppear { scrollToCurrent(proxy) }
                     }
-                    .background(.black.opacity(0.55))
-                    // 넘길 때마다 · 그리고 열 때 한 번(대표가 첫째가 아닐 수도 있는 자리를 위해).
-                    .onChange(of: index) { _, _ in scrollToCurrent(proxy) }
-                    .onAppear { scrollToCurrent(proxy) }
                 }
+                .frame(height: Self.thumbSide + 16)
+                // **서서히 사라지고 서서히 돌아온다** · 안 보일 때는 **터치를 안 받는다** —
+                // ⛔ 안 그러면 안 보이는 줄이 첫 손댐을 먹어 「사진을 눌렀는데 썸네일이 골라진다」가 된다.
+                .opacity(stripVisible ? 1 : 0)
+                .allowsHitTesting(stripVisible)
             }
         }
     }
@@ -276,10 +308,16 @@ struct MediaViewer: View {
         )
     }
 
+    /// 손이 닿았다 — 줄을 되살리고 시계를 되돌린다.
+    private func wake() {
+        if !stripVisible { withAnimation(Self.fade) { stripVisible = true } }
+        touchTick += 1
+    }
+
     /// 지금 것을 **가운데로** 끌어온다. 목록이 짧아 스크롤할 여지가 없으면 아무 일도 안 난다.
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
         guard let n = name else { return }
-        withAnimation(Self.slide) { proxy.scrollTo(n, anchor: .center) }
+        withAnimation(Self.stripScroll) { proxy.scrollTo(n, anchor: .center) }
     }
 
     private func pick(_ i: Int) {
