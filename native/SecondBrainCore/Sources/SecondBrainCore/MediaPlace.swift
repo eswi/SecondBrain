@@ -43,12 +43,17 @@ public enum MediaPlaceJudge {
 
     /// iCloud 폴더 기준 **상대 경로**.
     ///
-    /// ⚠️ **로컬 파일명(`<id>.m4a`)은 이 갈림에 안 따라간다.** 포인터 필드 `audio:`/`photo:`는
-    /// create 블록의 **성역**이고 값이 그 파일명이므로, 자리가 바뀌어도 **필드는 안 건드린다**(§4).
-    public static func relativePath(kind: MediaKind, id: String, place: MediaPlace) -> String {
+    /// ⚠️ **로컬 파일명은 이 갈림에 안 따라간다.** 포인터 필드(`audio:`/`photo:`/`photo.<자료id>:`)의
+    /// 값이 그 파일명이므로, 자리가 바뀌어도 **필드는 안 건드린다**(§4).
+    ///
+    /// ## ★ 축이 「항목 id」에서 **「파일명」**으로 바뀌었다 (2026-08-23 · C · `media-expansion-design.md` §3-X)
+    /// 옛 꼴은 **id를 받아 확장자를 붙여** 이름을 만들었다 — 그래서 **한 항목에 자료 하나**가 상한이었다(제약 9-a).
+    /// 지금은 **이름을 그대로 받는다.** ⛔ **옛 이름(`<항목id>.jpg`)에서는 결과가 글자 그대로 같다** —
+    /// `MediaPlaceTests`가 그것을 못 박는다(**깨지면 기존 iCloud 파일이 안 찾힌다**).
+    public static func relativePath(kind: MediaKind, name: String, place: MediaPlace) -> String {
         switch place {
-        case .subdir: return "\(kind.subdir)/\(id).\(kind.ext)"
-        case .root:   return "sb-\(id).\(kind.ext)"
+        case .subdir: return "\(kind.subdir)/\(name)"
+        case .root:   return "sb-\(name)"
         }
     }
 }

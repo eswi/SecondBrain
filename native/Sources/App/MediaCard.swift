@@ -42,6 +42,29 @@ enum MediaCardKind: Int, CaseIterable, Identifiable {
         case .video, .url, .pdf, .other: return nil
         }
     }
+
+    /// Core의 포인터 종류. 필드가 없는 넷은 nil.
+    var pointerKind: MediaPointer.Kind? {
+        switch self {
+        case .voice: return .audio
+        case .photo: return .photo
+        case .video, .url, .pdf, .other: return nil
+        }
+    }
+}
+
+extension ResolvedItem {
+    /// 이 종류의 자료 **파일 이름들** — ★ **포인터의 값을 읽는다**(2026-08-23 · C · 설계 §3-X).
+    ///
+    /// ⛔ **옛 코드는 `fields["photo"] != nil`로 「있나 없나」만 봤다**(제약 9-b) — 그래서
+    /// 조회는 항목 id에서 이름을 계산할 수밖에 없었고, **한 항목에 자료 하나**가 상한이었다.
+    /// **옛 단일 필드와 새 필드(`photo.<자료id>`)를 함께** 읽는다(`MediaPointer`).
+    ///
+    /// ⚠️ **지금 데이터에서는 언제나 0개 또는 1개다** — 여럿인 항목이 아직 없다(표본은 3단계에서 생긴다).
+    func mediaNames(_ k: MediaCardKind) -> [String] {
+        guard let pk = k.pointerKind else { return [] }
+        return MediaPointer.pointers(pk, in: fields).map(\.value)
+    }
 }
 
 // MARK: - 네모 하나
@@ -230,8 +253,10 @@ struct MediaCard: View {
         }
         .padding(14).card()
         .task(id: item.id) {
-            if item.fields["audio"] != nil { audioFetch.start(.audio, id: item.id) }
-            if item.fields["photo"] != nil { photoFetch.start(.photo, id: item.id) }
+            // ⚠️ **자료 하나짜리 상태다** — `MediaFetch`는 종류마다 하나이므로 **첫 자료의 상태**를 본다.
+            //    여럿이 되면 **자료마다 상태**가 필요하다(3단계에서 표본과 함께 걸린다 · §3-X-4).
+            if let n = item.mediaNames(.voice).first { audioFetch.start(.audio, name: n) }
+            if let n = item.mediaNames(.photo).first { photoFetch.start(.photo, name: n) }
         }
     }
 
@@ -282,28 +307,28 @@ struct MediaCard: View {
         return CGFloat(n) * MediaTile.side + CGFloat(n - 1) * Self.gap > 342
     }
 
-    /// 0개인 종류는 네모를 안 보인다(§0 7번).
+    /// 0개인 종류는 네모를 안 보인다(§0 7번). **포인터 값을 읽어** 센다(C 뒤 — 9-b 해소).
     private var presentKinds: [MediaCardKind] {
-        MediaCardKind.allCases.filter { k in
-            guard let f = k.field else { return false }
-            return item.fields[f] != nil
-        }
+        MediaCardKind.allCases.filter { !item.mediaNames($0).isEmpty }
     }
 
     @ViewBuilder private func tile(_ k: MediaCardKind) -> some View {
         switch k {
         case .voice:
-            let aurl = AudioStore.url(forId: item.id)
+            // ★ **개수는 포인터를 센 값이다**(§0 8번). ⚠️ 지금 데이터에서는 늘 1이라 배지가 안 뜬다.
+            let names = item.mediaNames(.voice)
+            let aurl = names.first.flatMap { AudioStore.url(name: $0) }
             MediaTile(kind: .voice,
                       state: state(audioFetch, url: aurl, drawable: aurl != nil),   // 음성은 그림이 없다
-                      count: 1, duration: MediaCard.durationText(aurl))
+                      count: names.count, duration: MediaCard.durationText(aurl))
         case .photo:
-            let url = PhotoStore.url(forId: item.id)
+            let names = item.mediaNames(.photo)
+            let url = names.first.flatMap { PhotoStore.url(name: $0) }
             let img = url.flatMap { MediaCard.thumbnail($0, side: MediaTile.side) }
             MediaTile(kind: .photo,
                       state: state(photoFetch, url: url, drawable: img != nil),
-                      count: 1, image: img,
-                      hasPlace: PhotoStore.coordinate(forId: item.id) != nil)
+                      count: names.count, image: img,
+                      hasPlace: names.first.flatMap { PhotoStore.coordinate(name: $0) } != nil)
         default:
             MediaTile(kind: k, state: .unsupported, count: 1)
         }

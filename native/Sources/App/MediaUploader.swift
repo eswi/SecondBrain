@@ -13,7 +13,10 @@ enum MediaUploader {
 
     struct Item: Sendable, Equatable {
         let kind: MediaKind
-        let id: String
+        /// **파일 이름 그대로**(2026-08-23 · C). 옛 꼴은 확장자를 뗀 「id」였다 —
+        /// 그때는 경로 계산이 확장자를 다시 붙였으므로 결과가 같았고, 지금은 **이름을 그대로 넘긴다.**
+        /// ★ 그래서 **새 꼴(`<항목id>-<자료id>.jpg`)도 아무 변경 없이 올라간다.**
+        let name: String
         let local: URL
     }
 
@@ -37,7 +40,7 @@ enum MediaUploader {
             let limit = MediaUploadJudge.limit(cloudMediaCount: MediaCloud.cloudMediaCount(folder: folder))
 
             let byKind = MediaKind.allCases.map { kind in
-                localItems(kind).filter { !MediaCloud.cloudNameExists(kind, id: $0.id, folder: folder) }
+                localItems(kind).filter { !MediaCloud.cloudNameExists(kind, name: $0.name, folder: folder) }
             }
             let all = interleave(byKind)
             let capped = MediaUploadJudge.capped(total: all.count, limit: limit)
@@ -67,7 +70,7 @@ enum MediaUploader {
 
     private static func localItems(_ kind: MediaKind) -> [Item] {
         let files = kind == .audio ? AudioStore.localFiles() : PhotoStore.localFiles()
-        return files.map { Item(kind: kind, id: $0.deletingPathExtension().lastPathComponent, local: $0) }
+        return files.map { Item(kind: kind, name: $0.lastPathComponent, local: $0) }
     }
 
     // MARK: 올리기 (하나씩 · 원자적)
@@ -82,9 +85,9 @@ enum MediaUploader {
     static func upload(_ item: Item) -> Bool {
         let ok: Bool? = FragmentFolder.withFolder { folder in
             let place = MediaCloud.currentPlace(item.kind, folder: folder)
-            let dest = MediaCloud.fileURL(item.kind, id: item.id, place: place, folder: folder)
+            let dest = MediaCloud.fileURL(item.kind, name: item.name, place: place, folder: folder)
             let tmp = dest.deletingLastPathComponent()
-                .appendingPathComponent("\(MediaCloud.leftoverPrefix)\(item.id).\(item.kind.ext)")
+                .appendingPathComponent("\(MediaCloud.leftoverPrefix)\(item.name)")
             let fm = FileManager.default
             var failure: String?
 
@@ -104,7 +107,7 @@ enum MediaUploader {
             if failure == nil, let c = cerr { failure = "\(c.domain)/\(c.code)" }
 
             if let failure {
-                MediaCloud.appendUploadFailure(kind: item.kind, id: item.id, err: failure, in: folder)
+                MediaCloud.appendUploadFailure(kind: item.kind, name: item.name, err: failure, in: folder)
                 return false
             }
             return true

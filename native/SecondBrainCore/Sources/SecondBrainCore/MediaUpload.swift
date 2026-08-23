@@ -36,8 +36,8 @@ public enum MediaUploadLog {
     /// 그쪽은 셋째 칸이 `audio`/`photo`인 줄만 읽는다.
     /// 원인은 **`<domain>/<code>`, 시스템이 준 값 그대로.**
     public static func failureLine(at timestamp: String, device: String,
-                                  kind: MediaKind, id: String, err: String?) -> String {
-        var s = "\(timestamp) \(device) upload \(kind.rawValue) \(id)"
+                                  kind: MediaKind, name: String, err: String?) -> String {
+        var s = "\(timestamp) \(device) upload \(kind.rawValue) \(name)"
         if let err { s += " err=\(err)" }
         return s + "\n"
     }

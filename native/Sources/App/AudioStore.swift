@@ -14,7 +14,11 @@ import SecondBrainCore
 /// **유지되는 것:** 확정 목적지는 여전히 로컬이고(§3), **포인터 필드 `audio:`는 파일명만 담는 성역**이다 —
 /// 자리가 어디로 정해지든 **값이 안 바뀐다.**
 enum AudioStore {
-    /// 포인터 필드 값 = 파일명. 항목 id와 1:1(결정적).
+    /// **수집 때 이름을 만드는 자리** — `finalize`만 쓴다. `<항목id>.m4a`.
+    ///
+    /// ⛔ **조회는 이것을 안 쓴다**(2026-08-23 · C). 조회는 **포인터 값을 받는다**(`url(name:)` 등) —
+    /// id에서 이름을 계산하는 것이 **「한 항목에 자료 하나」의 원인**이었다(제약 9-a).
+    /// ⏸ **추가 기능(3단계)이 `<항목id>-<자료id>.m4a`를 만든다** — 그때 이 함수 밖에서 만든다(§3-W-6).
     static func filename(forId id: String) -> String { "\(id).m4a" }
 
     // MARK: 디렉터리
@@ -95,9 +99,13 @@ enum AudioStore {
     /// (`MediaFetch.availability`가 **메인 밖에서** 먼저 부른다 — 화면 그리는 중에 파일 복사를 하지 않는다).
     ///
     /// ⚠️ **nil의 뜻이 좁아졌다:** 「이 기기 로컬에 없다」다. iCloud에 있는지는 **이 함수가 답하지 않는다** —
-    /// 그것은 `availability(forId:)`의 일이다(§4의 세 갈래).
-    static func url(forId id: String) -> URL? {
-        let name = filename(forId: id)
+    /// 그것은 `availability(name:)`의 일이다(§4의 세 갈래).
+    ///
+    /// ## ★ 축이 「항목 id」에서 **「파일명」**으로 바뀌었다 (2026-08-23 · C · 설계 §3-X)
+    /// 조회는 이제 **포인터 필드의 값**(= 파일명)을 받는다. **id에서 이름을 계산하지 않는다** —
+    /// 그것이 「한 항목에 자료 하나」를 만들던 자리였다(제약 9-a·9-b).
+    /// ⚠️ **옛 파일은 이름을 안 바꾼다** — 포인터 값이 `<항목id>.<확장자>`이므로 그대로 찾힌다(§6).
+    static func url(name: String) -> URL? {
         let fm = FileManager.default
         for dir in searchDirs() {
             let u = dir.appendingPathComponent(name)
@@ -111,25 +119,23 @@ enum AudioStore {
     /// **로컬에 이미 있으면 iCloud I/O를 아예 안 한다** — 폰의 정상 경로에서 비용이 0이다(§5).
     /// 실제로 도는 것은 **Mac**과 나중의 두 번째 기기다.
     @discardableResult
-    static func adoptFromCloudIfNeeded(forId id: String) -> Bool {
+    static func adoptFromCloudIfNeeded(name: String) -> Bool {
         let fm = FileManager.default
-        let name = filename(forId: id)
         let localExists = searchDirs().contains { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }
         guard !localExists, let dir = localAudioDir() else { return false }
         MediaCloud.sweepAdoptLeftovers(in: dir)
-        return MediaCloud.adopt(.audio, id: id, intoDir: dir)
+        return MediaCloud.adopt(.audio, name: name, intoDir: dir)
     }
 
     /// **세 갈래 판정** (§4) — 「여기 있다」 · 「아직 안 받았다」 · 「어디에도 없다」.
-    /// `url(forId:)`는 「볼 수 있나」만 답하므로 **뒤의 둘을 못 가른다.** 화면이 그 둘을 갈라 말해야 한다.
-    static func availability(forId id: String) -> MediaAvailability {
+    /// `url(name:)`는 「볼 수 있나」만 답하므로 **뒤의 둘을 못 가른다.** 화면이 그 둘을 갈라 말해야 한다.
+    static func availability(name: String) -> MediaAvailability {
         let fm = FileManager.default
-        let name = filename(forId: id)
         // 로컬이 먼저 — 여기서 잡히면 iCloud I/O를 **아예 하지 않는다**(폰의 정상 경로).
         if searchDirs().contains(where: { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }) {
             return .here
         }
-        let c = MediaCloud.cloudFacts(.audio, id: id)
+        let c = MediaCloud.cloudFacts(.audio, name: name)
         return MediaAvailabilityJudge.status(localExists: false,
                                             cloudNameExists: c.nameExists,
                                             cloudBytesPresent: c.bytesPresent)

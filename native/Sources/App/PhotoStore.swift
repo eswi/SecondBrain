@@ -19,7 +19,11 @@ import UIKit
 /// iCloud는 `MediaCloud`가 따로 보고 찾는 순서가 **[로컬, iCloud]**로 갈렸다(설계 §4).
 /// **유지되는 것:** 확정 목적지는 로컬 · 포인터 필드 `photo:`는 파일명만 담는 성역.
 enum PhotoStore {
-    /// 포인터 필드 값 = 파일명. 항목 id와 1:1(결정적). 지금은 한 장(`<id>.jpg`).
+    /// **수집 때 이름을 만드는 자리** — `finalize`만 쓴다. `<항목id>.jpg`.
+    ///
+    /// ⛔ **조회는 이것을 안 쓴다**(2026-08-23 · C). 조회는 **포인터 값을 받는다**(`url(name:)` 등) —
+    /// id에서 이름을 계산하는 것이 **「한 항목에 자료 하나」의 원인**이었다(제약 9-a).
+    /// ⏸ **추가 기능(3단계)이 `<항목id>-<자료id>.jpg`를 만든다** — 그때 이 함수 밖에서 만든다(§3-W-6).
     static func filename(forId id: String) -> String { "\(id).jpg" }
 
     // MARK: 디렉터리
@@ -87,8 +91,12 @@ enum PhotoStore {
 
     /// 이 기기에서 볼 수 있는 사진 파일 URL. **로컬만 본다.** `AudioStore.url(forId:)`의 미러 —
     /// **iCloud URL을 돌려주지 않는 이유는 그쪽 주석에 있다**(§2-A C안 · 2026-08-20).
-    static func url(forId id: String) -> URL? {
-        let name = filename(forId: id)
+    ///
+    /// ## ★ 축이 「항목 id」에서 **「파일명」**으로 바뀌었다 (2026-08-23 · C · 설계 §3-X)
+    /// 조회는 이제 **포인터 필드의 값**(= 파일명)을 받는다. **id에서 이름을 계산하지 않는다** —
+    /// 그것이 「한 항목에 자료 하나」를 만들던 자리였다(제약 9-a·9-b).
+    /// ⚠️ **옛 파일은 이름을 안 바꾼다** — 포인터 값이 `<항목id>.<확장자>`이므로 그대로 찾힌다(§6).
+    static func url(name: String) -> URL? {
         let fm = FileManager.default
         for dir in searchDirs() {
             let u = dir.appendingPathComponent(name)
@@ -99,25 +107,23 @@ enum PhotoStore {
 
     /// **iCloud에 바이트가 있고 로컬에 없으면 로컬로 들여온다**(§2-A C안). `AudioStore`의 미러.
     @discardableResult
-    static func adoptFromCloudIfNeeded(forId id: String) -> Bool {
+    static func adoptFromCloudIfNeeded(name: String) -> Bool {
         let fm = FileManager.default
-        let name = filename(forId: id)
         let localExists = searchDirs().contains { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }
         guard !localExists, let dir = localPhotoDir() else { return false }
         MediaCloud.sweepAdoptLeftovers(in: dir)
-        return MediaCloud.adopt(.photo, id: id, intoDir: dir)
+        return MediaCloud.adopt(.photo, name: name, intoDir: dir)
     }
 
     /// **세 갈래 판정** (§4) — 「여기 있다」 · 「아직 안 받았다」 · 「어디에도 없다」.
-    /// `url(forId:)`는 「볼 수 있나」만 답하므로 **뒤의 둘을 못 가른다.** 화면이 그 둘을 갈라 말해야 한다.
-    static func availability(forId id: String) -> MediaAvailability {
+    /// `url(name:)`는 「볼 수 있나」만 답하므로 **뒤의 둘을 못 가른다.** 화면이 그 둘을 갈라 말해야 한다.
+    static func availability(name: String) -> MediaAvailability {
         let fm = FileManager.default
-        let name = filename(forId: id)
         // 로컬이 먼저 — 여기서 잡히면 iCloud I/O를 **아예 하지 않는다**(폰의 정상 경로).
         if searchDirs().contains(where: { fm.fileExists(atPath: $0.appendingPathComponent(name).path) }) {
             return .here
         }
-        let c = MediaCloud.cloudFacts(.photo, id: id)
+        let c = MediaCloud.cloudFacts(.photo, name: name)
         return MediaAvailabilityJudge.status(localExists: false,
                                             cloudNameExists: c.nameExists,
                                             cloudBytesPresent: c.bytesPresent)
@@ -188,8 +194,8 @@ enum PhotoStore {
     // MARK: EXIF GPS 읽기 (볼 때 — 그릇엔 없음, 사진에서만)
 
     /// 사진 파일 EXIF의 촬영 좌표. 없으면(권한 거부·실내 등) nil. 온디바이스.
-    static func coordinate(forId id: String) -> CLLocationCoordinate2D? {
-        guard let url = url(forId: id),
+    static func coordinate(name: String) -> CLLocationCoordinate2D? {
+        guard let url = url(name: name),
               let src = CGImageSourceCreateWithURL(url as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
               let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any],

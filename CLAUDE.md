@@ -144,6 +144,12 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
      계산하려고 만든 도구다.** ⚠️ **iCloud 동기화 지연이 있다** — 폰 화면과 어긋나면 파일이 뒤처진 것이다.
      ⛔ **이것은 여기(CLAUDE.md)에 없었고 `HANDOFF.md`에만 적혀 있었다** — HANDOFF는 갱신되며 지워지는
      스냅샷이다. **오래 남아야 하는 것은 여기 적는다**(2026-08-21 전수 대조에서 발견).
+   - **`native/tools/media-audit.py`** — **자료 검산: 포인터와 파일이 서로 맞나**(누락·고아·겹침 셋).
+     `python3 native/tools/media-audit.py [폴더]` — 기본은 iCloud `SecondBrain/`.
+     ⚠️ **이름만 읽는다 — dataless를 받아오지 않는다**(상태를 안 바꾼다 · `measure-icloud-download.swift`와 반대).
+     ⛔ **옛 검산식(「포인터 = 항목 id와 1:1」)을 되살리지 말 것** — 2026-08-23에 **한 항목이 자료를 여럿
+     가질 수 있게** 되면서 그 전제가 깨졌다(설계 `media-expansion-design.md` §3-X-4).
+     ★ **「셋 다 0」을 볼 때는 도구가 어긋남을 잡을 수 있는지 함께 본다** — 대조군 표본으로 확인했다(계측 규칙 7).
    - **`native/tools/sb-migrate/`** — **레거시 → UUID 마이그레이션 CLI**(별도 패키지 · 앱 빌드 영향 0).
      `--dry-run <folder>`(파일 무변경) · `--apply <folder> --out <outdir>`(원본 무변경).
      해시·병합·검증을 **앱과 같은 `SecondBrainCore`로** 한다(재구현 divergence 방지).

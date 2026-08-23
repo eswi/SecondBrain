@@ -34,7 +34,7 @@ final class MediaAdoptTests: XCTestCase {
     /// `sb-adopting-<id>`를 id로 계산해 **고아 파일을 iCloud에 올린다.**
     func testPartName_확정파일_필터에_안_걸린다() {
         for kind in MediaKind.allCases {
-            let name = MediaAdoptNaming.partName(kind: kind, id: "0321BB39")
+            let name = MediaAdoptNaming.partName(kind: kind, name: "0321BB39.\(kind.ext)")
             XCTAssertFalse(MediaAdoptNaming.looksLikeFinalizedFile(name, kind: kind),
                            "임시 이름이 확정 파일로 보인다: \(name)")
         }
@@ -48,13 +48,13 @@ final class MediaAdoptTests: XCTestCase {
     }
 
     func testPartName_꼴() {
-        XCTAssertEqual(MediaAdoptNaming.partName(kind: .audio, id: "AB12"), "sb-adopting-AB12.m4a.part")
-        XCTAssertEqual(MediaAdoptNaming.partName(kind: .photo, id: "AB12"), "sb-adopting-AB12.jpg.part")
+        XCTAssertEqual(MediaAdoptNaming.partName(kind: .audio, name: "AB12.m4a"), "sb-adopting-AB12.m4a.part")
+        XCTAssertEqual(MediaAdoptNaming.partName(kind: .photo, name: "AB12.jpg"), "sb-adopting-AB12.jpg.part")
     }
 
     func testIsPartName_찌꺼기_청소가_찾는다() {
-        XCTAssertTrue(MediaAdoptNaming.isPartName(MediaAdoptNaming.partName(kind: .audio, id: "AB12")))
-        XCTAssertTrue(MediaAdoptNaming.isPartName(MediaAdoptNaming.partName(kind: .photo, id: "AB12")))
+        XCTAssertTrue(MediaAdoptNaming.isPartName(MediaAdoptNaming.partName(kind: .audio, name: "AB12.m4a")))
+        XCTAssertTrue(MediaAdoptNaming.isPartName(MediaAdoptNaming.partName(kind: .photo, name: "AB12.jpg")))
     }
 
     func testIsPartName_확정파일은_청소_대상이_아니다() {

@@ -29,8 +29,8 @@ final class MediaUploadTests: XCTestCase {
 
     func testFailureLine_원인을_그대로() {
         XCTAssertEqual(MediaUploadLog.failureLine(at: ts, device: "iphone-4532", kind: .audio,
-                                                 id: "82B1044B", err: "NSCocoaErrorDomain/512"),
-                       "2026-08-19T12:10:33+09:00 iphone-4532 upload audio 82B1044B err=NSCocoaErrorDomain/512\n")
+                                                 name: "82B1044B.m4a", err: "NSCocoaErrorDomain/512"),
+                       "2026-08-19T12:10:33+09:00 iphone-4532 upload audio 82B1044B.m4a err=NSCocoaErrorDomain/512\n")
     }
 
     /// **★ 두 로그가 같은 파일에 있어도 서로를 안 가린다.** 업로드 줄이 자리 판정으로 읽히면
@@ -39,7 +39,7 @@ final class MediaUploadTests: XCTestCase {
         let place = MediaPlaceLog.line(at: ts, device: "iphone-4532",
                                        MediaPlaceRecord(kind: .audio, place: .subdir))
         let upload = MediaUploadLog.failureLine(at: ts, device: "iphone-4532", kind: .audio,
-                                                id: "82B1044B", err: "NSCocoaErrorDomain/512")
+                                                name: "82B1044B.m4a", err: "NSCocoaErrorDomain/512")
         // 업로드 줄이 뒤에 와도 자리 판정은 앞의 자리 줄을 읽는다.
         XCTAssertEqual(MediaPlaceLog.last(place + upload, kind: .audio),
                        MediaPlaceRecord(kind: .audio, place: .subdir))
@@ -51,8 +51,8 @@ final class MediaUploadTests: XCTestCase {
     func testFailureLine_쌓여도_자리_로그가_다시_적히지_않는다() {
         var text = MediaPlaceLog.line(at: ts, device: "iphone-4532",
                                       MediaPlaceRecord(kind: .audio, place: .subdir))
-        for id in ["A1", "B2", "C3"] {
-            text += MediaUploadLog.failureLine(at: ts, device: "iphone-4532", kind: .audio, id: id,
+        for name in ["A1.m4a", "B2.m4a", "C3.m4a"] {
+            text += MediaUploadLog.failureLine(at: ts, device: "iphone-4532", kind: .audio, name: name,
                                                err: "NSCocoaErrorDomain/512")
         }
         XCTAssertNil(MediaPlaceLog.appendIfChanged(existing: text, at: ts, device: "iphone-4532",

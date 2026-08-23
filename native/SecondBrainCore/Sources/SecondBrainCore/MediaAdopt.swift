@@ -48,8 +48,12 @@ public enum MediaAdoptNaming {
     /// >
     /// > **확장자를 `part`로 두면 그 필터에 애초에 안 걸린다.** 접두사만으로 막지 않는 이유는
     /// > **필터가 확장자를 보기 때문**이다 — 막는 쪽과 걸러지는 쪽을 **같은 값**으로 맞춘다.
-    public static func partName(kind: MediaKind, id: String) -> String {
-        "\(prefix)\(id).\(kind.ext).\(partExtension)"
+    ///
+    /// ⚠️ **축이 파일명으로 바뀌었다**(2026-08-23 · C). 옛 꼴은 id를 받아 확장자를 붙였다 —
+    /// **옛 이름에서는 결과가 글자 그대로 같다**(`MediaAdoptTests`가 못 박는다).
+    /// `kind`는 이제 이름 계산에 안 쓰이지만 **호출 자리를 종류별로 읽히게** 남긴다.
+    public static func partName(kind: MediaKind, name: String) -> String {
+        "\(prefix)\(name).\(partExtension)"
     }
 
     /// 들여오다 만 찌꺼기인가 — 청소가 이 이름으로 찾는다.

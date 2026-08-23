@@ -60,7 +60,8 @@ struct MediaViewer: View {
     // ★ **카드와 반대다** — 카드의 네모는 **자르고**(정사각형), 뷰어는 **안 자른다**(§0 23번).
     //   그래서 **썸네일과 실물이 다르게 보이는 것이 정상이다.**
     @ViewBuilder private var photoBody: some View {
-        if let url = PhotoStore.url(forId: item.id) {
+        // C 뒤 — **포인터 값으로 찾는다**(§3-X). ⚠️ 아직 **첫 자료만** 본다(뷰어의 `<` `>`는 3단계).
+        if let url = item.mediaNames(.photo).first.flatMap({ PhotoStore.url(name: $0) }) {
             #if os(iOS)
             // ⛔ **손으로 만든 확대를 버리고 `UIScrollView`로 갔다** (2026-08-23 · 실기기 판정).
             //    셋이 함께 풀린다: **두드린 지점 중심** · **부드러운 확대/축소** · **경계 제한**.
@@ -85,7 +86,7 @@ struct MediaViewer: View {
 
     // MARK: 음성 — 아이콘 · 길이 · 재생/정지 · 진행 막대
     @ViewBuilder private var audioBody: some View {
-        if let url = AudioStore.url(forId: item.id) {
+        if let url = item.mediaNames(.voice).first.flatMap({ AudioStore.url(name: $0) }) {
             VStack(spacing: 28) {
                 Image(systemName: "waveform")
                     .font(.system(size: 96, weight: .regular))

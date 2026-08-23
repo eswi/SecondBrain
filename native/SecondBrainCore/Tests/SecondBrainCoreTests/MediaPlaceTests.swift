@@ -18,16 +18,16 @@ final class MediaPlaceTests: XCTestCase {
     }
 
     func testRelativePath_하위폴더면_종류별_폴더_아래() {
-        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .audio, id: "82B1044B", place: .subdir),
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .audio, name: "82B1044B.m4a", place: .subdir),
                        "audio/82B1044B.m4a")
-        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, id: "82B1044B", place: .subdir),
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, name: "82B1044B.jpg", place: .subdir),
                        "photo/82B1044B.jpg")
     }
 
     func testRelativePath_폴백이면_루트에_접두사() {
-        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .audio, id: "82B1044B", place: .root),
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .audio, name: "82B1044B.m4a", place: .root),
                        "sb-82B1044B.m4a")
-        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, id: "82B1044B", place: .root),
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, name: "82B1044B.jpg", place: .root),
                        "sb-82B1044B.jpg")
     }
 
@@ -35,7 +35,7 @@ final class MediaPlaceTests: XCTestCase {
     /// `FragmentFolder.read()`가 `inbox` 접두사 + `.md`만 글롭하므로 `sb-` 접두사는 절대 안 걸린다.
     func testRelativePath_폴백이_조각파일_글롭에_안_걸린다() {
         for kind in MediaKind.allCases {
-            let p = MediaPlaceJudge.relativePath(kind: kind, id: "0E4B8C7F", place: .root)
+            let p = MediaPlaceJudge.relativePath(kind: kind, name: "0E4B8C7F.\(kind.ext)", place: .root)
             XCTAssertFalse(p.hasPrefix("inbox"), p)
             XCTAssertNotEqual((p as NSString).pathExtension, "md", p)
         }
@@ -150,5 +150,31 @@ final class MediaPlaceTests: XCTestCase {
         let base = MediaPlaceLog.appendIfChanged(existing: "", at: ts, device: "iphone-4532", audio)!
         let photo = MediaPlaceRecord(kind: .photo, place: .subdir)
         XCTAssertNotNil(MediaPlaceLog.appendIfChanged(existing: base, at: ts, device: "iphone-4532", photo))
+    }
+
+    // MARK: ★ 축이 바뀐 뒤 — **옛 파일이 그대로 찾혀야 한다** (2026-08-23 · C)
+
+    /// ★ **이것은 「결정을 지키는 시험」이다**(`CLAUDE.md` 「시험을 쓰는 법」).
+    ///
+    /// ① **무슨 결정** — 조회의 축을 **항목 id → 파일명**으로 바꿨다(`media-expansion-design.md` §3-X).
+    /// ② **사실** — 옛 이름(`<항목id>.<확장자>`)을 넣으면 **경로가 글자 그대로 같다.**
+    ///    그래서 **이미 iCloud에 올라간 파일 135개가 그대로 찾힌다** — 이름을 바꾸지 않는다(§6).
+    /// ③ **깨지면 무엇을 의심하나** — 구현이 아니라 **경로 규칙을 바꾼 것**이다.
+    ///    ⛔ 그러면 **기존 파일이 안 찾히고, 화면은 「아직 못 받음」으로 조용히 보인다.**
+    func testRelativePath_옛이름은_옛경로와_글자까지_같다() {
+        // 아래 문자열은 **축을 바꾸기 전 코드가 내던 값**이다(2026-08-23 기준 · 손으로 옮겨 적었다).
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .audio, name: "82B1044B.m4a", place: .subdir),
+                       "audio/82B1044B.m4a")
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, name: "82B1044B.jpg", place: .root),
+                       "sb-82B1044B.jpg")
+    }
+
+    /// 새 꼴(`<항목id>-<자료id>.<확장자>`)도 **같은 규칙 한 줄로** 놓인다 — 갈래를 더하지 않는다.
+    func testRelativePath_새이름도_같은_규칙() {
+        let name = "495BA146-2191-4495-9837-804FC427FAD3-4c0882a01111222233334444555566667777.jpg"
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, name: name, place: .subdir),
+                       "photo/" + name)
+        XCTAssertEqual(MediaPlaceJudge.relativePath(kind: .photo, name: name, place: .root),
+                       "sb-" + name)
     }
 }

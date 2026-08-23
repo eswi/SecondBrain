@@ -40,23 +40,23 @@ final class MediaFetch: ObservableObject {
     private static let pollSeconds: Double = 0.2
 
     /// 상세가 열릴 때 시작. 이미 있으면 아무 일도 안 하고, 안 받았으면 **받기 시작하고 기다린다.**
-    func start(_ kind: MediaKind, id: String) {
+    func start(_ kind: MediaKind, name: String) {
         task?.cancel()
         timedOut = false
         task = Task { [weak self] in
             guard let self else { return }
-            var s = await Self.availability(kind, id)
+            var s = await Self.availability(kind, name)
             self.state = s
             guard s == .notDownloaded else { return }
 
             _ = await Task.detached(priority: .userInitiated) {
-                MediaCloud.startDownload(kind, id: id)
+                MediaCloud.startDownload(kind, name: name)
             }.value
 
             for _ in 0..<Int((Self.waitSeconds / Self.pollSeconds).rounded()) {
                 try? await Task.sleep(for: .seconds(Self.pollSeconds))
                 if Task.isCancelled { return }
-                s = await Self.availability(kind, id)
+                s = await Self.availability(kind, name)
                 self.state = s
                 if s != .notDownloaded { return }     // 왔다 — 또는 사라졌다
             }
@@ -65,7 +65,7 @@ final class MediaFetch: ObservableObject {
     }
 
     /// 「다시 시도」.
-    func retry(_ kind: MediaKind, id: String) { start(kind, id: id) }
+    func retry(_ kind: MediaKind, name: String) { start(kind, name: name) }
 
     /// 판정은 저장소가 한다(로컬 → iCloud). **메인 밖에서** 잰다 — iCloud 쪽은 스코프를 열어야 보인다.
     ///
@@ -79,15 +79,15 @@ final class MediaFetch: ObservableObject {
     /// 여기는 이미 `Task.detached`라 **메인 밖**이고, 상태를 발행하기 **전**이라 순서도 맞다.
     ///
     /// **폰에서는 비용이 0이다** — 로컬에 이미 있으면 `adoptFromCloudIfNeeded`가 iCloud를 아예 안 본다(§5).
-    private static func availability(_ kind: MediaKind, _ id: String) async -> MediaAvailability {
+    private static func availability(_ kind: MediaKind, _ name: String) async -> MediaAvailability {
         await Task.detached(priority: .userInitiated) {
             switch kind {
             case .audio:
-                AudioStore.adoptFromCloudIfNeeded(forId: id)
-                return AudioStore.availability(forId: id)
+                AudioStore.adoptFromCloudIfNeeded(name: name)
+                return AudioStore.availability(name: name)
             case .photo:
-                PhotoStore.adoptFromCloudIfNeeded(forId: id)
-                return PhotoStore.availability(forId: id)
+                PhotoStore.adoptFromCloudIfNeeded(name: name)
+                return PhotoStore.availability(name: name)
             }
         }.value
     }

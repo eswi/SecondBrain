@@ -54,8 +54,8 @@ enum MediaCloud {
 
     /// 자리에 맞는 iCloud 쪽 파일 URL. 단계 2·3(찾기·업로더)이 쓴다.
     /// 자리가 `.root`면 폴더 루트의 `sb-<id>.<ext>`가 된다.
-    static func fileURL(_ kind: MediaKind, id: String, place: MediaPlace, folder: URL) -> URL {
-        folder.appendingPathComponent(MediaPlaceJudge.relativePath(kind: kind, id: id, place: place))
+    static func fileURL(_ kind: MediaKind, name: String, place: MediaPlace, folder: URL) -> URL {
+        folder.appendingPathComponent(MediaPlaceJudge.relativePath(kind: kind, name: name, place: place))
     }
 
     // MARK: 찾기 (§4) — 판정은 Core(`MediaAvailabilityJudge`), 사실 수집만 여기
@@ -71,20 +71,20 @@ enum MediaCloud {
     /// 그 id를 찾아볼 iCloud 쪽 자리들 — **지금 자리 먼저, 그다음 다른 자리.**
     /// ⚠️ 둘 다 보는 이유: **폴백을 한 번 쓴 뒤 나중에 하위 폴더가 되면 두 자리에 흩어져 있을 수 있다.**
     /// 한쪽만 보면 이미 올라간 파일을 「없다」로 읽고 **다시 올린다.**
-    static func candidates(_ kind: MediaKind, id: String, folder: URL) -> [URL] {
+    static func candidates(_ kind: MediaKind, name: String, folder: URL) -> [URL] {
         let now = currentPlace(kind, folder: folder)
         let other: MediaPlace = now == .subdir ? .root : .subdir
-        return [now, other].map { fileURL(kind, id: id, place: $0, folder: folder) }
+        return [now, other].map { fileURL(kind, name: name, place: $0, folder: folder) }
     }
 
     /// iCloud 쪽 사실 둘. 폴더 미선택·못 열면 **둘 다 false**(= 판정은 「어디에도 없다」).
     /// - `nameExists`: 이름이라도 있나. ⚠️ **dataless에도 true다**(§0-B) — 이것만으로 「여기 있다」를 못 준다.
     /// - `bytesPresent`: 실체가 내려와 있나.
-    static func cloudFacts(_ kind: MediaKind, id: String) -> (nameExists: Bool, bytesPresent: Bool) {
+    static func cloudFacts(_ kind: MediaKind, name: String) -> (nameExists: Bool, bytesPresent: Bool) {
         let f: (Bool, Bool)? = FragmentFolder.withFolder { folder in
             let fm = FileManager.default
             var nameExists = false
-            for u in candidates(kind, id: id, folder: folder) {
+            for u in candidates(kind, name: name, folder: folder) {
                 guard fm.fileExists(atPath: u.path) else { continue }
                 nameExists = true
                 if hasBytes(u, fm) { return (true, true) }   // 첫 히트를 쓴다(중복은 정상 — write-once)
@@ -116,16 +116,16 @@ enum MediaCloud {
     /// ⚠️ **이 함수만 로컬 쪽에 쓴다**(다른 `MediaCloud` 함수는 iCloud만 만진다).
     /// 여기 있는 이유는 **보안 스코프를 여는 자리가 여기**라서다 — 읽기와 쓰기가 한 스코프 안에서 끝나야 한다.
     @discardableResult
-    static func adopt(_ kind: MediaKind, id: String, intoDir localDir: URL) -> Bool {
+    static func adopt(_ kind: MediaKind, name: String, intoDir localDir: URL) -> Bool {
         let ok: Bool? = FragmentFolder.withFolder { folder in
             let fm = FileManager.default
             // 바이트가 **실제로 있는** 것만. 이름만 있는 것(dataless)을 복사하면 빈 파일이 된다(§0-B).
-            guard let src = candidates(kind, id: id, folder: folder)
+            guard let src = candidates(kind, name: name, folder: folder)
                     .first(where: { fm.fileExists(atPath: $0.path) && hasBytes($0, fm) })
             else { return false }
 
-            let part = localDir.appendingPathComponent(MediaAdoptNaming.partName(kind: kind, id: id))
-            let dest = localDir.appendingPathComponent("\(id).\(kind.ext)")
+            let part = localDir.appendingPathComponent(MediaAdoptNaming.partName(kind: kind, name: name))
+            let dest = localDir.appendingPathComponent(name)   // 로컬도 iCloud와 **같은 이름**이다(C)
             var copied = false
 
             let coord = NSFileCoordinator()
@@ -202,9 +202,9 @@ enum MediaCloud {
     }
 
     /// 업로드 **실패** 한 줄(§5 — 성공은 안 적는다). 자리 로그와 **같은 파일**을 쓴다.
-    static func appendUploadFailure(kind: MediaKind, id: String, err: String?, in folder: URL) {
+    static func appendUploadFailure(kind: MediaKind, name: String, err: String?, in folder: URL) {
         append(MediaUploadLog.failureLine(at: timestamp(), device: DeviceStore.deviceId,
-                                          kind: kind, id: id, err: err), in: folder)
+                                          kind: kind, name: name, err: err), in: folder)
     }
 
     /// `.sb-media.log`에 append. 실패해도 조용히 지나간다 —
@@ -232,9 +232,9 @@ enum MediaCloud {
     ///
     /// ⚠️ **바이트를 보지 않는다.** iCloud가 실체를 걷어낸(evict) 파일도 **올라간 것**이다.
     /// 바이트로 판정하면 맥에서 evict된 순간 **131개를 영원히 다시 올린다.**
-    static func cloudNameExists(_ kind: MediaKind, id: String, folder: URL) -> Bool {
+    static func cloudNameExists(_ kind: MediaKind, name: String, folder: URL) -> Bool {
         let fm = FileManager.default
-        return candidates(kind, id: id, folder: folder).contains { fm.fileExists(atPath: $0.path) }
+        return candidates(kind, name: name, folder: folder).contains { fm.fileExists(atPath: $0.path) }
     }
 
     /// iCloud 폴더에 있는 **자료 파일 수**. 「첫 실행인가」를 이 수로 안다(§5 — 상태 저장 0).
@@ -263,10 +263,10 @@ enum MediaCloud {
     /// 안 내려온 자료 받기 시작(§6). 성공/실패만 돌려준다.
     /// 텍스트가 이미 쓰는 API와 **같은 것**이다(`FragmentFolder.read()`) — 다른 것은 **시점**뿐.
     @discardableResult
-    static func startDownload(_ kind: MediaKind, id: String) -> Bool {
+    static func startDownload(_ kind: MediaKind, name: String) -> Bool {
         let ok: Bool? = FragmentFolder.withFolder { folder in
             let fm = FileManager.default
-            for u in candidates(kind, id: id, folder: folder) where fm.fileExists(atPath: u.path) {
+            for u in candidates(kind, name: name, folder: folder) where fm.fileExists(atPath: u.path) {
                 if (try? fm.startDownloadingUbiquitousItem(at: u)) != nil { return true }
             }
             return false
