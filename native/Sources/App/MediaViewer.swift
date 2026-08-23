@@ -18,8 +18,15 @@ import SecondBrainCore
 //  ⛔ **화면에 나오는 말이 없다** — 닫기는 아이콘, 길이는 숫자다.
 //     **새 문구를 지어 넣지 않았다**(항시 규칙 6 — 문구는 사용자가 정한다).
 //
-//  ⏸ **여기 없는 것(뷰어 상세 문서로 간다):** `<` `>` · 추가 · 삭제 · **위치 보기** ·
-//     자료마다 개별 보기(수집 시각·기기) · **URL 뷰어**(QuickLook이 못 하던 그 자리).
+//  ── ✅ `‹` `›`가 들어왔다 (2026-08-24) ─────────────────────────
+//  **같은 종류 안에서만 넘긴다**(§0 24번). 사진이 실제로 여럿이 된 뒤에야 필요해진 자리다
+//  (3단계에서 한 항목에 둘·셋·다섯이 생겼다 — 설계 §3-Y-3).
+//  **사용자 결정 둘(2026-08-24):** 자리 표시는 **숫자 「2 / 3」**(음성의 「경과 / 길이」와 **같은 꼴** —
+//  새 문구를 안 짓는다) · 넘기는 것은 **단추만**(⛔ 스와이프는 확대 제스처와 싸운다).
+//
+//  ⏸ **여기 없는 것(뷰어 상세 문서로 간다):** 추가 · 삭제 · **위치 보기** ·
+//     자료마다 개별 보기(수집 시각·기기) · **URL 뷰어**(QuickLook이 못 하던 그 자리) ·
+//     **대표 사진 정하기**(§3-Y-8 — 「붙인 순서」를 알려면 필드별 HLC를 내보내야 한다).
 //
 
 struct MediaViewer: View {
@@ -30,6 +37,17 @@ struct MediaViewer: View {
 
     /// 막대를 끌기 **직전에** 듣고 있었나 — 손을 떼고 이어 들을지 정한다.
     @State private var wasPlayingBeforeScrub = false
+    /// 지금 보고 있는 것이 **이 종류의 몇 번째**인가.
+    @State private var index = 0
+
+    /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaNames`).
+    /// ⚠️ 첫째는 **수집 당시의 원본**이다(성역을 먼저 읽는다 · §3-Y-8).
+    private var names: [String] { item.mediaNames(kind) }
+
+    /// 지금 것. 목록이 바뀌어 index가 넘치면 **첫째로 돌아간다**(삭제가 들어오면 그 자리다).
+    private var name: String? {
+        names.indices.contains(index) ? names[index] : names.first
+    }
     // ⛔ **확대 상태(`zoom`·`pan`…)는 여기 없다** — `UIScrollView`가 들고 있다(`ZoomableImage`).
     //    옛 꼴이 그것을 SwiftUI `@State`로 들다가 **경계가 없어 사진이 화면 밖으로 나갔다.**
 
@@ -38,6 +56,8 @@ struct MediaViewer: View {
             Color.black.ignoresSafeArea()
             content
             closeButton
+            counter
+            arrows
         }
         #if os(iOS)
         .statusBarHidden(true)
@@ -60,14 +80,17 @@ struct MediaViewer: View {
     // ★ **카드와 반대다** — 카드의 네모는 **자르고**(정사각형), 뷰어는 **안 자른다**(§0 23번).
     //   그래서 **썸네일과 실물이 다르게 보이는 것이 정상이다.**
     @ViewBuilder private var photoBody: some View {
-        // C 뒤 — **포인터 값으로 찾는다**(§3-X). ⚠️ 아직 **첫 자료만** 본다(뷰어의 `<` `>`는 3단계).
-        if let url = item.mediaNames(.photo).first.flatMap({ PhotoStore.url(name: $0) }) {
+        // C 뒤 — **포인터 값으로 찾는다**(§3-X). `‹` `›`로 고른 것을 본다.
+        if let url = name.flatMap({ PhotoStore.url(name: $0) }) {
             #if os(iOS)
             // ⛔ **손으로 만든 확대를 버리고 `UIScrollView`로 갔다** (2026-08-23 · 실기기 판정).
             //    셋이 함께 풀린다: **두드린 지점 중심** · **부드러운 확대/축소** · **경계 제한**.
             //    전말은 `ZoomableImage.swift` 머리주석 · 설계 §3-R.
             if let ui = UIImage(contentsOfFile: url.path) {
+                // ⚠️ **`id`를 이름으로 준다** — 넘기면 확대 상태가 **새로 시작**한다
+                //    (`UIScrollView`가 확대를 들고 있으므로, 같은 뷰를 재사용하면 앞 사진의 확대가 남는다).
                 ZoomableImage(image: ui)
+                    .id(url.lastPathComponent)
             } else {
                 missing
             }
@@ -86,7 +109,7 @@ struct MediaViewer: View {
 
     // MARK: 음성 — 아이콘 · 길이 · 재생/정지 · 진행 막대
     @ViewBuilder private var audioBody: some View {
-        if let url = item.mediaNames(.voice).first.flatMap({ AudioStore.url(name: $0) }) {
+        if let url = name.flatMap({ AudioStore.url(name: $0) }) {
             VStack(spacing: 28) {
                 Image(systemName: "waveform")
                     .font(.system(size: 96, weight: .regular))
@@ -142,6 +165,56 @@ struct MediaViewer: View {
     private var missing: some View {
         Image(systemName: "icloud.and.arrow.down")
             .font(.system(size: 64)).foregroundStyle(.white.opacity(0.5))
+    }
+
+    /// **「2 / 3」** — 사용자 결정(2026-08-24). **음성의 「경과 / 길이」와 같은 꼴**이라 새 문구가 아니다.
+    /// 하나뿐이면 **안 보인다**(셀 것이 없다).
+    @ViewBuilder private var counter: some View {
+        if names.count > 1 {
+            VStack {
+                Text("\(min(index, names.count - 1) + 1) / \(names.count)")
+                    .font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(.black.opacity(0.45)))
+                    .padding(.top, 10)
+                Spacer()
+            }
+        }
+    }
+
+    /// `‹` `›` — **같은 종류 안에서만**(§0 24번). 좌우 가장자리 세로 중앙 · 닫기(X)와 같은 꼴.
+    /// **끝에서는 흐려지고 안 눌린다** — 순환하지 않는다(사진 앱과 같은 결).
+    /// ⛔ **스와이프는 안 넣는다**(사용자 결정) — 확대 제스처와 싸운다.
+    @ViewBuilder private var arrows: some View {
+        if names.count > 1 {
+            HStack {
+                arrow("chevron.left", enabled: index > 0) { step(-1) }
+                Spacer()
+                arrow("chevron.right", enabled: index < names.count - 1) { step(1) }
+            }
+            .padding(.horizontal, 8)
+        }
+    }
+
+    private func arrow(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white.opacity(enabled ? 1 : 0.25))
+                .padding(14)
+                .background(Circle().fill(.black.opacity(enabled ? 0.45 : 0.2)))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    /// 넘긴다. ⚠️ **음성은 멈춘다** — 넘긴 뒤에도 앞 소리가 이어지면 어느 것을 듣는지 알 수 없다.
+    private func step(_ delta: Int) {
+        let next = index + delta
+        guard names.indices.contains(next) else { return }
+        if kind == .voice { audio.stop() }
+        index = next
     }
 
     private var closeButton: some View {
