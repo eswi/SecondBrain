@@ -47,11 +47,12 @@ enum MediaCardKind: Int, CaseIterable, Identifiable {
 
 /// 네모의 상태 — **§0 20번의 실패 셋**과 「보인다」.
 enum MediaTileState {
-    case ready                 // 정상 — 그림(또는 음성 아이콘)이 있다
-    case notDownloaded         // 파일은 iCloud에 있는데 **아직 못 받았다** → 앰버
-    case absent                // **어디에도 없다** → 빨강
-    case cannotDraw            // 파일은 있는데 **그림을 못 만들었다** → 빨강
-    case unsupported           // 포맷 지원이 안 된다 → 빨강
+    case ready                 // 정상 — 그림(또는 음성 아이콘)이 있다        → 밝은 무채색
+    case notDownloaded         // 파일은 iCloud에 있는데 **아직 못 받았다**    → 앰버
+    case cannotDraw            // 파일은 **열리는데 그림만** 못 만들었다        → 앰버 (뷰어에서는 보인다)
+    case absent                // **어디에도 없다**                          → 빨강
+    case unreadable            // 파일은 있는데 **열 수 없다**(잘못된 파일)     → 빨강 (뷰어에서도 못 본다)
+    case unsupported           // 포맷 지원이 안 된다                        → 빨강
 }
 
 /// ⚠️ **2026-08-23에 `notFetched` 하나를 둘(`notDownloaded`·`absent`)로 갈랐다** — **색이 갈라야 해서다**
@@ -95,22 +96,28 @@ struct MediaTile: View {
     /// **정상 = 밝은 무채색** · **아직 못 받음 = 앰버**(파일은 iCloud에 있다) ·
     /// **없거나 못 보는 것 = 빨강**(어디에도 없다 · 파일이 잘못됐다 · 포맷 미지원).
     /// ⚠️ 앞선 판단(「②는 무채색」)에서 **한 칸 갈렸다** — 「아직」과 「없음」이 **같은 색이면 안 된다.**
+    /// ★ **색 규칙 (2026-08-23 사용자)** — **테두리만으로 말한다**(글자·아이콘은 무채색이다).
+    /// **정상 = 밝은 무채색**(원문 글자색 정도) · **앰버 = 지금은 못 보여주지만 길이 있다** ·
+    /// **빨강 = 없거나, 있어도 못 본다.**
+    /// ★ 앰버와 빨강을 가르는 것은 **「기다리거나 눌러서 볼 수 있나」**다 — 심각도가 아니라 **길의 유무**다.
     private var borderColor: Color {
         switch state {
-        case .ready:          return Palette.textTertiary          // 밝은 무채색
-        case .notDownloaded:  return Palette.today                 // 앰버 — 「아직」
-        case .absent, .cannotDraw, .unsupported:
-            return Palette.overdue.opacity(0.75)                   // 빨강 — 없거나 못 본다
+        case .ready:                       return Palette.textPrimary         // 밝은 무채색
+        case .notDownloaded, .cannotDraw:  return Palette.today               // 앰버 — 길이 있다
+        case .absent, .unreadable, .unsupported:
+            return Palette.overdue.opacity(0.75)                              // 빨강 — 길이 없다
         }
     }
 
     @ViewBuilder private var face: some View {
+        // ⛔ **글자·아이콘은 상태 색을 안 따라간다** — *"글자는 그대로 두자. 테두리만으로 말한다"*(사용자).
         switch state {
         case .ready:          readyFace
-        case .cannotDraw:     failFace("hand.tap.fill", "눌러서\n보기", Palette.overdue)
-        case .notDownloaded:  failFace("icloud.and.arrow.down", "아직\n못 받음", Palette.today)
-        case .absent:         failFace("icloud.and.arrow.down", "아직\n못 받음", Palette.overdue)
-        case .unsupported:    failFace("nosign", "지원\n안 함", Palette.overdue)
+        case .cannotDraw:     failFace("hand.tap.fill", "눌러서\n보기")
+        case .notDownloaded:  failFace("icloud.and.arrow.down", "아직\n못 받음")
+        case .absent:         failFace("icloud.and.arrow.down", "아직\n못 받음")   // ⏸ 문구 미정 → §3-N-3 ㉡
+        case .unreadable:     failFace("exclamationmark.triangle.fill", "")        // ⏸ 문구 미정 — 아이콘만
+        case .unsupported:    failFace("nosign", "지원\n안 함")
         }
     }
 
@@ -153,15 +160,18 @@ struct MediaTile: View {
     }
 
     /// 실패 셋 — **글자만으로는 62pt에서 안 갈린다.** 아이콘도 함께 가른다(설계 §3-D-6).
-    private func failFace(_ symbol: String, _ text: String, _ tint: Color) -> some View {
+    private func failFace(_ symbol: String, _ text: String) -> some View {
         VStack(spacing: max(2, side * 0.05)) {
             Image(systemName: kind == .voice ? "waveform" : "photo")
                 .font(.system(size: side * 0.26)).foregroundStyle(Palette.textTertiary)
-            Image(systemName: symbol).font(.system(size: side * 0.17)).foregroundStyle(tint)
-            Text(text).font(.system(size: max(7, side * 0.115)))
-                .foregroundStyle(Palette.textSecondary)
-                .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
-                .padding(.horizontal, side * 0.06)
+            Image(systemName: symbol).font(.system(size: side * 0.17))
+                .foregroundStyle(Palette.textSecondary)          // ⛔ 무채색 — 색은 테두리가 말한다
+            if !text.isEmpty {
+                Text(text).font(.system(size: max(7, side * 0.115)))
+                    .foregroundStyle(Palette.textSecondary)
+                    .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+                    .padding(.horizontal, side * 0.06)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -303,7 +313,11 @@ struct MediaCard: View {
         switch fetch.state {
         case .here:
             if url == nil { return .absent }        // 판정과 파일이 어긋난 순간(evict 직후 등)
-            return drawable ? .ready : .cannotDraw
+            // ⚠️ **파일이 있는데 그림이 안 나오면 「못 읽는 파일」이다** — 사진은 디코드가 실패하면
+            //    **뷰어에서도 못 본다.** 그래서 `.unreadable`(빨강)이지 `.cannotDraw`(앰버)가 아니다.
+            //    ⏸ **`.cannotDraw`는 지금 아무도 안 낸다** — **종류가 늘 때** 열린다(PDF·URL·동영상은
+            //    **파일은 열리는데 썸네일만** 실패할 수 있다 · 설계 §3-N-3 ㉠).
+            return drawable ? .ready : .unreadable
         case .notDownloaded: return .notDownloaded
         case .absent:        return .absent
         }
