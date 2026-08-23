@@ -169,13 +169,19 @@ struct DetailView: View {
             out += [.pausedBanner, .missedBanner, .overdueHiddenBanner, .anchorBanner, .leadClampedBanner]
         }
         out.append(.metaType)
-        // ★ **보조 자료 카드의 자리**(설계 §0 3번 · §3-F-2) — 사용자: *"카드의 위치는 항상 성역 아래이며,
-        //   「기억하기」 전까지는 「기억하기」 버튼보다 아래에 두기로 하자."*
-        //   **확정이면 성역 바로 아래**, **미확정이면 본문 맨 끝**(결정 버튼 아래)이다.
+        // ★ **보조 자료 카드의 자리**(설계 §0 3번 · §3-F-2 · §3-K-1) — 사용자: *"카드의 위치는 항상 성역
+        //   아래이며, 「기억하기」 전까지는 「기억하기」 버튼보다 아래에 두기로 하자."*
+        //
+        //   ⚠️ **「성역 바로 다음」이 아니라 「성역보다 아래」다**(2026-08-23 사용자 정정).
+        //   **재확인 질문은 성역·분류와 같은 일을 한다** — *"이 기억이 무엇인가"*(식별 층).
+        //   그 셋을 붙여 두고 **자료는 그 아래**다. 자료는 「보는 것」이라 성격이 다르다(설계 §3-2의 구분).
+        //
+        //   **확정: 성역+분류 → 재확인 질문 → 보조 자료 → 시간 설정…**
+        //   **미확정: … → 재확인 질문 → [삭제하기]·[기억하기] → 보조 자료(맨 끝).**
         //   ⚠️ 그래서 **확정되는 순간 카드가 위로 올라간다** — 그 움직임에 애니메이션을 거는 것이 커밋 ②-2다.
-        if isRemembered { out.append(.media) }
         if let q = item.fields["question"], !q.isEmpty { out.append(.question) }
         if isRemembered {
+            out.append(.media)
             out += [.time, .recurrence, .history]
         } else {
             out.append(.decide)
