@@ -153,7 +153,7 @@ struct DetailView: View {
     /// ⚠️ **원문(`rawSection`)은 이 배열 밖이다** — 바깥 `VStack`에 그대로 있다(제스처 그룹이 다르다).
     private enum BodySection: String, Identifiable, CaseIterable {
         case pausedBanner, missedBanner, overdueHiddenBanner, anchorBanner, leadClampedBanner
-        case metaType, question, time, recurrence, history, decide
+        case metaType, media, question, time, recurrence, history, decide
         var id: String { rawValue }
     }
 
@@ -169,11 +169,17 @@ struct DetailView: View {
             out += [.pausedBanner, .missedBanner, .overdueHiddenBanner, .anchorBanner, .leadClampedBanner]
         }
         out.append(.metaType)
+        // ★ **보조 자료 카드의 자리**(설계 §0 3번 · §3-F-2) — 사용자: *"카드의 위치는 항상 성역 아래이며,
+        //   「기억하기」 전까지는 「기억하기」 버튼보다 아래에 두기로 하자."*
+        //   **확정이면 성역 바로 아래**, **미확정이면 본문 맨 끝**(결정 버튼 아래)이다.
+        //   ⚠️ 그래서 **확정되는 순간 카드가 위로 올라간다** — 그 움직임에 애니메이션을 거는 것이 커밋 ②-2다.
+        if isRemembered { out.append(.media) }
         if let q = item.fields["question"], !q.isEmpty { out.append(.question) }
         if isRemembered {
             out += [.time, .recurrence, .history]
         } else {
             out.append(.decide)
+            out.append(.media)
         }
         return out
     }
@@ -221,6 +227,9 @@ struct DetailView: View {
                         case .anchorBanner:       anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
                         case .leadClampedBanner:  leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
                         case .metaType:           metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
+                        case .media:
+                            // **보조 자료** — 자료를 성역에서 뗀 카드(§0 0-1·0-2 · `MediaCard.swift`).
+                            MediaCard(item: item, audioFetch: audioFetch, photoFetch: photoFetch)
                         // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
                         case .question:
                             if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
@@ -396,8 +405,8 @@ struct DetailView: View {
             metaRow("iphone", device)                                               // 기기 — 접혀도 보인다
             if !metaCollapsed {
                 metaRow(SourceIcon.symbol(item.source), Self.sourceLabel(item.source))   // 방식
-                if item.fields["audio"] != nil { audioRow }                              // 원본 음성(있으면)
-                if item.fields["photo"] != nil { photoRow }                              // 원본 사진(있으면)
+                // ⛔ **원본 음성·사진 줄은 2026-08-23에 여기서 뺐다** — 자료는 이제 **보조 자료 카드**에 있다
+                //    (설계 §0 1번). 성역에 남는 것은 **수집 사실**(시각·기기·방식)뿐이다.
                 Text("이 값은 어떤 편집으로도 바뀌지 않아요").font(.caption2).foregroundStyle(Palette.textTertiary)
             }
         }
@@ -479,19 +488,23 @@ struct DetailView: View {
         .contentShape(Rectangle())   // Spacer 빈칸까지 표적에 넣는다(줄 전체가 눌린다)
     }
 
-    /// 접힘일 때만 보이는 **종류 요약** — 접어서 감춘 줄들이 "무엇이 있었나"를 아이콘으로 남긴다. **최대 3개.**
-    /// (조건부인 것은 `audio`·`photo` 둘이고 방식은 항상 1개다 — 계측에서 최대 3개로 확정.)
+    /// 접힘일 때만 보이는 **종류 요약** — 접어서 감춘 줄이 "무엇이 있었나"를 아이콘으로 남긴다. **이제 하나다.**
     ///
-    /// **뜻이 겹치지 않게 골랐다:** 방식은 `SourceIcon`(음성 수집이면 `waveform`)이고 **원본 음성 보관은 `mic.fill`**이다.
-    /// 둘은 다른 사실이다 — *"음성으로 들어왔다"* 와 *"녹음 파일이 남아 있다"*. 펼치면 각각 제 줄로 나뉘므로
-    /// 머리 줄에서는 아이콘으로만 요약하고, **펼침에서는 이 요약을 안 보여준다**(아래에 방식 줄이 따로 있어 중복이다).
-    @ViewBuilder private var metaKindIcons: some View {
-        HStack(spacing: 4) {
-            Image(systemName: SourceIcon.symbol(item.source))
-            if item.fields["audio"] != nil { Image(systemName: "mic.fill") }
-            if item.fields["photo"] != nil { Image(systemName: "photo.fill") }
-        }
-        .font(.caption).foregroundStyle(Palette.textTertiary)
+    /// ⛔ **2026-08-23에 자료 둘(`mic.fill`·`photo.fill`)을 뺐다** — 자료가 **보조 자료 카드**로 나갔으므로
+    /// **성역은 자료를 안 갖는다. 아이콘이 남으면 거짓말이다**(사용자 결정 · 설계 §3-J-4).
+    /// 그리고 자료 카드는 **접힘 없이 항상 보이므로** 그 정보는 카드가 이미 말한다.
+    ///
+    /// ✅ **방식은 남는다 — 이 파일이 옛날부터 그 구분을 적어 두고 있었다:**
+    /// *"**뜻이 겹치지 않게 골랐다:** 방식은 `SourceIcon`(음성 수집이면 `waveform`)이고
+    /// **원본 음성 보관은 `mic.fill`**이다. 둘은 다른 사실이다 — *「음성으로 들어왔다」*와
+    /// *「녹음 파일이 남아 있다」*."* **앞엣것은 성역(`source`)이고 뒤엣것이 자료다.**
+    ///
+    /// ⚠️ **옛 서술(낡았다):** *"**최대 3개.** (조건부인 것은 `audio`·`photo` 둘이고 방식은 항상 1개다 —
+    /// 계측에서 최대 3개로 확정.)"* — **이제 조건부가 없고 항상 하나다.**
+    /// ✅ **요약의 뜻은 그대로다** — 방식 줄은 **펼침에만 있어서**(`if !metaCollapsed`) 접힘에서 감춰진다.
+    private var metaKindIcons: some View {
+        Image(systemName: SourceIcon.symbol(item.source))
+            .font(.caption).foregroundStyle(Palette.textTertiary)
     }
 
     private func metaRow(_ symbol: String, _ text: String) -> some View {
@@ -501,106 +514,11 @@ struct DetailView: View {
         }
     }
 
-    /// 원본 음성 — **세 갈래**(§4·§6): 여기 있다 / 아직 안 받았다 / 어디에도 없다.
+    /// ⏸ **지금은 아무도 안 부른다 (2026-08-23)** — 자료가 보조 자료 카드로 나가면서
+    /// `photoRow`가 사라졌다. **뷰어의 「위치 보기」가 이것을 쓴다**(설계 §0 26번 · 뷰어 상세 문서).
+    /// ⛔ **지우지 않는다** — 지도 핀 결함(27일 묵었던 것)을 고친 코드가 여기 있고,
+    /// 다시 만들면 그 값을 잃는다(`MapsLink` · `photoPinName`).
     ///
-    /// ⚠️ **뒤의 둘을 한 문구로 뭉치면 안 된다.** 파일은 iCloud에 그대로 있는데 사람은 그것을 알 방법이
-    /// 없어진다 — `FolderLink`가 세운 원칙(*"연결이 끊긴 것과 비어 있는 것을 절대 같게 보이지 않는다"*)의 적용이다.
-    @ViewBuilder private var audioRow: some View {
-        Group {
-            switch audioFetch.state {
-            case .here:
-                if let url = AudioStore.url(forId: item.id) {
-                    Button { audio.toggle(url: url) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: audio.isPlaying ? "stop.circle.fill" : "play.circle.fill")
-                                .font(.callout).foregroundStyle(Palette.accent).frame(width: 16)
-                            Text(audio.isPlaying ? "정지" : "원본 음성 다시 듣기")
-                                .font(.callout).foregroundStyle(Palette.accent)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    audioMissingRow      // 판정과 파일이 어긋난 순간(evict 직후 등) — 거짓 버튼을 안 만든다
-                }
-            case .notDownloaded:
-                fetchingRow(.audio, symbol: "mic.fill", fetch: audioFetch)
-            case .absent:
-                audioMissingRow
-            }
-        }
-        .task(id: item.id) { audioFetch.start(.audio, id: item.id) }
-    }
-
-    private var audioMissingRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "mic.slash").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
-            Text(MediaMigrationText.missing(.audio)).font(.callout).foregroundStyle(Palette.textTertiary)
-        }
-    }
-
-    /// 「받는 중」과 「아직 못 받았어요 · 다시 시도」 — 문구는 `MediaMigrationText`(Core)에서 온다.
-    /// **원인을 짚지 않는다**(§8) — 오류와 원인의 대응이 문서로 보장되지 않아 추측은 틀린 안내가 된다.
-    @ViewBuilder private func fetchingRow(_ kind: MediaKind, symbol: String,
-                                         fetch: MediaFetch) -> some View {
-        if fetch.timedOut {
-            Button { fetch.retry(kind, id: item.id) } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption).foregroundStyle(Palette.accent).frame(width: 16)
-                    Text(MediaMigrationText.downloadFailed)
-                        .font(.callout).foregroundStyle(Palette.accent)
-                }
-            }
-            .buttonStyle(.plain)
-        } else {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small).frame(width: 16)
-                Text(MediaMigrationText.downloading(kind))
-                    .font(.callout).foregroundStyle(Palette.textSecondary)
-            }
-        }
-    }
-
-    /// 원본 사진 — 이 기기에 파일이 있으면 이미지(+ EXIF 위치 지도), 없으면 안내. audioRow 미러.
-    ///
-    /// ## ✅ macOS에서도 보인다 (§7 · 2026-08-20 · 단계 5)
-    ///
-    /// 옛 코드는 이 줄 **전체**를 `#if os(iOS)`로 감싸고 `#else`에서 **무조건 「이 기기엔 없음」**을 보였다.
-    /// **파일이 Mac에 실제로 도착해 있는데도 없다고 말했다 — iOS의 미다운로드와 달리 영구히 틀린다.**
-    ///
-    /// **막고 있던 것은 판정이 아니라 타입 둘뿐이었다**(`UIImage`·`UIApplication`) → `PlatformMedia`로 갈랐고
-    /// **이 함수에는 `#if`가 없어졌다.** 판정(세 갈래)·문구·배치는 **두 플랫폼이 같은 코드**를 쓴다 —
-    /// 갈라 두면 한쪽만 고치는 일이 생긴다.
-    ///
-    /// ⚠️ **촬영은 여전히 iOS 전용이다**(이번 범위 밖 — §7).
-    @ViewBuilder private var photoRow: some View {
-        Group {
-            switch photoFetch.state {
-            case .here:
-                if let url = PhotoStore.url(forId: item.id),
-                   let img = PlatformMedia.image(contentsOfFile: url.path) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        img
-                            .resizable().scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .frame(maxHeight: 260)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(Palette.border))
-                        if let coord = PhotoStore.coordinate(forId: item.id) { photoMap(coord) }
-                    }
-                } else {
-                    photoMissingRow
-                }
-            case .notDownloaded:
-                fetchingRow(.photo, symbol: "photo.fill", fetch: photoFetch)
-            case .absent:
-                photoMissingRow
-            }
-        }
-        .task(id: item.id) { photoFetch.start(.photo, id: item.id) }
-    }
-
     /// 사진 EXIF 좌표를 작은 지도로(비상호작용) + 지도 앱 열기. 좌표는 사진 안에만 있음(그릇 X).
     /// **여는 일만** `PlatformMedia`가 갈라 한다 — URL 꼴은 두 플랫폼이 같다.
     @ViewBuilder private func photoMap(_ coord: CLLocationCoordinate2D) -> some View {
@@ -619,13 +537,6 @@ struct DetailView: View {
                 Label("지도 앱에서 열기", systemImage: "map").font(.caption)
             }
             .buttonStyle(.plain).foregroundStyle(Palette.accent)
-        }
-    }
-
-    private var photoMissingRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "photo").font(.caption).foregroundStyle(Palette.textTertiary).frame(width: 16)
-            Text(MediaMigrationText.missing(.photo)).font(.callout).foregroundStyle(Palette.textTertiary)
         }
     }
 
@@ -1631,8 +1542,13 @@ struct DetailView: View {
     }()
 }
 
-private extension View {
+extension View {
     /// 상세 화면 카드 배경(surface + hairline).
+    ///
+    /// ⚠️ **2026-08-23에 `private`을 뗐다** — **보조 자료 카드**(`MediaCard.swift`)가 같은 배경을 쓴다.
+    /// ⛔ **베껴 두면 갈린다** — 상세의 카드가 바뀌었는데 자료 카드만 옛 모양으로 남는 일을 막는다
+    /// (랩이 앱 색을 베껴 두고 안 따라오는 것과 **반대 판단**이다: 저쪽은 실험용이라 갈려도 되고,
+    /// 이쪽은 **같은 화면에 나란히 서는 카드**라 갈리면 바로 보인다).
     func card() -> some View {
         self.frame(maxWidth: .infinity, alignment: .leading)
             .background(Palette.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
