@@ -73,11 +73,33 @@ enum URLPreview {
         return d
     }
 
-    /// 캐시 이름은 **URL의 해시**다 — ⚠️ 자료 id가 아니다.
+    /// ★ **뽑는 규칙의 판.** 규칙이 바뀌면 이 값을 올린다 — 그러면 옛 캐시가 **안 읽히고 다시 뽑힌다.**
+    ///
+    /// ⛔ **없으면 규칙을 고쳐도 이미 붙은 URL이 새 규칙을 못 받는다** — 캐시 이름이 URL 해시라서
+    /// **같은 URL이 「이미 해봤다」로 걸려 다시 안 뽑히기 때문이다**(2026-08-25에 실제로 그랬다).
+    /// **결정 D(붙일 때 한 번만)와 규칙 변경이 부딪히는 자리이고, 판이 그 매듭이다.**
+    ///
+    /// - `a3` = **비율 문턱 3:1**을 적용한 판(2026-08-25 · 설계 §3-Z-7).
+    ///   그 앞 판(문턱 없음)의 파일은 **읽지 않고 지운다.**
+    private static let rule = "a3"
+
+    /// 캐시 이름은 **URL의 해시 + 규칙 판**이다 — ⚠️ 자료 id가 아니다.
     /// **같은 URL을 두 기억에 붙이면 한 번만 받는다**(캐시니까 공유해도 된다).
     private static func key(_ url: String) -> String {
         let d = SHA256.hash(data: Data(url.utf8))
-        return d.compactMap { String(format: "%02x", $0) }.joined().prefix(32).description
+        let h = d.compactMap { String(format: "%02x", $0) }.joined().prefix(32)
+        return "\(h)-\(rule)"
+    }
+
+    /// 옛 판이 남긴 파일을 지운다 — 기기에만 있는 캐시라 **지워도 안전하다.**
+    /// ⚠️ 뽑을 때 한 번만 부른다(그리는 자리에서 파일을 지우지 않는다).
+    private static func sweepOldRules(_ url: String) {
+        guard let d = dir() else { return }
+        let h = SHA256.hash(data: Data(url.utf8)).compactMap { String(format: "%02x", $0) }.joined().prefix(32)
+        guard let all = try? FileManager.default.contentsOfDirectory(atPath: d.path) else { return }
+        for n in all where n.hasPrefix(String(h)) && !n.hasPrefix("\(h)-\(rule)") {
+            try? FileManager.default.removeItem(at: d.appendingPathComponent(n))
+        }
     }
 
     private static func imageFile(_ url: String) -> URL? {
@@ -113,8 +135,9 @@ enum URLPreview {
     /// **이미 해본 URL이면 아무것도 안 한다**(연결하지 않는다).
     static func fetchOnce(_ raw: String) async {
         guard let normalized = URLAsset.normalized(raw),
-              let pageURL = URL(string: normalized),
-              !attempted(normalized) else { return }
+              let pageURL = URL(string: normalized) else { return }
+        sweepOldRules(normalized)                  // 옛 판 찌꺼기를 먼저 치운다
+        guard !attempted(normalized) else { return }
 
         var got: Data?
         if let html = await fetchText(pageURL) {
