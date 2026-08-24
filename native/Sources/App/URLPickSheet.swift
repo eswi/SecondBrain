@@ -95,9 +95,17 @@ struct URLPickSheet: View {
             .buttonStyle(.plain)
 
             // **빨간 X** — 색은 이 앱이 「지움」에 쓰는 색 그대로다(`Palette.overdue`).
+            //
+            // ⛔ **옛 꼴(`xmark.circle.fill`)이 뒤집혔다** (2026-08-25 사용자):
+            //   *"빨간 원에 검은 X로 했던데 그냥 빨간 X로 해줘."*
+            //   ★ **색 문제가 아니었다** — `.fill` 심볼은 **동그라미를 채우고 X를 뚫어내서**
+            //   X 자리에 어두운 바탕이 보인다. **쟀다:** 이 코랄은 `rgb(251,113,133)`이고
+            //   대비가 **5.7~6.9 : 1**(기준 4.5:1)이라 **밝게 바꿀 이유가 없었다.**
+            //   ⚠️ 사용자가 「약간 밝은 빨강도 괜찮다」고 했지만 **안 바꿨다** — 재 보니 필요가 없었다.
+            // 획이 얇아 보이지 않게 `.semibold`를 준다(글리프 하나짜리라 굵기가 눈에 걸린다).
             Button { onDelete(e) } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Palette.overdue)
                     .frame(width: 44, height: Self.rowHeight)   // 권장 표적 44pt
                     .contentShape(Rectangle())
