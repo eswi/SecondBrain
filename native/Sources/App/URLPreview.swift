@@ -29,6 +29,37 @@ enum URLPreview {
     /// 긴 변을 이 픽셀로 맞춰 저장한다 — 62pt @3x = **186px**(§3-Z-4에서 쟀다).
     private static let maxPixel: CGFloat = 186
 
+    /// ★★ **너무 긴 그림은 쓰지 않는다 — 문턱 3:1** (2026-08-24 사용자 결정 · 설계 §3-Z-7)
+    ///
+    /// ⛔ **실기기 판정에서 나온 결함이다.** 자르지 않고 온전히 넣기로 정했는데(§3-Z-2 C),
+    /// **가로로 아주 긴 그림은 온전히 넣으니 너무 작아져 못 읽혔다** —
+    /// 사용자: *"가로로 긴 글자 보드가 아이콘 형태라서 확대해야 글자가 보임."*
+    /// 실데이터 `wowanalytica`의 대표 그림은 **367×75(4.89:1)**여서 62pt 네모에서 **높이 11.1pt**가 된다.
+    /// **앱이 쓰는 가장 작은 글자가 7.13pt**이니 그 안의 글자는 애초에 읽힐 수 없었다.
+    ///
+    /// ★ **자르는 쪽으로 되돌리지 않았다** — 자르면 「ANALY」처럼 글자 일부만 남는데
+    /// **그것이 애초에 자르지 않기로 한 이유였다.** 대신 **쓸 수 있는 그림의 조건**을 더했다:
+    /// **문턱을 넘으면 다음 후보로 넘어간다**(아이콘 → ①). `wowanalytica`는 정사각 아이콘(57×57)이 있어
+    /// **그 금색 마크가 네모를 꽉 채운다.**
+    ///
+    /// **3:1은 사용자가 고른 값이다**(느슨한 쪽) — 짧은 변이 **18.2pt** 이상이면 쓴다.
+    /// 오늘 표본에서 **`wowanalytica`(4.89)만 탈락**하고 wikipedia(2.20)·github(2.00)·
+    /// questionablyepic(1.77)·youtube(1.00)는 통과한다.
+    /// ⚠️ **18.2pt가 읽히는지는 안 쟀다** — 표본에 그 근처가 없었다(가장 가까운 것이 2.20:1 = 24.7pt).
+    /// 같은 말이 다시 나오면 **그때는 그 비율의 표본으로 잰다.**
+    static let maxAspect: CGFloat = 3.0
+
+    /// 이 그림을 네모에 쓸 수 있나 — **비율만 본다.**
+    ///
+    /// ⚠️ **뽑는 쪽과 그리는 쪽이 둘 다 이것을 부른다.** 뽑는 쪽만 고치면
+    /// ⛔ **이미 붙어 있는 자료가 안 고쳐진다** — 캐시에 옛 그림이 있고 **결정 D(붙일 때 한 번만)** 때문에
+    /// 다시 연결할 계기가 없다. **그리는 쪽이 안전망이다.**
+    static func usable(_ img: UIImage) -> Bool {
+        let w = img.size.width, h = img.size.height
+        guard w > 0, h > 0 else { return false }
+        return max(w, h) / min(w, h) <= maxAspect
+    }
+
     // MARK: 자리
 
     private static func dir() -> URL? {
@@ -63,7 +94,10 @@ enum URLPreview {
     /// ⛔ **이 함수는 절대 연결하지 않는다** — 목록을 그리는 자리에서 불린다.
     static func cached(_ url: String) -> UIImage? {
         guard let f = imageFile(url), FileManager.default.fileExists(atPath: f.path) else { return nil }
-        return UIImage(contentsOfFile: f.path)
+        guard let img = UIImage(contentsOfFile: f.path) else { return nil }
+        // ⛔ **문턱을 넘는 그림은 없는 것으로 본다** — 그러면 네모가 ①로 그려진다.
+        //    **이미 붙어 있던 자료가 이 줄로 고쳐진다**(캐시를 지우지 않아도 된다 · 위 `usable` 참고).
+        return usable(img) ? img : nil
     }
 
     /// 이미 한 번 해봤나 — 성공(그림)이든 실패(`.miss`)든.
@@ -85,7 +119,10 @@ enum URLPreview {
         var got: Data?
         if let html = await fetchText(pageURL) {
             for candidate in candidates(in: html, base: pageURL) {
-                if let d = await fetchData(candidate), UIImage(data: d) != nil { got = d; break }
+                // ⛔ **디코드만으로 채택하지 않는다** — 비율이 문턱을 넘으면 **다음 후보로 넘어간다**
+                //    (2026-08-24 사용자 결정). 그래서 긴 글자판 대신 정사각 아이콘이 잡힌다.
+                guard let d = await fetchData(candidate), let img = UIImage(data: d) else { continue }
+                if usable(img) { got = d; break }
             }
         }
 
