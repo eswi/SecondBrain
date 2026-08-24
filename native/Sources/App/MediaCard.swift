@@ -277,6 +277,9 @@ struct MediaCard: View {
     var onAdd: () -> Void = {}
     /// **URL 하나를 열라** — 앱 안 보기는 상세가 띄운다(2026-08-25 · §3-Z-9).
     var onOpenURL: (String) -> Void = { _ in }
+    /// **이 URL을 떼라** — ⚠️ **여기서 지우지 않는다.** 상세가 **확인을 묻고** 지운다
+    /// (정본: *"되돌리기 없음"* · `edit-policy.md` ③ · §3-Z-10).
+    var onDeleteURL: (String?) -> Void = { _ in }
 
     #if os(iOS)
     /// URL이 **둘 이상**일 때 그 네모에 붙는 팝오버. ⚠️ **자리가 네모에 걸려 있어서 여기 있다** —
@@ -363,19 +366,31 @@ struct MediaCard: View {
     /// ⚠️ **`arrowEdge: .top`이 「네모 아래로 펼친다」는 뜻이다** — 화살표가 팝오버의 위쪽에 붙는다.
     @ViewBuilder private var urlTileButton: some View {
         Button {
-            let urls = item.mediaValues(.url)
-            if urls.count > 1 { urlPick = URLPick(urls: urls) }
-            else if let first = urls.first { onOpenURL(first) }
+            let e = urlEntries
+            if e.count > 1 { urlPick = URLPick(urls: e) }
+            else if let first = e.first { onOpenURL(first.value) }
         } label: {
             tile(.url)
         }
         .buttonStyle(.plain)
         .popover(item: $urlPick, attachmentAnchor: .rect(.bounds), arrowEdge: .top) { p in
-            URLPickSheet(urls: p.urls) { picked in
-                urlPick = nil          // 먼저 닫는다 — 팝오버 위에 브라우저를 겹치지 않는다
-                onOpenURL(picked)
-            }
+            URLPickSheet(urls: p.urls,
+                         onPick: { e in
+                             urlPick = nil          // 먼저 닫는다 — 팝오버 위에 브라우저를 겹치지 않는다
+                             onOpenURL(e.value)
+                         },
+                         onDelete: { e in
+                             urlPick = nil          // 팝오버를 닫고 **상세가 확인을 묻는다**
+                             onDeleteURL(e.assetId)
+                         })
         }
+    }
+
+    /// URL 줄들 — ⛔ **값만 읽으면 안 된다.** 같은 URL을 두 번 붙일 수 있어서
+    /// 「어느 것을 지우나」는 **자료 id**로만 정해진다(§3-Z-10). 그래서 `pointers`를 쓴다.
+    private var urlEntries: [URLEntry] {
+        MediaPointer.pointers(.url, in: item.fields)
+            .map { URLEntry(assetId: $0.assetId, value: $0.value) }
     }
     #endif
 

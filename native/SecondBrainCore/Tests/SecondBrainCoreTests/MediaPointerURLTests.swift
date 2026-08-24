@@ -92,7 +92,55 @@ final class MediaPointerURLTests: XCTestCase {
         XCTAssertEqual(MediaPointer.pointers(.url, in: item?.fields ?? [:]).count, 2)
     }
 
-    // MARK: 5) ✅ 종류가 안 섞인다 — 사진 포인터가 URL 목록에 안 들어온다
+    // MARK: 5) ✅ **떼기는 「빈 값」이다** — 이 한 줄이 삭제를 떠받친다
+
+    /// ★ **결정 파수꾼이다.** 자료 떼기(`edit-policy.md` ③)는 **새 verb를 만들지 않고**
+    /// 이 앱에 이미 있는 규약을 쓴다 — **`set k=`(빈 값) = 값 지움**(`MergeEngine` 주석).
+    ///
+    /// ⛔ **이 시험이 깨진다면 구현이 틀린 것이 아니라 누군가 `pointers`의 `!v.isEmpty`를 뺀 것이다.**
+    /// 그러면 **뗀 URL이 다시 보이고, 그것도 「빈 URL」로 보인다** — 그리고 **아무 신호가 없다.**
+    /// 그때는 §3-Z-10과 `edit-policy.md` ③을 함께 본다.
+    func testRemoveURL_emptyValueDropsIt() {
+        let a = MediaPointer.newAssetId(), b = MediaPointer.newAssetId()
+        let add = Event.edit(id: "p1", hlc: hlc(10), [
+            MediaPointer.key(.url, a): "https://a.example/1",
+            MediaPointer.key(.url, b): "https://b.example/2",
+        ])
+        // 떼기 = 그 필드를 빈 값으로
+        let remove = Event.edit(id: "p1", hlc: hlc(20), [MediaPointer.key(.url, a): ""])
+        let text = [add, remove].map(EventWriter.serialize).joined(separator: "\n")
+        let item = MergeEngine.merge(EventLog.parse(text)).item("p1")
+
+        let left = MediaPointer.pointers(.url, in: item?.fields ?? [:])
+        XCTAssertEqual(left.map(\.value), ["https://b.example/2"], "뗀 URL이 목록에 남아 있다")
+        XCTAssertEqual(left.count, 1)
+    }
+
+    /// ⚠️ **순서가 뒤바뀌어도 결과가 같아야 한다** — 조각 파일이 어느 순서로 읽힐지 모른다
+    /// (`merge-design.md`의 순서무관 계약). **나중 HLC가 이긴다.**
+    func testRemoveURL_orderIndependent() {
+        let a = MediaPointer.newAssetId()
+        let add = Event.edit(id: "p1", hlc: hlc(10), [MediaPointer.key(.url, a): "https://a.example/1"])
+        let remove = Event.edit(id: "p1", hlc: hlc(20), [MediaPointer.key(.url, a): ""])
+        for pair in [[add, remove], [remove, add]] {
+            let text = pair.map(EventWriter.serialize).joined(separator: "\n")
+            let item = MergeEngine.merge(EventLog.parse(text)).item("p1")
+            XCTAssertTrue(MediaPointer.pointers(.url, in: item?.fields ?? [:]).isEmpty,
+                          "순서에 따라 결과가 갈렸다")
+        }
+    }
+
+    /// ⛔ **되돌리기는 없지만 기록은 남는다**(정본) — op 로그가 append-only라 **원래 값이 글에 있다.**
+    /// 화면에서 사라지는 것과 기록이 지워지는 것은 다르다.
+    func testRemoveURL_originalValueStaysInLog() {
+        let a = MediaPointer.newAssetId()
+        let add = Event.edit(id: "p1", hlc: hlc(10), [MediaPointer.key(.url, a): "https://keep.example/x"])
+        let remove = Event.edit(id: "p1", hlc: hlc(20), [MediaPointer.key(.url, a): ""])
+        let text = [add, remove].map(EventWriter.serialize).joined(separator: "\n")
+        XCTAssertTrue(text.contains("https://keep.example/x"), "op 로그에서 원래 값이 사라졌다")
+    }
+
+    // MARK: 6) ✅ 종류가 안 섞인다 — 사진 포인터가 URL 목록에 안 들어온다
 
     func testKindsDoNotMix() {
         let a = MediaPointer.newAssetId()

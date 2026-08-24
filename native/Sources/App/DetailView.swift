@@ -109,6 +109,9 @@ struct DetailView: View {
     @State private var showURLSheet = false
     /// 앱 안 보기로 열고 있는 URL. ⚠️ **`URL`은 `Identifiable`이 아니라** 감싸서 쓴다.
     @State private var openingURL: OpeningURL?
+    /// **떼려고 확인을 묻고 있는 URL 자료의 id.** nil이면 안 묻고 있다(§3-Z-10).
+    /// ⚠️ **팝오버가 아니라 여기서 묻는다** — 이 앱의 확인 대화상자는 다 상세가 갖는다.
+    @State private var deletingURLAsset: String??
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -289,6 +292,8 @@ struct DetailView: View {
         .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
         .overlay { if showDeleteConfirm { deleteDialog } }
         .overlay { if showDiscardConfirm { discardDialog } }
+        // **URL을 뗄까요** — 정본이 「되돌리기 없음」이라 **한 번 묻는다**(§3-Z-10 · 사용자 결정).
+        .overlay { if deletingURLAsset != nil { deleteURLDialog } }
         // ★ **`ignoresSafeArea()`가 핵심이다**(2026-08-10 — 크기 변함의 진짜 원인).
         //
         // **원인은 달력이 아니라 하단 바였다.** 날짜를 처음 누르면 `dirty`가 켜지고 하단 바에
@@ -387,7 +392,8 @@ struct DetailView: View {
                   photoFetch: photoFetch,
                   onTap: { viewerKind = $0 },
                   onAdd: { openAddSheet() },
-                  onOpenURL: openURL(_:))
+                  onOpenURL: openURL(_:),
+                  onDeleteURL: { deletingURLAsset = $0 })
     }
 
     /// `+` 시트를 연다 — iOS만.
@@ -395,6 +401,23 @@ struct DetailView: View {
         #if os(iOS)
         showAddSheet = true
         #endif
+    }
+
+    /// **URL을 떼기 전 확인** — 문구는 사용자가 골랐다(2026-08-25 · 항시 규칙 6):
+    /// **「이 URL을 기억에서 뗍니다. 되돌릴 수 없어요.」**
+    ///
+    /// ⚠️ **「뗍니다」는 정본의 말이다** — `edit-policy.md` ③이 자료 삭제를 *"기억에서 떼는 것"*으로
+    /// 정의한다. **앱의 「삭제」(항목을 버리는 것)와 다른 일이라 다른 말을 쓴다**(기록 규칙 5).
+    /// **버튼도 「삭제」가 아니라 「떼기」다** — 같은 말을 쓰면 항목 삭제로 읽힌다.
+    private var deleteURLDialog: some View {
+        ConfirmDialog(
+            title: "이 URL을 기억에서 뗍니다. 되돌릴 수 없어요.",
+            confirmTitle: "떼기", confirmTint: Palette.overdue,
+            onCancel: { deletingURLAsset = nil },
+            onConfirm: {
+                if let a = deletingURLAsset { model.removeURL(from: item.id, assetId: a) }
+                deletingURLAsset = nil
+            })
     }
 
     /// URL 하나를 **앱 안 보기**로 연다(§3-Z-2 G).

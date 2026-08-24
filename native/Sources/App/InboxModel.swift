@@ -653,6 +653,29 @@ final class InboxModel: ObservableObject {
         #endif
     }
 
+    /// **URL 자료를 기억에서 뗀다** (2026-08-25 사용자 요청 · 설계 §3-Z-10).
+    ///
+    /// ## 정본이 이미 정해 둔 것 (`edit-policy.md` ③ — 「자료 삭제의 정의」)
+    /// > *"기억에서 떼는 것 + SecondBrain이 복사해 둔 사본을 버리는 것. 복사 전 원본은 안 건드린다.
+    /// > 되돌리기 없음."*
+    ///
+    /// ★ **URL은 「사본을 버리는 것」이 없다 — 파일이 없다.** 그래서 **기억에서 떼는 것 하나로 끝난다.**
+    /// ⛔ 그것이 자료 삭제가 걸려 있던 이유 셋(고아 파일 · 반쪽 삭제가 남기는 유령 ·
+    /// 다른 기기가 옛 사본을 들고 되살리는 것)을 **URL은 아예 안 밟는 이유**다.
+    ///
+    /// ## 어떻게 떼나 — **빈 값이 이 앱의 「지움」이다**
+    /// `set url.<자료id>=` — `MergeEngine`의 규약이 이미 그렇고(*"빈 문자열은 값 지움"*),
+    /// 읽는 쪽(`MediaPointer.pointers`)이 **이미 빈 값을 거른다.** 새 규약을 만들지 않았다.
+    /// ⚠️ **op 로그는 append-only라 원래 값이 파일에 남는다** — 화면에서 사라지는 것이고
+    /// **기록이 지워지는 것이 아니다.** 앱에는 되살리는 길이 없다(정본: 되돌리기 없음).
+    ///
+    /// ⏸ **미리보기 캐시는 안 지운다** — 캐시는 **URL로 묶여 있어서** 다른 기억이 같은 URL을
+    /// 쓰고 있을 수 있다. 기기에만 있고 작아서 남겨도 해가 없다(설계 §3-Z-2 E).
+    func removeURL(from itemId: String, assetId: String?) {
+        let key = assetId.map { MediaPointer.key(.url, $0) } ?? MediaPointer.Kind.url.rawValue
+        append(.edit(id: itemId, hlc: tick(), [key: ""]))
+    }
+
     private func tick() -> HLC {
         let h = clock.send(now: nowMillis())
         DeviceStore.saveLastHLC(clock.last)
