@@ -109,6 +109,12 @@ struct DetailView: View {
     @State private var showURLSheet = false
     /// 앱 안 보기로 열고 있는 URL. ⚠️ **`URL`은 `Identifiable`이 아니라** 감싸서 쓴다.
     @State private var openingURL: OpeningURL?
+    #if os(iOS)
+    /// URL이 **둘 이상**일 때 고르는 목록(§3-Z-8). 하나뿐이면 안 뜬다.
+    @State private var urlPick: URLPick?
+    /// 목록에서 고른 것 — ⚠️ **시트가 닫힌 뒤** 브라우저를 연다(겹쳐 띄우면 둘째가 무시된다).
+    @State private var pickedURL: String?
+    #endif
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -263,9 +269,15 @@ struct DetailView: View {
                                           #if os(iOS)
                                           if k == .url {
                                               let cur = model.current(item.id) ?? item
-                                              if let first = cur.mediaValues(.url).first,
-                                                 let v = URLAsset.normalized(first),
-                                                 let u = URL(string: v) {
+                                              let urls = cur.mediaValues(.url)
+                                              // ★ **하나면 바로 열고, 둘 이상이면 고르게 한다**(§3-Z-8).
+                                              //   ⛔ 브라우저 안에 `‹` `›`를 얹을 자리가 API에 없어서
+                                              //      넘기는 자리가 **밖**에 있다.
+                                              if urls.count > 1 {
+                                                  urlPick = URLPick(urls: urls)
+                                              } else if let first = urls.first,
+                                                        let v = URLAsset.normalized(first),
+                                                        let u = URL(string: v) {
                                                   openingURL = OpeningURL(url: u)
                                               }
                                               return
@@ -360,6 +372,18 @@ struct DetailView: View {
         // **URL 담기** — 파일이 없으므로 확정할 것도 없다. 값이 그대로 op으로 붙는다.
         .sheet(isPresented: $showURLSheet) {
             URLAddSheet { model.addURL(to: item.id, url: $0) }
+        }
+        // **URL 고르기** — 둘 이상일 때만 뜬다. ⚠️ 닫힌 **뒤** 브라우저를 연다(`onDismiss`).
+        .sheet(item: $urlPick, onDismiss: {
+            if let p = pickedURL, let v = URLAsset.normalized(p), let u = URL(string: v) {
+                openingURL = OpeningURL(url: u)
+            }
+            pickedURL = nil
+        }) { p in
+            URLPickSheet(urls: p.urls) { picked in
+                pickedURL = picked
+                urlPick = nil          // 닫는다 → `onDismiss`가 브라우저를 연다
+            }
         }
         // **앱 안 보기** — 닫으면 바로 이 화면으로 돌아온다(사파리로 나가지 않는다).
         .sheet(item: $openingURL) { o in
