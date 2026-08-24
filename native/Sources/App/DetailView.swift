@@ -109,12 +109,6 @@ struct DetailView: View {
     @State private var showURLSheet = false
     /// 앱 안 보기로 열고 있는 URL. ⚠️ **`URL`은 `Identifiable`이 아니라** 감싸서 쓴다.
     @State private var openingURL: OpeningURL?
-    #if os(iOS)
-    /// URL이 **둘 이상**일 때 고르는 목록(§3-Z-8). 하나뿐이면 안 뜬다.
-    @State private var urlPick: URLPick?
-    /// 목록에서 고른 것 — ⚠️ **시트가 닫힌 뒤** 브라우저를 연다(겹쳐 띄우면 둘째가 무시된다).
-    @State private var pickedURL: String?
-    #endif
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -256,40 +250,7 @@ struct DetailView: View {
                         case .anchorBanner:       anchorBanner   // 되풀이인데 회차 시각(마감) 없으면 안내(조용히 안 도는 것 방지)
                         case .leadClampedBanner:  leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
                         case .metaType:           metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
-                        case .media:
-                            // **보조 자료** — 자료를 성역에서 뗀 카드(§0 0-1·0-2 · `MediaCard.swift`).
-                            // ⚠️ **`item`이 아니라 최신 항목을 넘긴다** — 자료를 붙인 직후에 카드가
-                            //    다시 그려져야 한다(값으로 받은 `item`은 그때 낡아 있다).
-                            MediaCard(item: model.current(item.id) ?? item,
-                                      audioFetch: audioFetch, photoFetch: photoFetch,
-                                      // ⛔ **URL만 뷰어가 아니다** — **앱 안 보기**로 연다
-                                      //    (2026-08-24 사용자 결정 · 설계 §3-Z-2 G).
-                                      //    그래서 URL에는 뷰어의 `‹` `›` 넘기기가 없다.
-                                      onTap: { k in
-                                          #if os(iOS)
-                                          if k == .url {
-                                              let cur = model.current(item.id) ?? item
-                                              let urls = cur.mediaValues(.url)
-                                              // ★ **하나면 바로 열고, 둘 이상이면 고르게 한다**(§3-Z-8).
-                                              //   ⛔ 브라우저 안에 `‹` `›`를 얹을 자리가 API에 없어서
-                                              //      넘기는 자리가 **밖**에 있다.
-                                              if urls.count > 1 {
-                                                  urlPick = URLPick(urls: urls)
-                                              } else if let first = urls.first,
-                                                        let v = URLAsset.normalized(first),
-                                                        let u = URL(string: v) {
-                                                  openingURL = OpeningURL(url: u)
-                                              }
-                                              return
-                                          }
-                                          #endif
-                                          viewerKind = k
-                                      },
-                                      onAdd: {
-                                          #if os(iOS)
-                                          showAddSheet = true
-                                          #endif
-                                      })
+                        case .media:              mediaSection
                         // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
                         case .question:
                             if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
@@ -373,18 +334,6 @@ struct DetailView: View {
         .sheet(isPresented: $showURLSheet) {
             URLAddSheet { model.addURL(to: item.id, url: $0) }
         }
-        // **URL 고르기** — 둘 이상일 때만 뜬다. ⚠️ 닫힌 **뒤** 브라우저를 연다(`onDismiss`).
-        .sheet(item: $urlPick, onDismiss: {
-            if let p = pickedURL, let v = URLAsset.normalized(p), let u = URL(string: v) {
-                openingURL = OpeningURL(url: u)
-            }
-            pickedURL = nil
-        }) { p in
-            URLPickSheet(urls: p.urls) { picked in
-                pickedURL = picked
-                urlPick = nil          // 닫는다 → `onDismiss`가 브라우저를 연다
-            }
-        }
         // **앱 안 보기** — 닫으면 바로 이 화면으로 돌아온다(사파리로 나가지 않는다).
         .sheet(item: $openingURL) { o in
             SafariSheet(url: o.url).ignoresSafeArea()
@@ -420,6 +369,44 @@ struct DetailView: View {
     }
 
     /// 커스텀 뒤로가기: 저장 안 한 수정이 있으면 확인, 없으면 즉시 닫기.
+    /// **보조 자료 카드** — 자료를 성역에서 뗀 카드(§0 0-1·0-2 · `MediaCard.swift`).
+    ///
+    /// ⚠️ **`item`이 아니라 최신 항목을 넘긴다** — 자료를 붙인 직후에 카드가 다시 그려져야 한다
+    /// (값으로 받은 `item`은 그때 낡아 있다).
+    ///
+    /// ⚠️ **본문 `switch` 안에 인라인으로 두면 안 된다** — 2026-08-25에 인자가 하나 늘자
+    /// **타입 검사가 시간을 넘겼다**(`unable to type-check this expression in reasonable time`).
+    /// 이 파일의 다른 조각들(`metaTypeRow`·`timeSection`)처럼 **계산 속성으로 뺀다.**
+    ///
+    /// ⛔ **URL만 뷰어가 아니다** — **앱 안 보기**로 연다(§3-Z-2 G). 그래서 URL에는 뷰어의 `‹` `›`가 없다.
+    /// ⚠️ **URL이 둘 이상일 때 고르는 목록은 카드가 띄운다**(§3-Z-9) — 팝오버가 **누른 네모에 붙어야**
+    /// 해서 자리가 거기다. 상세는 「열기」만 받는다.
+    @ViewBuilder private var mediaSection: some View {
+        MediaCard(item: model.current(item.id) ?? item,
+                  audioFetch: audioFetch,
+                  photoFetch: photoFetch,
+                  onTap: { viewerKind = $0 },
+                  onAdd: { openAddSheet() },
+                  onOpenURL: openURL(_:))
+    }
+
+    /// `+` 시트를 연다 — iOS만.
+    private func openAddSheet() {
+        #if os(iOS)
+        showAddSheet = true
+        #endif
+    }
+
+    /// URL 하나를 **앱 안 보기**로 연다(§3-Z-2 G).
+    /// ⚠️ **함수로 뺐다** — `MediaCard(...)` 안에 인라인으로 두니 **타입 검사가 시간을 넘겼다**
+    /// (2026-08-25 · `error: the compiler is unable to type-check this expression in reasonable time`).
+    private func openURL(_ raw: String) {
+        #if os(iOS)
+        guard let v = URLAsset.normalized(raw), let u = URL(string: v) else { return }
+        openingURL = OpeningURL(url: u)
+        #endif
+    }
+
     private func backTapped() {
         if dirty { showDiscardConfirm = true } else { dismiss() }
     }

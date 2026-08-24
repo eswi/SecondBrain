@@ -275,6 +275,14 @@ struct MediaCard: View {
     var onTap: (MediaCardKind) -> Void = { _ in }
     /// **추가 네모(`+`)를 눌렀을 때** — 종류를 고르는 시트로 간다(2026-08-23 · 3단계).
     var onAdd: () -> Void = {}
+    /// **URL 하나를 열라** — 앱 안 보기는 상세가 띄운다(2026-08-25 · §3-Z-9).
+    var onOpenURL: (String) -> Void = { _ in }
+
+    #if os(iOS)
+    /// URL이 **둘 이상**일 때 그 네모에 붙는 팝오버. ⚠️ **자리가 네모에 걸려 있어서 여기 있다** —
+    /// 상세(`DetailView`)에 두면 **어느 네모 아래인지**를 알려줄 수가 없다(§3-Z-9).
+    @State private var urlPick: URLPick?
+    #endif
 
     private static let gap: CGFloat = 8        // §0 6번
 
@@ -307,8 +315,11 @@ struct MediaCard: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Self.gap) {
                     ForEach(kinds) { k in
-                        Button { onTap(k) } label: { tile(k) }
-                            .buttonStyle(.plain)
+                        #if os(iOS)
+                        if k == .url { urlTileButton } else { plainTileButton(k) }
+                        #else
+                        plainTileButton(k)
+                        #endif
                     }
                     // ★★ **추가 네모는 늘 맨 뒤에 있다** (2026-08-23 사용자 · §0 10번 개정).
                     //
@@ -341,6 +352,32 @@ struct MediaCard: View {
         }
         .frame(height: MediaTile.side + (overflowsNow ? 12 : 0))
     }
+
+    private func plainTileButton(_ k: MediaCardKind) -> some View {
+        Button { onTap(k) } label: { tile(k) }.buttonStyle(.plain)
+    }
+
+    #if os(iOS)
+    /// ★ **URL 네모만 다르다** — 하나면 바로 열고, **둘 이상이면 이 네모에 붙어 목록이 내려온다**
+    /// (2026-08-25 사용자: *"내가 누른 네모 바로 아래에 붙어서 내려오는 형식"*).
+    /// ⚠️ **`arrowEdge: .top`이 「네모 아래로 펼친다」는 뜻이다** — 화살표가 팝오버의 위쪽에 붙는다.
+    @ViewBuilder private var urlTileButton: some View {
+        Button {
+            let urls = item.mediaValues(.url)
+            if urls.count > 1 { urlPick = URLPick(urls: urls) }
+            else if let first = urls.first { onOpenURL(first) }
+        } label: {
+            tile(.url)
+        }
+        .buttonStyle(.plain)
+        .popover(item: $urlPick, attachmentAnchor: .rect(.bounds), arrowEdge: .top) { p in
+            URLPickSheet(urls: p.urls) { picked in
+                urlPick = nil          // 먼저 닫는다 — 팝오버 위에 브라우저를 겹치지 않는다
+                onOpenURL(picked)
+            }
+        }
+    }
+    #endif
 
     /// 높이를 정하려면 넘치는지 **미리** 알아야 한다(`GeometryReader` 안에서는 늦다).
     /// 폭은 §0 6번의 **342pt**를 쓴다 — 화면 폭 402 − `ScrollView` 16×2 − 카드 14×2.
