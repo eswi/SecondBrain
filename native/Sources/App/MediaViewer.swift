@@ -60,9 +60,9 @@ struct MediaViewer: View {
     /// 카드 이동은 0.35초인데(§0 30번) **사진 넘기기는 그보다 빨라야** 연달아 넘길 때 답답하지 않다.
     private static let slide = Animation.easeInOut(duration: 0.26)
 
-    /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaNames`).
+    /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaValues`).
     /// ⚠️ 첫째는 **수집 당시의 원본**이다(성역을 먼저 읽는다 · §3-Y-8).
-    private var names: [String] { item.mediaNames(kind) }
+    private var names: [String] { item.mediaValues(kind) }
 
     /// 지금 것. 목록이 바뀌어 index가 넘치면 **첫째로 돌아간다**(삭제가 들어오면 그 자리다).
     private var name: String? {

@@ -34,34 +34,40 @@ enum MediaCardKind: Int, CaseIterable, Identifiable {
     case voice = 0, photo, video, url, pdf, other
     var id: Int { rawValue }
 
-    /// 이 종류의 포인터 필드 이름. ⚠️ **넷은 아직 필드가 없다** — 종류가 늘 때 여기를 채운다.
+    /// 이 종류의 포인터 필드 이름. ⚠️ **셋은 아직 필드가 없다** — 종류가 늘 때 여기를 채운다.
+    /// ✅ **url이 켜졌다**(2026-08-24 · 설계 §3-Z).
     var field: String? {
         switch self {
         case .voice: return "audio"
         case .photo: return "photo"
-        case .video, .url, .pdf, .other: return nil
+        case .url:   return "url"
+        case .video, .pdf, .other: return nil
         }
     }
 
-    /// Core의 포인터 종류. 필드가 없는 넷은 nil.
+    /// Core의 포인터 종류. 필드가 없는 셋은 nil.
     var pointerKind: MediaPointer.Kind? {
         switch self {
         case .voice: return .audio
         case .photo: return .photo
-        case .video, .url, .pdf, .other: return nil
+        case .url:   return .url
+        case .video, .pdf, .other: return nil
         }
     }
 }
 
 extension ResolvedItem {
-    /// 이 종류의 자료 **파일 이름들** — ★ **포인터의 값을 읽는다**(2026-08-23 · C · 설계 §3-X).
+    /// 이 종류의 **포인터 값들** — ★ **포인터의 값을 읽는다**(2026-08-23 · C · 설계 §3-X).
+    ///
+    /// ⚠️ **이름이 `mediaNames`였는데 바꿨다**(2026-08-24 · 설계 §3-Z-5) — **값이 파일 이름이 아닐 수 있다.**
+    /// 사진·음성은 파일 이름이고 **URL은 URL 문자열 자체**다. 「파일이냐」는 `MediaPointer.Kind.valueIsFilename`이 안다.
     ///
     /// ⛔ **옛 코드는 `fields["photo"] != nil`로 「있나 없나」만 봤다**(제약 9-b) — 그래서
     /// 조회는 항목 id에서 이름을 계산할 수밖에 없었고, **한 항목에 자료 하나**가 상한이었다.
     /// **옛 단일 필드와 새 필드(`photo.<자료id>`)를 함께** 읽는다(`MediaPointer`).
     ///
     /// ⚠️ **지금 데이터에서는 언제나 0개 또는 1개다** — 여럿인 항목이 아직 없다(표본은 3단계에서 생긴다).
-    func mediaNames(_ k: MediaCardKind) -> [String] {
+    func mediaValues(_ k: MediaCardKind) -> [String] {
         guard let pk = k.pointerKind else { return [] }
         return MediaPointer.pointers(pk, in: fields).map(\.value)
     }
@@ -95,6 +101,9 @@ struct MediaTile: View {
     var duration: String? = nil
     /// 사진에 EXIF 위치가 있나(§0 18·19번 — **있을 때만 그리고 누를 수 없다**).
     var hasPlace: Bool = false
+    /// URL일 때 — 「example」 꼴의 짧은 이름(`URLAsset.shortName`).
+    /// ⛔ **도메인 전체가 아니다** — 62pt에 안 들어간다(2026-08-24 쟀다 · 설계 §3-Z-4).
+    var shortName: String? = nil
 
     static let side: CGFloat = 62      // §0 6번
     private var side: CGFloat { Self.side }
@@ -178,7 +187,33 @@ struct MediaTile: View {
                         .padding(side * 0.05)
                 }
             }
-        case .video, .url, .pdf, .other:
+        case .url:
+            // ★★ **뽑아 둔 대표 그림이 있으면 그것을 「온전히」 그린다** (사용자 결정 · 설계 §3-Z-2 C).
+            //   ⛔ **사진처럼 중앙을 자르지 않는다** — 2026-08-24에 재 보니 og:image는 아이콘이 아니라
+            //   **대표 이미지**여서 띠(367×75)·세로로 긴 것(960×2119)이 온다. **자르면 로고 글자만 남는다**
+            //   (실데이터 `wowanalytica`가 그 경우다). 그래서 **`scaledToFit` + 남는 데를 비운다.**
+            if let image {
+                image.resizable().scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(side * 0.06)
+            } else {
+            // ★ **못 뽑았으면 ①** — 음성과 같은 꼴이다(아이콘 + 짧은 글자 한 줄).
+            //   ⚠️ 글자 크기는 **11pt 자리**다 — 그 폭에서 쟀다(§3-Z-4). `daum` 29.1 · `wikipedia` 49.1pt
+            //   이고 안쪽은 **54.6pt**다. **넘치는 이름**(`stackoverflow` 72.9)은 줄여 그린다.
+            VStack(spacing: max(1, side * 0.04)) {
+                Image(systemName: "link")
+                    .font(.system(size: side * 0.34)).foregroundStyle(Palette.accent)
+                if let shortName {
+                    Text(shortName).font(.system(size: side * 0.15 + 2, weight: .semibold))
+                        .foregroundStyle(Palette.textPrimary)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                        .padding(.horizontal, side * 0.06)
+                        .offset(y: 1)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        case .video, .pdf, .other:
             // ⚠️ 지금 데이터로는 여기 올 일이 없다(포인터가 없다). 종류가 늘 때 채운다.
             Image(systemName: "doc").font(.system(size: side * 0.34))
                 .foregroundStyle(Palette.textSecondary)
@@ -189,7 +224,7 @@ struct MediaTile: View {
     /// 실패 셋 — **글자만으로는 62pt에서 안 갈린다.** 아이콘도 함께 가른다(설계 §3-D-6).
     private func failFace(_ symbol: String, _ text: String) -> some View {
         VStack(spacing: max(2, side * 0.05)) {
-            Image(systemName: kind == .voice ? "waveform" : "photo")
+            Image(systemName: kind == .voice ? "waveform" : (kind == .url ? "link" : "photo"))
                 .font(.system(size: side * 0.26)).foregroundStyle(Palette.textTertiary)
             Image(systemName: symbol).font(.system(size: side * 0.17))
                 .foregroundStyle(Palette.textSecondary)          // ⛔ 무채색 — 색은 테두리가 말한다
@@ -257,8 +292,8 @@ struct MediaCard: View {
         .task(id: item.id) {
             // ⚠️ **자료 하나짜리 상태다** — `MediaFetch`는 종류마다 하나이므로 **첫 자료의 상태**를 본다.
             //    여럿이 되면 **자료마다 상태**가 필요하다(3단계에서 표본과 함께 걸린다 · §3-X-4).
-            if let n = item.mediaNames(.voice).first { audioFetch.start(.audio, name: n) }
-            if let n = item.mediaNames(.photo).first { photoFetch.start(.photo, name: n) }
+            if let n = item.mediaValues(.voice).first { audioFetch.start(.audio, name: n) }
+            if let n = item.mediaValues(.photo).first { photoFetch.start(.photo, name: n) }
         }
     }
 
@@ -316,26 +351,39 @@ struct MediaCard: View {
 
     /// 0개인 종류는 네모를 안 보인다(§0 7번). **포인터 값을 읽어** 센다(C 뒤 — 9-b 해소).
     private var presentKinds: [MediaCardKind] {
-        MediaCardKind.allCases.filter { !item.mediaNames($0).isEmpty }
+        MediaCardKind.allCases.filter { !item.mediaValues($0).isEmpty }
     }
 
     @ViewBuilder private func tile(_ k: MediaCardKind) -> some View {
         switch k {
         case .voice:
             // ★ **개수는 포인터를 센 값이다**(§0 8번). ⚠️ 지금 데이터에서는 늘 1이라 배지가 안 뜬다.
-            let names = item.mediaNames(.voice)
+            let names = item.mediaValues(.voice)
             let aurl = names.first.flatMap { AudioStore.url(name: $0) }
             MediaTile(kind: .voice,
                       state: state(audioFetch, url: aurl, drawable: aurl != nil),   // 음성은 그림이 없다
                       count: names.count, duration: MediaCard.durationText(aurl))
         case .photo:
-            let names = item.mediaNames(.photo)
+            let names = item.mediaValues(.photo)
             let url = names.first.flatMap { PhotoStore.url(name: $0) }
             let img = url.flatMap { MediaCard.thumbnail($0, side: MediaTile.side) }
             MediaTile(kind: .photo,
                       state: state(photoFetch, url: url, drawable: img != nil),
                       count: names.count, image: img,
                       hasPlace: names.first.flatMap { PhotoStore.coordinate(name: $0) } != nil)
+        case .url:
+            // ★ **URL은 파일이 없다** — 그래서 `MediaFetch`의 세 상태(here/notDownloaded/absent)를
+            //    아예 지나간다. **포인터 값이 곧 자료라서 늘 「있다」**(설계 §3-Z-2 A).
+            //    ⏸ 미리보기 그림은 아직 없다 — **①(아이콘 + 도메인 이름)이 지금의 얼굴**이다(§3-Z-2 C).
+            let urls = item.mediaValues(.url)
+            // ⛔ **캐시만 읽는다 — 여기서 연결하지 않는다**(설계 §3-Z-2 D).
+            #if os(iOS)
+            let preview = urls.first.flatMap { URLPreview.cached($0) }.map { Image(uiImage: $0) }
+            #else
+            let preview: Image? = nil
+            #endif
+            MediaTile(kind: .url, state: .ready, count: urls.count, image: preview,
+                      shortName: urls.first.flatMap { URLAsset.shortName($0) })
         default:
             MediaTile(kind: k, state: .unsupported, count: 1)
         }

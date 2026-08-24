@@ -16,6 +16,15 @@
 
 ⛔ **「항목당 하나」는 이제 검산 대상이 아니다** — 여럿이 정상이다. 검산하는 것은 **이름의 대응**이다.
 
+## ⛔ URL은 이 셋의 대상이 **아니다** (2026-08-24 · 설계 §3-Z)
+
+**URL 자료는 파일이 없다** — 포인터 값이 자료 자신이다. 그래서 **누락·고아·겹침 셋이 성립하지 않는다**
+(가리킬 파일이 없고, 남을 파일이 없고, 겹칠 파일이 없다).
+✅ **그래도 세어서 보인다** — ⛔ 안 보이면 다음 세션이 **「자료 총수」를 잘못 센다**
+(이 도구가 URL을 아예 안 읽던 것이 2026-08-24에 발견됐다).
+⚠️ **URL에는 「미리보기 캐시」가 딸릴 수 있는데 그것도 검산 대상이 아니다** — **기기에만 있고
+iCloud에 없다**(설계 §3-Z-2 E). 폴더에서 찾으려 하지 말 것.
+
 ## 쓰기
 
     python3 native/tools/media-audit.py                 # iCloud 기본 경로
@@ -32,15 +41,19 @@ from collections import defaultdict
 DEFAULT = os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs/SecondBrain")
 
 # 종류 → 하위 폴더·확장자 (Core의 `MediaKind`와 같아야 한다)
+# ⚠️ **여기에 url을 더하지 말 것** — `MediaKind`에 url이 없는 것과 같은 이유다(파일이 아니다).
 KINDS = {"audio": "m4a", "photo": "jpg"}
 
-# 포인터 필드: 옛 단일(`photo`)과 새 꼴(`photo.<자료id>`) 둘 다.
-FIELD = re.compile(r"^(audio|photo)(?:\.([0-9a-f]+))?$")
+# 파일이 없는 종류 — 세기만 한다(검산 셋의 대상이 아니다). Core의 `MediaPointer.Kind`와 짝.
+FILELESS = ("url",)
+
+# 포인터 필드: 옛 단일(`photo`)과 새 꼴(`photo.<자료id>`) 둘 다. url도 함께 읽는다(세기용).
+FIELD = re.compile(r"^(audio|photo|url)(?:\.([0-9a-f]+))?$")
 
 
 def pointers(folder):
     """{종류: {파일명: [항목 id…]}} — 조각 파일 전부에서 포인터 값을 모은다."""
-    out = {k: defaultdict(list) for k in KINDS}
+    out = {k: defaultdict(list) for k in list(KINDS) + list(FILELESS)}
     for fn in sorted(os.listdir(folder)):
         if not (fn.startswith("inbox") and fn.endswith(".md")):
             continue
@@ -64,7 +77,7 @@ def pointers(folder):
                             if m and v:
                                 out[m.group(1)][v].append(mid)
                 continue
-            if item and (s.startswith("audio") or s.startswith("photo")):
+            if item and (s.startswith("audio") or s.startswith("photo") or s.startswith("url")):
                 k, _, v = s.partition(":")
                 m = FIELD.match(k.strip())
                 if m and v.strip():
@@ -106,6 +119,17 @@ def main():
                 print(f"    … {len(names) - 20}개 더")
         bad += len(missing) + len(orphan) + len(dup)
         print()
+
+    # 파일이 없는 종류 — **세기만 한다.** ⛔ 검산 셋에 더하지 않는다(성립하지 않는다).
+    for kind in FILELESS:
+        vals = ptr[kind]
+        print(f"[{kind}] 포인터 {len(vals)}개 — ⛔ 파일이 없는 종류라 누락·고아·겹침을 안 본다")
+        for v in sorted(vals)[:10]:
+            print(f"    {v}  ← {sorted(set(vals[v]))}")
+        if len(vals) > 10:
+            print(f"    … {len(vals) - 10}개 더")
+        print()
+
     print("✅ 셋 다 0" if bad == 0 else f"⚠️ 어긋난 것 {bad}개 — 위 목록을 본다")
     return 1 if bad else 0
 

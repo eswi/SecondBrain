@@ -630,6 +630,29 @@ final class InboxModel: ObservableObject {
         append(.edit(id: itemId, hlc: tick(), [MediaPointer.key(.photo, assetId): name]))
     }
 
+    /// **있는 기억에 URL을 붙인다** — ⛔ **파일을 만들지 않는다. 값이 자료 자신이다.**
+    ///
+    /// 2026-08-24 사용자 결정 · 설계 **§3-Z-2 A**. 사진과 **같은 길**로 붙는다(op · 자료마다 별도 필드) —
+    /// 다른 것은 **확정할 파일이 없다는 것 하나**다. 그래서 실패할 자리도 없다.
+    ///
+    /// ⚠️ **값은 `URLAsset.normalized`를 통과한 것이어야 한다**(시트가 그렇게 넘긴다) —
+    /// 스킴이 없으면 `https://`가 붙은 꼴이다. **왕복은 쟀다**(§3-Z-3): 한글·공백·`|`·2000자까지 무손실이다.
+    func addURL(to itemId: String, url: String) {
+        guard let value = URLAsset.normalized(url) else { return }
+        let assetId = MediaPointer.newAssetId()
+        append(.edit(id: itemId, hlc: tick(), [MediaPointer.key(.url, assetId): value]))
+
+        // **미리보기는 붙이는 이 자리에서 한 번만 뽑는다**(사용자 결정 · 설계 §3-Z-2 D).
+        // ⛔ 목록을 여는 자리에서는 절대 연결하지 않는다 — 그리는 쪽은 `URLPreview.cached`만 읽는다.
+        // ⚠️ **자료는 이미 붙었다** — 미리보기가 실패해도 URL은 그대로 살아 있다(네모가 ①로 그려진다).
+        #if os(iOS)
+        Task { [weak self] in
+            await URLPreview.fetchOnce(value)
+            self?.load()      // 캐시가 생겼으니 다시 그린다(파일이 진실원 — 이 앱의 기존 방식)
+        }
+        #endif
+    }
+
     private func tick() -> HLC {
         let h = clock.send(now: nowMillis())
         DeviceStore.saveLastHLC(clock.last)

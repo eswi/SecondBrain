@@ -105,6 +105,10 @@ struct DetailView: View {
     @State private var showAddSheet = false
     @State private var pendingAdd: MediaAddRoute?
     @State private var showAlbum = false
+    // URL 자료(2026-08-24 · 설계 §3-Z) — 담는 시트 하나, 여는 자리 하나.
+    @State private var showURLSheet = false
+    /// 앱 안 보기로 열고 있는 URL. ⚠️ **`URL`은 `Identifiable`이 아니라** 감싸서 쓴다.
+    @State private var openingURL: OpeningURL?
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -252,7 +256,23 @@ struct DetailView: View {
                             //    다시 그려져야 한다(값으로 받은 `item`은 그때 낡아 있다).
                             MediaCard(item: model.current(item.id) ?? item,
                                       audioFetch: audioFetch, photoFetch: photoFetch,
-                                      onTap: { viewerKind = $0 },
+                                      // ⛔ **URL만 뷰어가 아니다** — **앱 안 보기**로 연다
+                                      //    (2026-08-24 사용자 결정 · 설계 §3-Z-2 G).
+                                      //    그래서 URL에는 뷰어의 `‹` `›` 넘기기가 없다.
+                                      onTap: { k in
+                                          #if os(iOS)
+                                          if k == .url {
+                                              let cur = model.current(item.id) ?? item
+                                              if let first = cur.mediaValues(.url).first,
+                                                 let v = URLAsset.normalized(first),
+                                                 let u = URL(string: v) {
+                                                  openingURL = OpeningURL(url: u)
+                                              }
+                                              return
+                                          }
+                                          #endif
+                                          viewerKind = k
+                                      },
                                       onAdd: {
                                           #if os(iOS)
                                           showAddSheet = true
@@ -328,12 +348,22 @@ struct DetailView: View {
                     }
                 }
             case .album:  showAlbum = true
+            case .url:    showURLSheet = true
             case nil:     break
             }
             pendingAdd = nil
         }) {
             MediaAddSheet(onCamera: { pendingAdd = .camera; showAddSheet = false },
-                          onAlbum:  { pendingAdd = .album;  showAddSheet = false })
+                          onAlbum:  { pendingAdd = .album;  showAddSheet = false },
+                          onURL:    { pendingAdd = .url;    showAddSheet = false })
+        }
+        // **URL 담기** — 파일이 없으므로 확정할 것도 없다. 값이 그대로 op으로 붙는다.
+        .sheet(isPresented: $showURLSheet) {
+            URLAddSheet { model.addURL(to: item.id, url: $0) }
+        }
+        // **앱 안 보기** — 닫으면 바로 이 화면으로 돌아온다(사파리로 나가지 않는다).
+        .sheet(item: $openingURL) { o in
+            SafariSheet(url: o.url).ignoresSafeArea()
         }
         .sheet(isPresented: $showAlbum) {
             // 앨범에서 온 파일은 **원본 EXIF를 품고 온다** — 위치가 있으면 그대로 살아 있다.
