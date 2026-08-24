@@ -24,18 +24,36 @@ import Foundation
 public enum MediaPointer {
 
     /// 종류 접두어 = 필드 이름의 앞부분. **옛 단일 포인터 필드와 같은 말을 쓴다**(`audio`·`photo`).
-    /// ⚠️ 종류를 늘리는 것(동영상·URL·PDF·기타)은 아직 안 정했다 — `media-expansion-design.md` §3-C-2.
+    ///
+    /// ## ★ `url`은 **파일이 아닌 첫 종류**다 (2026-08-24 사용자 결정 · 설계 §3-Z)
+    /// 사진·음성은 **값이 파일 이름**이고 조회가 그 이름으로 파일을 찾는다(§3-X).
+    /// **URL은 파일이 없다 — 값이 자료 자신이다.** 그래서 「포인터 값 = 파일 이름」이 여기서 갈린다
+    /// (`CLAUDE.md` 정본 훑기 규칙 2의 신호 ③ — *"「A 무관」이 「A에 따라 갈린다」가 된다"*).
+    /// **갈리는 자리를 `fileKind` 한 곳으로 모았다** — 파일 층(`MediaKind`)에는 `url`이 아예 없어서
+    /// iCloud 업로드·받아오기·들여오기가 **URL을 그냥 못 본다**(막는 코드가 필요 없다).
+    ///
+    /// ⏸ 아직 안 정한 종류: **동영상**(⛔ 용량 때문에 맨 뒤로 미뤘다 — `CLAUDE.md` 「미뤄둔 것」) ·
+    /// PDF · 기타. **기타는 「한 종류 = 확장자 하나」가 깨지는 자리다**(동영상의 어려움 ②와 같다).
     public enum Kind: String, CaseIterable, Sendable {
         case audio
         case photo
+        case url
 
-        /// 파일 확장자 — 지금 앱이 저장하는 것과 같다(`AudioStore`·`PhotoStore`).
-        public var ext: String {
+        /// **파일 층의 종류 — URL은 nil이다.** 「이 종류에 파일이 있나」는 여기서만 갈린다.
+        public var fileKind: MediaKind? {
             switch self {
-            case .audio: return "m4a"
-            case .photo: return "jpg"
+            case .audio: return .audio
+            case .photo: return .photo
+            case .url:   return nil
             }
         }
+
+        /// 포인터 **값이 파일 이름인가.** `false`면 **값이 자료 자신**이다(URL 문자열).
+        public var valueIsFilename: Bool { fileKind != nil }
+
+        /// 파일 확장자 — 지금 앱이 저장하는 것과 같다(`AudioStore`·`PhotoStore`).
+        /// ⚠️ **파일이 아닌 종류는 nil이다**(2026-08-24 — 옛 서술: *"파일 확장자"*로 늘 값이 있었다).
+        public var ext: String? { fileKind?.ext }
     }
 
     /// 새 자료 id — **소문자 16진 32자, 하이픈 없음**(위 제약).
@@ -90,7 +108,9 @@ public enum MediaPointer {
     /// 동시에 붙이면 **같은 n을 만들어 한 파일이 다른 파일을 덮는다**(포인터는 살아도 파일이 사라진다).
     ///
     /// ⚠️ 옛 파일은 **`<항목id>.<확장자>`이고 이름을 안 바꾼다**(§6) — 그래서 `parseFilename`이 둘을 가른다.
-    public static func filename(_ kind: Kind, itemId: String, assetId: String) -> String {
+    /// ⚠️ **받는 것은 파일 층의 종류(`MediaKind`)다**(2026-08-24) — 그래서 **URL로는 부를 수 없다.**
+    /// 파일이 없는 종류에 파일 이름을 만드는 길을 **컴파일 단계에서 막았다**(런타임 검사가 아니다).
+    public static func filename(_ kind: MediaKind, itemId: String, assetId: String) -> String {
         "\(itemId)-\(assetId).\(kind.ext)"
     }
 
