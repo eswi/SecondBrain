@@ -85,6 +85,27 @@ enum MediaTileState {
     case unsupported           // 포맷 지원이 안 된다                        → 빨강
 }
 
+extension MediaTileState {
+    /// **색 셋의 순서** — 무채색 < 앰버 < 빨강. ⛔ **심각도가 아니라 「길의 유무」다**
+    /// (위 `borderColor` 주석: *"앰버와 빨강을 가르는 것은 「기다리거나 눌러서 볼 수 있나」"*).
+    var rank: Int {
+        switch self {
+        case .ready:                              return 0
+        case .notDownloaded, .cannotDraw:         return 1
+        case .absent, .unreadable, .unsupported:  return 2
+        }
+    }
+
+    /// **가장 나쁜 것** — 자료가 여럿일 때 **테두리가 말하는 값**(2026-08-26 사용자 결정).
+    ///
+    /// ⛔ **얼굴(그림·글자)은 이것을 안 쓴다** — 얼굴은 **첫째 것**이다.
+    /// 그렇지 않으면 **첫 사진이 멀쩡한데도 네모가 「아직 못 받음」으로 덮인다.**
+    /// ★ 색 규칙의 *"테두리만으로 말한다"*(2026-08-23 사용자)가 이 갈라짐을 이미 허락하고 있다.
+    static func worst(_ states: [MediaTileState]) -> MediaTileState {
+        states.max(by: { $0.rank < $1.rank }) ?? .ready
+    }
+}
+
 /// ⚠️ **2026-08-23에 `notFetched` 하나를 둘(`notDownloaded`·`absent`)로 갈랐다** — **색이 갈라야 해서다**
 /// (사용자: *"파일이 존재하지 않는 경우 … 빨간색, 파일이 있으나 아직 가져오지 못한 경우 앰버"*).
 /// ⛔ **§0 21번(「②는 하나로 본다」)이 통째로 뒤집힌 것이 아니다** — **문구는 아직 하나**이고
@@ -93,7 +114,11 @@ enum MediaTileState {
 /// 62pt 정사각형 하나. **한 변이 값이라 안쪽 치수는 전부 그 비율이다**(§0 6·16·18번).
 struct MediaTile: View {
     let kind: MediaCardKind
+    /// **얼굴이 쓰는 상태 = 첫째 것.** 그림·글자가 이것을 따라간다.
     let state: MediaTileState
+    /// **테두리가 쓰는 상태 = 자료 전부 중 가장 나쁜 것**(2026-08-26 사용자 결정).
+    /// nil이면 `state`를 쓴다 — 자료가 하나뿐인 자리는 손댈 것이 없다.
+    var borderState: MediaTileState? = nil
     let count: Int
     /// 사진일 때 — 그릴 그림(중앙 크롭은 `scaledToFill` + `frame` + `clipped`가 한다).
     var image: Image? = nil
@@ -134,7 +159,8 @@ struct MediaTile: View {
     /// **빨강 = 없거나, 있어도 못 본다.**
     /// ★ 앰버와 빨강을 가르는 것은 **「기다리거나 눌러서 볼 수 있나」**다 — 심각도가 아니라 **길의 유무**다.
     private var borderColor: Color {
-        switch state {
+        // ★ **얼굴과 갈라진다**(2026-08-26) — 얼굴은 첫째, 테두리는 **가장 나쁜 것**.
+        switch borderState ?? state {
         case .ready:                       return Palette.textPrimary         // 밝은 무채색
         case .notDownloaded, .cannotDraw:  return Palette.today               // 앰버 — 길이 있다
         case .absent, .unreadable, .unsupported:
@@ -331,10 +357,15 @@ struct MediaCard: View {
         }
         .padding(14).card()
         .task(id: item.id) {
-            // ⚠️ **자료 하나짜리 상태다** — `MediaFetch`는 종류마다 하나이므로 **첫 자료의 상태**를 본다.
-            //    여럿이 되면 **자료마다 상태**가 필요하다(3단계에서 표본과 함께 걸린다 · §3-X-4).
-            if let n = item.mediaValues(.voice).first { audioFetch.start(.audio, name: n) }
-            if let n = item.mediaValues(.photo).first { photoFetch.start(.photo, name: n) }
+            // ✅ **그 예고가 맞았다** — 옛 주석: *"여럿이 되면 자료마다 상태가 필요하다."*
+            //    2026-08-26 맥에서 실제로 드러났고(표본 `BFE53B0B`) `byName`이 그 자리다.
+            //    **`start`는 첫째를 받고, `measure`는 나머지를 재기만 한다**(⛔ 안 받는다).
+            let voices = item.mediaValues(.voice)
+            let photos = item.mediaValues(.photo)
+            if let n = voices.first { audioFetch.start(.audio, name: n) }
+            if let n = photos.first { photoFetch.start(.photo, name: n) }
+            audioFetch.measure(.audio, names: voices)
+            photoFetch.measure(.photo, names: photos)
         }
     }
 
@@ -442,15 +473,19 @@ struct MediaCard: View {
             // ★ **개수는 포인터를 센 값이다**(§0 8번). ⚠️ 지금 데이터에서는 늘 1이라 배지가 안 뜬다.
             let names = item.mediaValues(.voice)
             let aurl = names.first.flatMap { AudioStore.url(name: $0) }
+            let first = state(audioFetch, url: aurl, drawable: aurl != nil)   // 음성은 그림이 없다
             MediaTile(kind: .voice,
-                      state: state(audioFetch, url: aurl, drawable: aurl != nil),   // 음성은 그림이 없다
+                      state: first,
+                      borderState: worstOf(audioFetch, names: names, first: first),
                       count: names.count, duration: MediaCard.durationText(aurl))
         case .photo:
             let names = item.mediaValues(.photo)
             let url = names.first.flatMap { PhotoStore.url(name: $0) }
             let img = url.flatMap { MediaCard.thumbnail($0, side: MediaTile.side) }
+            let first = state(photoFetch, url: url, drawable: img != nil)
             MediaTile(kind: .photo,
-                      state: state(photoFetch, url: url, drawable: img != nil),
+                      state: first,
+                      borderState: worstOf(photoFetch, names: names, first: first),
                       count: names.count, image: img,
                       hasPlace: names.first.flatMap { PhotoStore.coordinate(name: $0) } != nil)
         case .url:
@@ -469,6 +504,30 @@ struct MediaCard: View {
         default:
             MediaTile(kind: k, state: .unsupported, count: 1)
         }
+    }
+
+    /// **자료 전부를 접어 테두리 값을 낸다** — 첫째는 이미 계산한 것을 쓰고, 나머지는 `byName`으로 본다.
+    /// nil을 내면 `MediaTile`이 얼굴 상태를 그대로 테두리에 쓴다(자료가 하나뿐인 자리).
+    ///
+    /// ⚠️ **못 잼 하나 — 뒤엣것의 「깨진 파일」은 카드가 모른다.** 그림을 만들어 보는 것은
+    /// **첫째뿐**이므로(`thumbnail`) 뒤엣것은 **바이트가 있으면 정상으로 본다.**
+    /// ⛔ **전부 디코드하지 않는다** — 62pt 네모 하나를 그리려고 사진 아홉 장을 여는 꼴이 된다.
+    /// **뷰어에서 그 장으로 넘어가면 드러난다** — 카드가 **늦게 아는** 것이고, 틀리게 아는 것이 아니다.
+    ///
+    /// ⚠️ **아직 안 재인 것은 아예 안 센다**(`byName`에 없음) — 정상으로 치면 **재는 동안 테두리가
+    /// 정상으로 반짝인다.** 안 세면 재기 전에는 **지금까지처럼 첫째 값**이고, 재고 나면 바뀐다.
+    private func worstOf(_ fetch: MediaFetch, names: [String], first: MediaTileState) -> MediaTileState? {
+        guard names.count > 1 else { return nil }
+        var states: [MediaTileState] = [first]
+        for n in names.dropFirst() {
+            switch fetch.byName[n] {
+            case .here:          states.append(.ready)
+            case .notDownloaded: states.append(.notDownloaded)
+            case .absent:        states.append(.absent)
+            case .none:          break                  // 아직 안 쟀다 — 세지 않는다
+            }
+        }
+        return .worst(states)
     }
 
     /// 세 갈래를 **네모의 두 상태로 접는다**(§0 21번) — `notDownloaded`·`absent`는 **하나로**.

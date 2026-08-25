@@ -15,6 +15,16 @@ final class MediaFetch: ObservableObject {
     /// 기다렸는데 안 왔다 → 「아직 못 받았어요 · 다시 시도」.
     @Published private(set) var timedOut = false
 
+    /// **자료마다의 상태** — 위 `state`는 **첫째 것**이고, 이것은 **전부**다.
+    ///
+    /// ## ★ 왜 생겼나 (2026-08-26 · 맥에서 드러났다)
+    /// 카드가 `names.first`로만 상태를 계산해서 **뒤엣것이 무슨 상태든 테두리에 안 나타났다.**
+    /// 표본 `BFE53B0B`(사진 2장 · 하나는 못 받음)에서 **테두리가 정상(밝은 무채색)**으로 보였다.
+    /// **사용자 결정: 테두리는 「가장 나쁜 것」을 말한다** — 그래서 전부 알아야 한다.
+    /// ⛔ **앰버가 거짓이 되는 것을 막는 값이다** — 앰버는 「길이 있다」는 약속인데,
+    /// 첫째만 보면 **뒤엣것이 못 받은 채로 카드가 정상이라고 말한다.**
+    @Published private(set) var byName: [String: MediaAvailability] = [:]
+
     private var task: Task<Void, Never>?
 
     /// **「안 온 것으로 본다」 문턱.** ✅ **쟀다 (2026-08-20 · 맥미니 · 표본 16개):**
@@ -47,6 +57,7 @@ final class MediaFetch: ObservableObject {
             guard let self else { return }
             var s = await Self.availability(kind, name)
             self.state = s
+            self.byName[name] = s              // 첫째도 같은 표에 남긴다(테두리가 함께 읽는다)
             guard s == .notDownloaded else { return }
 
             _ = await Task.detached(priority: .userInitiated) {
@@ -58,9 +69,30 @@ final class MediaFetch: ObservableObject {
                 if Task.isCancelled { return }
                 s = await Self.availability(kind, name)
                 self.state = s
+                self.byName[name] = s
                 if s != .notDownloaded { return }     // 왔다 — 또는 사라졌다
             }
             self.timedOut = true
+        }
+    }
+
+    /// **전부 재기 — ⛔ 받지는 않는다.**
+    ///
+    /// `start`는 **첫째 하나를 받고 기다린다.** 이것은 **나머지의 상태만** 채운다.
+    /// ⛔ **여기서 받으면 「실체는 클라우드」가 무너진다** — 상세를 여는 것만으로
+    /// 그 항목 자료 **전부**를 내려받는 꼴이 된다(머리주석: *"131개 … 다 받으면 무너진다"*).
+    /// **뒤엣것은 뷰어에서 그 장으로 넘어갈 때 받는다**(2026-08-26 사용자 결정 · `MediaViewer`).
+    ///
+    /// ⚠️ `availability`가 **iCloud에 이미 내려온 바이트는 로컬로 들여온다**(`adoptFromCloudIfNeeded`).
+    /// **그것은 다운로드가 아니다** — 회선을 쓰지 않는다. dataless면 들여올 것이 없다.
+    func measure(_ kind: MediaKind, names: [String]) {
+        guard names.count > 1 else { return }      // 하나면 `start`가 이미 채운다
+        Task { [weak self] in
+            for n in names {
+                let a = await Self.availability(kind, n)
+                guard let self else { return }
+                self.byName[n] = a
+            }
         }
     }
 

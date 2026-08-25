@@ -56,6 +56,18 @@ struct MediaViewer: View {
     /// 마지막으로 어느 쪽으로 넘겼나(`+1` 다음 · `-1` 이전) — **전환이 그 방향으로 미끄러진다.**
     @State private var lastStep = 1
 
+    /// **지금 보는 그 장을 받아온다** (2026-08-26 사용자 결정).
+    ///
+    /// ## ★ 왜 뷰어에 생겼나 — **앰버의 약속이 안 지켜지고 있었다**
+    /// 카드는 **첫째만** 받는다(`MediaCard`의 `start`). 그래서 **둘째부터는 아무도 안 받아줬고**,
+    /// 뷰어에서 넘기면 **구름 아이콘만 영영** 보였다(2026-08-26 맥에서 사용자가 봤다 · 표본 `BFE53B0B`).
+    /// ⛔ **앰버는 「기다리거나 눌러서 볼 수 있다」는 약속인데** 뒤엣것은 기다려도 안 오고 눌러도 안 왔다.
+    ///
+    /// **왜 여기인가:** 상세를 열 때 전부 받으면 「실체는 클라우드」가 무너진다
+    /// (`MediaFetch` 머리주석: *"131개 … 다 받으면 무너진다"*). **넘어간 그 장만** 받는 것이
+    /// 그 방침을 안 깨뜨리는 자리다.
+    @StateObject private var fetch = MediaFetch()
+
     /// **전환 값** — ⚠️ 재서 정한 값이 아니다. 사용자 판정: *"너무 팍 팍 넘어가. 너무 기계적"*.
     /// 카드 이동은 0.35초인데(§0 30번) **사진 넘기기는 그보다 빨라야** 연달아 넘길 때 답답하지 않다.
     private static let slide = Animation.easeInOut(duration: 0.26)
@@ -63,6 +75,16 @@ struct MediaViewer: View {
     /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaValues`).
     /// ⚠️ 첫째는 **수집 당시의 원본**이다(성역을 먼저 읽는다 · §3-Y-8).
     private var names: [String] { item.mediaValues(kind) }
+
+    /// 받아올 수 있는 종류인가 — **파일이 있는 둘만**이다.
+    /// ⛔ **URL은 nil이다** — 파일이 없으므로 받을 것이 없다(설계 §3-Z-2 A).
+    private var fetchKind: MediaKind? {
+        switch kind {
+        case .voice: return .audio
+        case .photo: return .photo
+        default:     return nil
+        }
+    }
 
     /// 지금 것. 목록이 바뀌어 index가 넘치면 **첫째로 돌아간다**(삭제가 들어오면 그 자리다).
     private var name: String? {
@@ -79,6 +101,7 @@ struct MediaViewer: View {
             counter
             arrows
             filmstrip
+            downloadToast
         }
         // ★ **어떤 목적으로 손을 대든** 썸네일 줄이 다시 나타난다(사용자 문장).
         //   `minimumDistance: 0`이라 **누르는 순간** 걸리고, `simultaneousGesture`라
@@ -98,6 +121,15 @@ struct MediaViewer: View {
         #if os(iOS)
         .statusBarHidden(true)
         #endif
+        // ★ **넘길 때마다 그 장을 받는다** — `id`가 이름이라 **넘기면 앞 작업이 취소되고 새로 시작한다.**
+        //   ⚠️ 이미 있으면 `start`가 아무 일도 안 한다(그 함수의 첫 갈래) — **폰에서는 비용이 0이다.**
+        .task(id: name) {
+            guard let n = name, let mk = fetchKind else { return }
+            fetch.start(mk, name: n)
+        }
+        // 토스트가 **떠오르고 스러진다** — 있는 토스트와 같은 값(`RootView`).
+        .animation(.spring(duration: 0.3), value: fetch.state)
+        .animation(.spring(duration: 0.3), value: fetch.timedOut)
         .onDisappear { audio.stop() }
     }
 
@@ -142,7 +174,12 @@ struct MediaViewer: View {
             #else
             // 맥은 전체 보기로 남는다(`UIViewRepresentable`은 iOS 전용).
             if let img = PlatformMedia.image(contentsOfFile: url.path) {
+                // ⛔ **맨몸으로 두면 사진의 원래 치수가 창 크기를 몰고 간다** — 4032×3024짜리가
+                //    자기 크기를 「알맞은 크기」로 내놓는다. 그래서 **가로/세로에 따라 창이 달라졌다.**
+                //    ✅ **자리를 다 쓰게 못 박으면** 사진은 그 안에서 맞춰지고 **창은 안 흔들린다.**
+                //    ⚠️ 시트 쪽 `ideal`과 **둘이 함께** 이 일을 막는다(`DetailView`) — 한쪽만으로는 부족하다.
                 img.resizable().scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 missing
             }
@@ -229,6 +266,55 @@ struct MediaViewer: View {
                     .padding(.top, 10)
                 Spacer()
             }
+        }
+    }
+
+    /// **「내려받는 중」** — 뷰어를 열거나 넘긴 그 장을 **받아오는 동안만** 뜬다 (2026-08-26 사용자 결정).
+    ///
+    /// ## ★ 왜 생겼나
+    /// 사용자: *"뷰어 열면 사진을 다운로드 하잖아? 그 때 빙글빙글 도는 원 아이콘 하나를 띄워줘.
+    /// 그래야 뭔가 받고 있구나 하고 느낄거잖아? 아니면 메시지도 토스트 방식으로 띄워주면 좋고."*
+    /// **토스트를 골랐다.**
+    ///
+    /// ## ★★ 문구는 새로 짓지 않았다 — **앱에 이미 있는 말이다**
+    /// **「내려받는 중」** = 설정 ▸ 「연결된 폴더」가 받는 중일 때 쓰는 말(`SettingsView.folderStatusLabel`
+    /// · 문구 확정 2026-08-06). ★ 항시 규칙 6의 거꾸로 쓰기 — *"이미 있는 말을 써야 한다."*
+    /// ⛔ **그래서 이 화면 머리주석의 「새 문구를 안 짓는다」와 어긋나지 않는다.**
+    ///
+    /// ## ⛔ 있는 토스트를 안 썼다 — **자동 분류 것이다**
+    /// `InboxModel.autoToast`·`ClassifyToastView`는 **자동 분류 전용**이고, 자동 분류는
+    /// **zero base로 새로 설계**하기로 정해져 있다(항시 규칙 8 — 허락 없이는 한 줄도).
+    /// **그래서 꼴만 따라 여기 따로 만들었다** — 둥근 네모 20 · `surface2` · 테두리 · 그림자 ·
+    /// **빙글빙글 + 글자** 배치가 그것과 같다. ⚠️ **한쪽을 고치면 다른 쪽은 안 따라온다**(복제다).
+    ///
+    /// ## 15초가 지나면 사라진다 (사용자 결정: *"도는 것만 멈춘다"*)
+    /// `timedOut`이 서면 토스트가 없어지고 **구름 아이콘만 남는다.** ⛔ **새 문구를 안 만들었다** —
+    /// 「아직 못 받음」이라는 뜻은 **카드 테두리(앰버)가 이미 말하고 있다.**
+    @ViewBuilder private var downloadToast: some View {
+        if fetch.state == .notDownloaded, !fetch.timedOut {
+            VStack {
+                VStack(spacing: 14) {
+                    ProgressView().controlSize(.large).tint(Palette.accent)
+                    Text("내려받는 중")
+                        .font(.headline)
+                        .foregroundStyle(Palette.textPrimary)
+                }
+                .padding(.horizontal, 28).padding(.vertical, 24)
+                .frame(minWidth: 200)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Palette.surface2)
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Palette.border, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.4), radius: 24, y: 8)
+                )
+                // ⚠️ **재서 정한 값이 아니다** — 위쪽 「n / n」을 비켜 앉히려고 준 값이다.
+                //    화면에서 겹쳐 보이면 여기를 고친다(계측 규칙 7 · 「짐작」으로 적어 둔다).
+                .padding(.top, 56)
+                Spacer()
+            }
+            // ⛔ **터치를 막지 않는다** — 있는 토스트와 같다. 밑에서 넘기기·닫기가 계속 눌린다.
+            .allowsHitTesting(false)
+            .transition(.scale(scale: 0.9).combined(with: .opacity))
         }
     }
 

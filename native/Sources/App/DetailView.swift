@@ -362,7 +362,13 @@ struct DetailView: View {
         #else
         .sheet(item: $viewerKind) { k in
             MediaViewer(item: model.current(item.id) ?? item, kind: k, audio: audio) { viewerKind = nil }
-                .frame(minWidth: 520, minHeight: 420)
+                // ⛔ **`min`만 주면 창이 사진을 따라 커진다** — 맥 시트는 **내용 크기로 열린다.**
+                //    그래서 **가로 사진과 세로 사진에서 창 높이가 달랐고**, 아래에 붙은 썸네일 줄이
+                //    그만큼 **오르락내리락했다**(2026-08-26 사용자가 잡았다).
+                //    ✅ **`ideal`을 줘서 창을 못 박는다** — 사진이 무엇이든 같은 창이다.
+                //    ⚠️ **iOS에는 없던 일이다** — 거기는 `fullScreenCover`라 화면에 고정돼 있다.
+                //    ⚠️ **980×760은 재서 정한 값이 아니다** — 「적당한 크기」로 고른 값이다(사용자 판정 대기).
+                .frame(minWidth: 520, idealWidth: 980, minHeight: 420, idealHeight: 760)
         }
         #endif
         .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
