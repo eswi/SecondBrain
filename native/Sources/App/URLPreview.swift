@@ -149,6 +149,18 @@ enum URLPreview {
         if let shot = await URLPageCapture.firstScreen(of: pageURL), UIImage(data: shot) != nil {
             got = shot
         }
+        // ⚠️ **임시 진단** — 캡쳐가 왜 안 됐나를 파일로 남긴다(2026-08-25).
+        //    맥에서 `devicectl device copy from`으로 가져와 읽는다. ⏸ **원인이 닫히면 걷어낸다.**
+        if got == nil, let d = dir() {
+            let why = await URLPageCapture.lastFailure ?? "nil"
+            let line = "\(why)\t\(normalized)\n"
+            let f = d.appendingPathComponent("capture-why.log")
+            if let h = try? FileHandle(forWritingTo: f) {
+                h.seekToEndOfFile(); try? h.write(contentsOf: Data(line.utf8)); try? h.close()
+            } else {
+                try? Data(line.utf8).write(to: f, options: .atomic)
+            }
+        }
 
         // ② 못 찍었으면 그 페이지가 스스로 내놓는 그림을 찾는다(2026-08-24에 쟀던 순서 그대로).
         if got == nil, let html = await fetchText(pageURL) {

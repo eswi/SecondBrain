@@ -36,14 +36,19 @@ enum URLPageCapture {
 
     /// 첫 화면을 찍어 JPEG로 돌려준다. **못 찍었으면 nil**(그러면 대표 그림 갈래로 내려간다).
     static func firstScreen(of url: URL) async -> Data? {
-        guard let host = hostWindow() else { return nil }
+        lastFailure = nil
+        guard let host = hostWindow() else { lastFailure = "nohost"; return nil }
 
         let web = WKWebView(frame: CGRect(x: 0, y: 0, width: side, height: side))
         web.isOpaque = true
         web.backgroundColor = .white          // 투명하면 스냅샷 뒷면이 검게 나온다
-        web.alpha = 0.01                      // ⚠️ 0이면 렌더링을 건너뛸 수 있다
         web.isUserInteractionEnabled = false
-        host.addSubview(web)
+        // ★ **투명하게 숨기지 않고 「맨 뒤」에 넣어 가린다** (2026-08-25 고침).
+        //   ⛔ 옛 꼴은 `alpha = 0.01`이었다 — **거의 투명하면 시스템이 그리기를 건너뛸 수 있다**
+        //   (주석에 「0이면 건너뛸 수 있다」고 적어 두고도 0.01을 썼다).
+        //   ✅ **불투명하게 두고 앱 화면 밑에 깔면** 그려지는 것은 보장되고 눈에는 안 보인다.
+        web.alpha = 1
+        host.insertSubview(web, at: 0)
         defer { web.removeFromSuperview() }
 
         let waiter = LoadWaiter()
@@ -67,11 +72,35 @@ enum URLPageCapture {
         cfg.rect = CGRect(x: 0, y: 0, width: side, height: side)
         cfg.afterScreenUpdates = true
 
-        guard let img = try? await web.takeSnapshot(configuration: cfg) else { return nil }
-        // ② 빈 화면이면 버린다 — 그러면 대표 그림 갈래로 내려간다
-        guard !looksBlank(img) else { return nil }
-        return img.jpegData(compressionQuality: 0.85)
+        guard let first = try? await web.takeSnapshot(configuration: cfg) else {
+            lastFailure = "snapfail"          // 찍기 자체가 실패했다
+            return nil
+        }
+        if !looksBlank(first) {
+            lastFailure = nil
+            return first.jpegData(compressionQuality: 0.85)
+        }
+
+        // ★ **빈 화면이면 한 번 더 기다려 다시 찍는다** — 늦게 그려지는 페이지가 실제로 있다.
+        do { try await Task.sleep(nanoseconds: 1_500_000_000) } catch { lastFailure = "cancel"; return nil }
+        guard let second = try? await web.takeSnapshot(configuration: cfg) else {
+            lastFailure = "snapfail2"
+            return nil
+        }
+        guard !looksBlank(second) else {
+            lastFailure = "blank"             // 두 번 찍어도 한 색이다 — 대표 그림 갈래로 내려간다
+            return nil
+        }
+        lastFailure = nil
+        return second.jpegData(compressionQuality: 0.85)
     }
+
+    /// ⚠️ **임시 진단용** — 마지막으로 캡쳐가 왜 안 됐나. `URLPreview`가 이것을 파일로 적는다.
+    /// **왜 있나:** 2026-08-25에 **폰에서 캡쳐가 실패하는데 이유를 알 수 없었다.**
+    /// 짐작으로 고치는 대신 **폰이 이유를 적게 하고 그 파일을 가져와 읽기로** 했다
+    /// (`devicectl device copy from --domain-type appDataContainer`).
+    /// ⏸ **원인이 닫히면 이 진단은 걷어낸다.**
+    static var lastFailure: String?
 
     // MARK: 안쪽
 
@@ -89,8 +118,12 @@ enum URLPageCapture {
     ///
     /// 8×8로 줄여 **밝기의 펴짐**을 본다. ⚠️ **문턱은 낮게 잡는다** —
     /// 「글자 몇 줄뿐인 담백한 페이지」를 버리면 안 된다. **정말 한 색인 것만** 걸러낸다.
+    /// ⚠️ **격자를 8에서 32로 키우고 문턱을 낮췄다** (2026-08-25).
+    /// ⛔ **8×8은 너무 거칠었다** — 흰 바탕에 글자가 조금 있는 담백한 페이지를 8×8로 줄이면
+    /// **거의 한 색으로 뭉개져** 「빈 화면」으로 버려질 수 있다. **버리면 안 되는 것을 버린다.**
+    /// **32×32 · 펴짐 1.5 미만**은 **정말 한 색인 것만** 걸러낸다.
     private static func looksBlank(_ img: UIImage) -> Bool {
-        let n = 8
+        let n = 32
         guard let cg = img.cgImage else { return false }
         var px = [UInt8](repeating: 0, count: n * n * 4)
         guard let ctx = CGContext(data: &px, width: n, height: n, bitsPerComponent: 8,
@@ -107,7 +140,7 @@ enum URLPageCapture {
         guard !lum.isEmpty else { return false }
         let mean = lum.reduce(0, +) / Double(lum.count)
         let sd = (lum.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(lum.count)).squareRoot()
-        return sd < 3.0          // 0에 가까우면 한 색이다
+        return sd < 1.5          // 0에 가까우면 한 색이다
     }
 }
 

@@ -193,9 +193,16 @@ struct MediaTile: View {
             //   **대표 이미지**여서 띠(367×75)·세로로 긴 것(960×2119)이 온다. **자르면 로고 글자만 남는다**
             //   (실데이터 `wowanalytica`가 그 경우다). 그래서 **`scaledToFit` + 남는 데를 비운다.**
             if let image {
-                image.resizable().scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(side * 0.06)
+                // ★ **그림 위에 도메인 이름을 얹는다** (2026-08-25 사용자 요청 · §3-Z-13).
+                //   사용자: *"네모안에 표시된 페이지 모습이 너무 안 보인다 … 일단은 그 위에
+                //   domain 이름을 표시해주는 선에서 마무리하자."*
+                //   ⚠️ **네모 크기 자체는 나중 과제로 미뤘다** — 지금은 이름으로 덮는다.
+                ZStack(alignment: .bottom) {
+                    image.resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(side * 0.06)
+                    if let shortName { nameStrip(shortName) }
+                }
             } else {
             // ★ **못 뽑았으면 ①** — 음성과 같은 꼴이다(아이콘 + 짧은 글자 한 줄).
             //   ⚠️ 글자 크기는 **11pt 자리**다 — 그 폭에서 쟀다(§3-Z-4). `daum` 29.1 · `wikipedia` 49.1pt
@@ -219,6 +226,29 @@ struct MediaTile: View {
                 .foregroundStyle(Palette.textSecondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    /// **그림 위에 얹는 이름 띠** — URL 네모에서만 쓴다(2026-08-25 · §3-Z-13).
+    ///
+    /// **쟀다(2026-08-25):** 띠 안쪽 폭 **56pt**(62 − 좌우 3) · **9pt**에서
+    /// `inven` 23.3 · `daum` 24.3 · `wikipedia` 41.2 **들어가고**,
+    /// `stackoverflow` 61.1 · `questionablyepic` 74.7은 **넘쳐서 줄여 그린다**(0.7배면 52.3 → 들어간다).
+    ///
+    /// ⚠️ **도메인 전체가 아니라 끝을 뗀 이름이다**(`URLAsset.shortName`) — 도메인 전체는
+    /// **62pt에 애초에 안 들어간다**(2026-08-24 쟀다 · §3-Z-4). **네모 아래 ①에 쓰는 것과 같은 말**이라
+    /// 그림이 있을 때와 없을 때 **같은 글자가 보인다.**
+    ///
+    /// **흰 글자 + 검은 반투명** — 그림이 밝든 어둡든 읽히게. ★ **이 앱에 이미 있는 꼴이다**
+    /// (사진 네모의 위치 핀이 `.foregroundStyle(.white, .black.opacity(0.45))`로 같은 방식을 쓴다).
+    private func nameStrip(_ name: String) -> some View {
+        Text(name)
+            .font(.system(size: side * 0.145, weight: .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1).minimumScaleFactor(0.7)
+            .padding(.horizontal, 3)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 1.5)
+            .background(Color.black.opacity(0.55))
     }
 
     /// 실패 셋 — **글자만으로는 62pt에서 안 갈린다.** 아이콘도 함께 가른다(설계 §3-D-6).
