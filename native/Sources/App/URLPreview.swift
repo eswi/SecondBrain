@@ -20,6 +20,8 @@ import SecondBrainCore
 /// ⛔ **그 파일이 없으면 「아직 안 해봤다」와 「해봤는데 없다」가 구분되지 않아** 열 때마다 연결하게 된다.
 ///
 /// ## 뽑는 순서 — **쟀다** (2026-08-24 표본 여덟 · §3-Z-4)
+/// ★ **맨 앞은 「페이지 첫 화면 캡쳐」다**(2026-08-25 · §3-Z-12 · `URLPageCapture`) —
+/// **사용자의 원래 1순위**였고 「어렵다」로 물러서 있었다. 그 아래가 아래 넷이다.
 /// `og:image` → `twitter:image` → `apple-touch-icon` → `link rel=icon`.
 /// **og:image가 가장 잘 잡히고(6/8) 해상도가 충분하다.** 아이콘은 정사각이지만 **최대 160px로 모자라다**
 /// (62pt는 @3x에 186px). ⛔ **SVG·ICO는 `UIImage`가 못 읽을 수 있다** —
@@ -140,7 +142,16 @@ enum URLPreview {
         guard !attempted(normalized) else { return }
 
         var got: Data?
-        if let html = await fetchText(pageURL) {
+
+        // ★ ① **페이지를 실제로 그려서 첫 화면을 찍는다** — 사용자의 1순위(§3-Z-12).
+        //   ⛔ **못 찍으면 조용히 아래 갈래로 내려간다** — 빈 화면·시간초과·차단이 다 여기서 걸러진다.
+        //   ⚠️ **정사각형이라 비율 문턱(§3-Z-7)을 늘 통과한다** — 페이지 전체를 안 찍는 이유가 그것이다.
+        if let shot = await URLPageCapture.firstScreen(of: pageURL), UIImage(data: shot) != nil {
+            got = shot
+        }
+
+        // ② 못 찍었으면 그 페이지가 스스로 내놓는 그림을 찾는다(2026-08-24에 쟀던 순서 그대로).
+        if got == nil, let html = await fetchText(pageURL) {
             for candidate in candidates(in: html, base: pageURL) {
                 // ⛔ **디코드만으로 채택하지 않는다** — 비율이 문턱을 넘으면 **다음 후보로 넘어간다**
                 //    (2026-08-24 사용자 결정). 그래서 긴 글자판 대신 정사각 아이콘이 잡힌다.
