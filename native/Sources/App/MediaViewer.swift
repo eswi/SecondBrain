@@ -106,7 +106,11 @@ struct MediaViewer: View {
         case .photo: photoBody
         case .voice: audioBody
         default:
-            // ⚠️ 지금 데이터로는 여기 올 일이 없다(포인터가 없다 · 설계 §3-J-1).
+            // ⛔ **옛 서술이 틀렸다** — *"지금 데이터로는 여기 올 일이 없다(포인터가 없다 · 설계 §3-J-1)."*
+            //   **URL 종류가 생겨서 이제 온다**(2026-08-25 · 설계 §3-Z-14). ⚠️ **맥에서만** 온다 —
+            //   iOS는 URL 네모를 **앱 안 보기**로 보내므로(§3-Z-2 G) 뷰어에 안 들어온다.
+            //   ⛔ **맥에는 앱 안 보기가 없어서** URL 네모가 뷰어로 오고 **이 회색 아이콘만 보인다.**
+            //   ⏸ **맥에서 URL을 어떻게 열지는 안 정했다** — 사용자 결정 사안이다(§3-Z-14).
             Image(systemName: "doc").font(.system(size: 64)).foregroundStyle(.white.opacity(0.5))
         }
     }
