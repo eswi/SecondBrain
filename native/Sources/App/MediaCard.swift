@@ -66,7 +66,8 @@ extension ResolvedItem {
     /// 조회는 항목 id에서 이름을 계산할 수밖에 없었고, **한 항목에 자료 하나**가 상한이었다.
     /// **옛 단일 필드와 새 필드(`photo.<자료id>`)를 함께** 읽는다(`MediaPointer`).
     ///
-    /// ⚠️ **지금 데이터에서는 언제나 0개 또는 1개다** — 여럿인 항목이 아직 없다(표본은 3단계에서 생긴다).
+    /// ✅ **이제 여럿이다** — 3단계에서 표본이 생겼고 **화면에서 확인됐다**(2026-08-26: 배지 「2」·「9」).
+    ///    *(옛 서술: "지금 데이터에서는 언제나 0개 또는 1개다 — 여럿인 항목이 아직 없다")*
     func mediaValues(_ k: MediaCardKind) -> [String] {
         guard let pk = k.pointerKind else { return [] }
         return MediaPointer.pointers(pk, in: fields).map(\.value)
@@ -137,7 +138,7 @@ struct MediaTile: View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Palette.surface2)
             face
-            if count > 1 { badge }     // §0 8번 — ⚠️ 지금 데이터에서는 늘 1이라 안 뜬다
+            if count > 1 { badge }     // §0 8번 — ✅ 실제로 뜬다(2026-08-26 사용자: *"뱃지 2 보임"*)
         }
         .frame(width: side, height: side)
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor))
@@ -470,7 +471,8 @@ struct MediaCard: View {
     @ViewBuilder private func tile(_ k: MediaCardKind) -> some View {
         switch k {
         case .voice:
-            // ★ **개수는 포인터를 센 값이다**(§0 8번). ⚠️ 지금 데이터에서는 늘 1이라 배지가 안 뜬다.
+            // ★ **개수는 포인터를 센 값이다**(§0 8번). ✅ **여럿이 실제로 있다**(2026-08-26 확인).
+            //   *(옛 서술: "지금 데이터에서는 늘 1이라 배지가 안 뜬다")*
             let names = item.mediaValues(.voice)
             let aurl = names.first.flatMap { AudioStore.url(name: $0) }
             let first = state(audioFetch, url: aurl, drawable: aurl != nil)   // 음성은 그림이 없다
