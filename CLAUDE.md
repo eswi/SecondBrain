@@ -15,7 +15,8 @@
 ```sh
 git pull
 cd native && xcodegen generate          # .xcodeproj는 gitignore 생성물 — 매번 재생성
-swift test --package-path SecondBrainCore   # ← 374개(2026-08-21 맥북 실측). 경로 빼면 실패한다(아래 ①)
+swift test --package-path SecondBrainCore   # ← 410개(2026-08-26 맥북 실측). 경로 빼면 실패한다(아래 ①)
+                                            #   *(옛 값: 374개 2026-08-21 — 코드가 자라며 밀렸다)*
 xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
   -destination 'id=<UDID>' build          # ← 이름 말고 UDID(아래 ③)
 ```
@@ -37,7 +38,34 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    - **판정은 둘을 함께 본다:** ① 빌드 `EXIT=0` + `error: 0` ② `App installed` 줄.
    - **의심되면 `.app`의 실행파일 시각을 `stat -f '%Sm'`로 보고 `date`와 비교한다.**
    - 확실히 하려면 **설치 전에 `.app`을 지운다** — 그러면 낡은 것이 얹힐 길이 없다.
-6. **⚠️ `xcodebuild`·`git add`는 「어느 디렉터리에서 도는가」에 걸린다.** 프로젝트는 `native/`에,
+6. **★ 맥 앱과 실기기 — 명령이 worklog에만 있어서 매번 뒤졌다** (2026-08-26에 올렸다).
+   ⛔ **이 셋은 CLAUDE.md에 없었고 08-25 worklog 둘에만 있었다** — `inbox-state.py`가 `HANDOFF.md`에만
+   있어서 잃었던 것과 **같은 형태**다(계측 규칙 5: *"목록에 없는 도구는 다시 만들어진다"*).
+   ```sh
+   # ⓐ 맥 앱 (스킴이 iOS와 다르다)
+   xcodebuild -project <절대경로>/native/SecondBrain.xcodeproj \
+     -scheme SecondBrainApp-macOS -destination 'platform=macOS' build
+   open -n "$HOME/Library/Developer/Xcode/DerivedData/SecondBrain-*/Build/Products/Debug/SecondBrain.app"
+
+   # ⓑ 폰 빌드·설치 — **식별자가 둘이고 꼴이 다르다**
+   xcodebuild ... -destination 'platform=iOS,id=00008140-001E199901DB801C'   # 하드웨어 UDID
+   xcrun devicectl device install app --device <CoreDevice UUID> <.app>      # 이건 다른 값이다
+
+   # ⓒ ★ 폰이 적은 것을 맥에서 읽는다 (실기기에서만 나는 일을 재는 유일한 길)
+   xcrun devicectl device copy from --device <CoreDevice UUID> \
+     --domain-type appDataContainer --domain-identifier kr.teri.secondbrain \
+     --source "Library/Application Support/SecondBrain/<하위경로>" --destination <로컬>
+   ```
+   - ⚠️ **`pkill` 직후 `open`은 `-600`으로 실패한다**(앞 프로세스가 죽는 중) — **한 번 더 부르면 된다.**
+   - ⚠️ **`open`으로 띄우면 디버거가 안 붙는다** — 성능 측정 규칙 1이 요구하는 조건이다.
+   - ⛔ **식별자 둘을 섞어 쓰지 말 것.** `xcodebuild`는 **하드웨어 UDID**(`00008140-…` · 폰에 붙은 값이라
+     기기를 넘어도 같다), `devicectl`은 **CoreDevice UUID**(2026-08-26 맥북에서 `95CF732E-…`).
+     ⚠️ **CoreDevice UUID가 맥마다 같은지는 못 잼** — **그 기기에서 `xcrun devicectl list devices`로 다시 읽는다.**
+   - ★ **ⓒ가 2026-08-25에 새로 얻은 수단이다** — 화면을 보고 판정하는 것밖에 없었는데,
+     **앱이 스스로 적게 하고 그 파일을 가져와** 읽는다. **적게 만드는 것이 절반이다.**
+     ⚠️ **상태를 안 바꾼다**(읽기만) — `measure-icloud-download.swift`와 반대다.
+
+7. **⚠️ `xcodebuild`·`git add`는 「어느 디렉터리에서 도는가」에 걸린다.** 프로젝트는 `native/`에,
    저장소 루트는 그 위다. 2026-08-21에 **셋을 연달아 밟았다**(`native/`에서 `git add native/` 두 번,
    저장소 루트에서 `-project SecondBrain.xcodeproj` 한 번). **경로는 절대경로로 쓴다.**
 
