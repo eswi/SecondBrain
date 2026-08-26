@@ -337,6 +337,10 @@ struct MediaCard: View {
     /// **이 URL을 떼라** — ⚠️ **여기서 지우지 않는다.** 상세가 **확인을 묻고** 지운다
     /// (정본: *"되돌리기 없음"* · `edit-policy.md` ③ · §3-Z-10).
     var onDeleteURL: (String?) -> Void = { _ in }
+    /// **이 URL의 미리보기를 다시 받아라** — 「미리보기 다시 받기」(2026-08-26 사용자 결정).
+    /// ⚠️ **넘기는 것은 네모에 보이는 그것, 곧 첫째 URL이다** — 네모는 첫째만 그리므로
+    /// 뒤엣것을 갱신해도 **화면에 나타나지 않는다**(사용자 결정: *"네모만"*).
+    var onRefetchURL: (String) -> Void = { _ in }
 
     #if os(iOS)
     /// URL이 **둘 이상**일 때 그 네모에 붙는 팝오버. ⚠️ **자리가 네모에 걸려 있어서 여기 있다** —
@@ -435,6 +439,16 @@ struct MediaCard: View {
             tile(.url)
         }
         .buttonStyle(.plain)
+        // ★ **길게 누르면 「미리보기 다시 받기」** (2026-08-26 사용자 결정 · 자리와 문구 둘 다).
+        //   ⚠️ **이 앱이 이미 쓰는 손짓이다** — 목록 줄의 `contextMenu`(`InboxView`·`LivingView`).
+        //   ⛔ **맥에는 안 붙인다** — 맥은 미리보기 캡쳐가 아예 없다(`MediaCard`의 URL 갈래가
+        //   `#if os(iOS)`로 갈려 있어 늘 그림이 없다). 없는 것을 다시 받게 하면 거짓말이 된다.
+        //   ⚠️ **하나뿐일 때도 닿아야 해서 네모에 걸었다** — 팝오버는 **둘 이상일 때만** 뜬다.
+        .contextMenu {
+            if let first = urlEntries.first {
+                Button("미리보기 다시 받기") { onRefetchURL(first.value) }
+            }
+        }
         .popover(item: $urlPick, attachmentAnchor: .rect(.bounds), arrowEdge: .top) { p in
             URLPickSheet(urls: p.urls,
                          onPick: { e in

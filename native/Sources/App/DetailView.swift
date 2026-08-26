@@ -310,6 +310,11 @@ struct DetailView: View {
         // (다른 대화상자들은 글자만 담아 높이가 안 흔들리므로 굳이 안 건드린다.)
         .overlay { if let f = editingTime { timeDialog(f).ignoresSafeArea() } }
         .overlay { if let msg = noticeDialog { noticeDialogView(msg) } }
+        // ★ **「내려받는 중」** — 「미리보기 다시 받기」를 누른 동안 (2026-08-26).
+        //   ⚠️ **뷰어와 **같은** 표시다**(`DownloadToast` 한 자리) — 꼴이 갈리지 않게.
+        //   ⚠️ **위 여백은 짐작이다** — 상세에는 뷰어의 「n / n」이 없으므로 더 위로 올렸다.
+        //   **화면에서 판정받을 값이다**(계측 규칙 7).
+        .overlay { if !model.refetchingURLs.isEmpty { DownloadToast(topPadding: 24) } }
         // **자료 추가** — 카드의 `+` → 종류 시트 → (사진 찍기 | 앨범에서 고르기).
         // ⚠️ 시트가 **닫힌 뒤** 다음 화면을 연다(`onDismiss`) — 겹쳐 띄우면 iOS가 둘째를 무시한다.
         #if os(iOS)
@@ -399,7 +404,8 @@ struct DetailView: View {
                   onTap: { viewerKind = $0 },
                   onAdd: { openAddSheet() },
                   onOpenURL: openURL(_:),
-                  onDeleteURL: { deletingURLAsset = $0 })
+                  onDeleteURL: { deletingURLAsset = $0 },
+                  onRefetchURL: { model.refetchURLPreview($0) })
     }
 
     /// `+` 시트를 연다 — iOS만.

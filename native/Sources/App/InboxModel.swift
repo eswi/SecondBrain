@@ -55,6 +55,13 @@ final class InboxModel: ObservableObject {
     /// 겹쳐 도는 것을 막는다 — `reload()`는 포그라운드 복귀·행동마다 불린다.
     private var migrating = false
 
+    /// ★ **지금 미리보기를 다시 받고 있는 URL들** (2026-08-26 · 「미리보기 다시 받기」).
+    /// 상세가 이것을 보고 **「내려받는 중」**을 띄운다.
+    /// ⛔ **`autoToast`와 무관하다** — 그것은 자동 분류 것이고 **손대지 않는다**(항시 규칙 8).
+    /// ⚠️ **Bool이 아니라 집합이다** — 두 네모를 잇달아 누를 수 있고, 그때 먼저 끝난 쪽이
+    /// **아직 받는 중인 쪽의 표시를 끄면 안 된다.**
+    @Published private(set) var refetchingURLs: Set<String> = []
+
     let deviceId: String
     private var clock: HLCClock
     private var loadGen = 0        // 비동기 로드 세대 — 늦게 끝난 낡은 로드 결과를 버리기 위한 가드
@@ -649,6 +656,27 @@ final class InboxModel: ObservableObject {
         Task { [weak self] in
             await URLPreview.fetchOnce(value)
             self?.load()      // 캐시가 생겼으니 다시 그린다(파일이 진실원 — 이 앱의 기존 방식)
+        }
+        #endif
+    }
+
+    /// ★ **「미리보기 다시 받기」** — 그 URL의 캡쳐를 **버리고 다시 뽑는다**
+    /// (2026-08-26 사용자 결정 · 자리는 **URL 네모 길게 누르기** · 문구도 사용자가 골랐다).
+    ///
+    /// ## 왜 있나 — **갱신 수단이 없었다**
+    /// 뽑는 자리가 `addURL` 하나뿐이라(결정 D) **규칙을 고쳐도 이미 붙은 URL은 옛 캐시를 쓴다.**
+    /// 실측으로 드러났다: `wowanalytica.com`이 **08-25 00:18의 171×171 아이콘**을 그대로 쓰고 있었다.
+    ///
+    /// ⚠️ **자동 연결이 아니다** — 사용자가 누른 그때만 연결한다(결정 D를 가장 얕게 건드리는 갈래).
+    func refetchURLPreview(_ raw: String) {
+        #if os(iOS)
+        guard let value = URLAsset.normalized(raw), !refetchingURLs.contains(value) else { return }
+        refetchingURLs.insert(value)
+        Task { [weak self] in
+            await URLPreview.refetch(value)
+            guard let self else { return }
+            self.refetchingURLs.remove(value)
+            self.load()      // 캐시가 바뀌었으니 다시 그린다(파일이 진실원 — 이 앱의 기존 방식)
         }
         #endif
     }

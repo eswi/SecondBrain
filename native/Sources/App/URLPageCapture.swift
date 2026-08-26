@@ -15,6 +15,7 @@ import WebKit
 /// | | 무엇 | 어떻게 했나 |
 /// |---|---|---|
 /// | ① | **언제 찍나** — 「로드 끝」 판정이 없다 | `didFinish` 뒤 **`settleSeconds` 더 기다린다**(늦게 그려지는 것) · 전체 **`timeoutSeconds`** |
+/// | ①' | **연결 자체가 안 되는 것** | **찍지 않고 바로 포기한다** — 아래 「⛔ `blank`에 둘이 섞여 있었다」 |
 /// | ② | **빈 화면을 찍는다** | **단색 검사** — 거의 한 색이면 **버리고 다음 후보로** 넘긴다 |
 /// | ③ | **페이지는 세로로 아주 길다** | **위쪽 정사각형만** 찍는다(`WKSnapshotConfiguration.rect`) — 62pt 네모에 꽉 찬다 |
 /// | ④ | **무겁다** | **붙일 때 한 번만** 돈다(§3-Z-2 D) — 목록·상세를 여는 자리에서는 절대 안 돈다 |
@@ -24,6 +25,20 @@ import WebKit
 /// 화면 계층에 없는 `WKWebView`는 레이아웃·렌더링을 건너뛰어 **스냅샷이 빈다.**
 /// 그래서 **창에 붙이되 거의 투명하게**(`alpha`를 0으로 두면 렌더링을 건너뛸 수 있어 아주 작게 남긴다)
 /// 두고, **손짓을 안 받게** 한 뒤 **끝나면 반드시 떼어낸다.**
+///
+/// ## ⛔⛔ `blank` 하나에 **둘이 섞여 있었다** (2026-08-26에 갈랐다)
+/// 2026-08-25에 `wow.inven.com`이 `blank`로 적혔고, 그래서 다음 과제가
+/// *"**늦게 그려지는 페이지를 더 기다리는 것**"*으로 남았다. ⛔ **틀린 진단이었다.**
+/// **쟀다**(맥에서 `curl`·`openssl` · 2026-08-26): 그 서버의 인증서는 **`CN=*.inven.co.kr`**이고
+/// **`.com` 이름이 아예 없다** → **TLS 호스트 검증에서 떨어진다.** 페이지가 늦은 것이 아니라
+/// **연결이 안 된 것**이고, 그래서 웹뷰는 **아무것도 안 그린 흰 화면**이었다.
+/// **더 기다려도 절대 안 고쳐진다.**
+///
+/// ★ **그래서 「아무것도 안 그려졌다」와 「그렸는데 한 색이다」를 갈라 적는다:**
+/// - **`loadfail(<코드>)`** — 첫 항해가 실패했다(TLS·DNS·차단). **찍지 않고 바로 포기한다.**
+/// - **`blank`** — 그리기는 했는데 두 번 찍어도 한 색이다. **이때만 「더 기다리는 것」이 후보다.**
+/// ⚠️ **`didFail`(항해가 시작된 뒤 실패)은 여전히 찍어 본다** — 부분 렌더링이 있을 수 있다.
+/// ⛔ **갈라 놓지 않으면 다음 세션이 또 「더 기다리자」로 읽는다** — 실제로 하루 그렇게 남아 있었다.
 @MainActor
 enum URLPageCapture {
 
@@ -63,6 +78,16 @@ enum URLPageCapture {
 
         // ① 로드가 끝나기를 기다린다 — 실패하면 그래도 한 번 찍어 본다(부분 렌더링이 있을 수 있다).
         await waiter.wait(timeout: timeoutSeconds)
+
+        // ★ **첫 항해가 실패했으면 찍지 않는다** (2026-08-26 · 위 「둘이 섞여 있었다」).
+        //   ⛔ 이 경우 그려진 것이 **아무것도 없다** — 흰 화면을 찍어 `blank`로 적으면
+        //   **이유가 「빈 화면」으로 감춰지고** 「더 기다리자」는 틀린 다음 과제가 생긴다.
+        //   ✅ 그리고 **헛되게 기다리지 않는다** — 여기서 끝내면 `settleSeconds`(1.2초)와
+        //   둘째 스냅샷 앞의 1.5초를 **둘 다 건너뛴다.**
+        if let e = waiter.provisionalError {
+            lastFailure = "loadfail(\(e.code))"
+            return nil
+        }
         // 늦게 그려지는 것을 기다린다. ⚠️ `try?`로 취소를 삼키지 않는다(2026-08-24에 그것으로 결함이 났다).
         do { try await Task.sleep(nanoseconds: UInt64(settleSeconds * 1_000_000_000)) }
         catch { return nil }        // 취소됐다 — 찍지 않는다
@@ -155,6 +180,11 @@ private final class LoadWaiter: NSObject, WKNavigationDelegate {
     /// 로드가 끝났나(성공이든 실패든). ⚠️ **실패도 「끝」이다** — 부분 렌더링이 있을 수 있어 그래도 찍어 본다.
     private(set) var finished = false
 
+    /// ★ **첫 항해가 실패했다** — 그러면 그려진 것이 **아무것도 없다**(TLS·DNS·차단).
+    /// ⛔ `didFail`과 갈라 둔다: 저쪽은 **내용이 오다가** 끊긴 것이라 부분 렌더링이 있을 수 있다.
+    /// **`URLPageCapture`가 이 값을 보고 「찍지 않고 포기」를 고른다**(2026-08-26).
+    private(set) var provisionalError: NSError?
+
     /// **0.1초마다 되묻는다.** 끝나면 바로 돌아오고, 시간 제한을 넘기면 그냥 돌아온다
     /// (⛔ 실패로 보지 않는다 — 그 뒤에 한 번 찍어 보고 빈 화면이면 그때 버린다).
     func wait(timeout: Double) async {
@@ -167,6 +197,9 @@ private final class LoadWaiter: NSObject, WKNavigationDelegate {
 
     func webView(_ w: WKWebView, didFinish n: WKNavigation!) { finished = true }
     func webView(_ w: WKWebView, didFail n: WKNavigation!, withError e: Error) { finished = true }
-    func webView(_ w: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) { finished = true }
+    func webView(_ w: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) {
+        provisionalError = e as NSError
+        finished = true
+    }
 }
 #endif

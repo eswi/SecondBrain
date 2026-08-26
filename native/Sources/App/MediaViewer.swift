@@ -276,45 +276,17 @@ struct MediaViewer: View {
     /// 그래야 뭔가 받고 있구나 하고 느낄거잖아? 아니면 메시지도 토스트 방식으로 띄워주면 좋고."*
     /// **토스트를 골랐다.**
     ///
-    /// ## ★★ 문구는 새로 짓지 않았다 — **앱에 이미 있는 말이다**
-    /// **「내려받는 중」** = 설정 ▸ 「연결된 폴더」가 받는 중일 때 쓰는 말(`SettingsView.folderStatusLabel`
-    /// · 문구 확정 2026-08-06). ★ 항시 규칙 6의 거꾸로 쓰기 — *"이미 있는 말을 써야 한다."*
-    /// ⛔ **그래서 이 화면 머리주석의 「새 문구를 안 짓는다」와 어긋나지 않는다.**
-    ///
-    /// ## ⛔ 있는 토스트를 안 썼다 — **자동 분류 것이다**
-    /// `InboxModel.autoToast`·`ClassifyToastView`는 **자동 분류 전용**이고, 자동 분류는
-    /// **zero base로 새로 설계**하기로 정해져 있다(항시 규칙 8 — 허락 없이는 한 줄도).
-    /// **그래서 꼴만 따라 여기 따로 만들었다** — 둥근 네모 20 · `surface2` · 테두리 · 그림자 ·
-    /// **빙글빙글 + 글자** 배치가 그것과 같다. ⚠️ **한쪽을 고치면 다른 쪽은 안 따라온다**(복제다).
-    ///
     /// ## 15초가 지나면 사라진다 (사용자 결정: *"도는 것만 멈춘다"*)
     /// `timedOut`이 서면 토스트가 없어지고 **구름 아이콘만 남는다.** ⛔ **새 문구를 안 만들었다** —
     /// 「아직 못 받음」이라는 뜻은 **카드 테두리(앰버)가 이미 말하고 있다.**
+    ///
+    /// ## ★ 꼴과 문구는 **`DownloadToast`로 옮겼다** (2026-08-26 낮)
+    /// 같은 표시가 **상세에도** 필요해졌다(「미리보기 다시 받기」). ⛔ 여기 두면 **복제가 셋이 된다.**
+    /// *(옛 서술: "**꼴만 따라 여기 따로 만들었다** … ⚠️ **한쪽을 고치면 다른 쪽은 안 따라온다**(복제다)."
+    ///  — **그 경고가 이틀 만에 걸려서** 모았다.)*
     @ViewBuilder private var downloadToast: some View {
         if fetch.state == .notDownloaded, !fetch.timedOut {
-            VStack {
-                VStack(spacing: 14) {
-                    ProgressView().controlSize(.large).tint(Palette.accent)
-                    Text("내려받는 중")
-                        .font(.headline)
-                        .foregroundStyle(Palette.textPrimary)
-                }
-                .padding(.horizontal, 28).padding(.vertical, 24)
-                .frame(minWidth: 200)
-                .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Palette.surface2)
-                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Palette.border, lineWidth: 1))
-                        .shadow(color: .black.opacity(0.4), radius: 24, y: 8)
-                )
-                // ⚠️ **재서 정한 값이 아니다** — 위쪽 「n / n」을 비켜 앉히려고 준 값이다.
-                //    화면에서 겹쳐 보이면 여기를 고친다(계측 규칙 7 · 「짐작」으로 적어 둔다).
-                .padding(.top, 56)
-                Spacer()
-            }
-            // ⛔ **터치를 막지 않는다** — 있는 토스트와 같다. 밑에서 넘기기·닫기가 계속 눌린다.
-            .allowsHitTesting(false)
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
+            DownloadToast()
         }
     }
 
