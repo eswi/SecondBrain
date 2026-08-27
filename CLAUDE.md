@@ -191,9 +191,16 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
      `--dry-run <folder>`(파일 무변경) · `--apply <folder> --out <outdir>`(원본 무변경).
      해시·병합·검증을 **앱과 같은 `SecondBrainCore`로** 한다(재구현 divergence 방지).
      설계 `docs/native/legacy-uuid-migration.md`. **일회성 성격이지만 다시 쓸 수 있다.**
-   - ⛔ **`native/tools/2026-08-18-strip-auto-fields.py`는 「쓰는 도구」가 아니다** —
-     **그날 그 데이터를 고친 기록**이다(실행 완료). **재실행 금지.** 파일명에 날짜가 있는 이유가 그것이고,
-     다시 필요하면 **날짜를 새로 붙여 복제**한다(그 파일 머리주석의 지시).
+   - ⛔ **날짜가 붙은 도구는 「쓰는 도구」가 아니다 — 그날 그 데이터를 고친 기록이다**(실행 완료 · **재실행 금지**).
+     파일명에 날짜가 있는 이유가 그것이고, 다시 필요하면 **날짜를 새로 붙여 복제**한다. **둘 있다:**
+     `2026-08-18-strip-auto-fields.py` · **`2026-08-27-retire-test-recurrences.py`**(시험용 되풀이 열을 그만뒀다).
+     - ★★ **실데이터를 고칠 때는 기존 파일을 건드리지 않는 길이 있다** (2026-08-27에 찾았다).
+       앱은 **`inbox`로 시작하는 `.md`를 전부** 읽으므로(`InboxStore`·`FragmentFolder`의 `hasPrefix("inbox")`),
+       **새 파일에 op 줄만 넣으면 된다.** ⛔ **돌고 있는 앱과 겹칠 걱정도 사라지고**, 되돌릴 때는
+       **그 파일을 지우면 원상복구**된다. **op 꼴:** `@ <밀리초>.<카운터>.<기기> | <UUID> | delete`
+       — ⚠️ **밀리초는 기존 최대보다 커야 한다**(안 그러면 병합에서 진다. 쓰기 전에 세어 볼 것).
+     - ⚠️ **그리고 실데이터 조작은 셋을 먼저 한다:** ① **백업**(iCloud `backups/`) ② **dry-run을 보인다**
+       ③ **되돌릴 길을 코드에서 확인해 말한다**(짐작으로 「되돌릴 수 있다」고 하지 않는다).
    - **`native/tools/ghostlab/`** — **「눌러야만 드러나는 것」을 재는 실험용 앱 + UI 시험 + 픽셀 판정기.**
      같은 목록을 여러 꼴로 그려 놓고 **끌다가 멈추게** 한 뒤 스크린샷을 잰다.
      `measure-frames.swift marks|bands <png>` = **색 띠 자리·줄 간격(pitch)**.
