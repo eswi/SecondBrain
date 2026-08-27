@@ -459,7 +459,17 @@ struct DetailView: View {
 
     private var rawSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("원문")
+            // **제목 옆에 기억 ID 앞 8자**(2026-08-28 사용자 결정 — 꼴도 사용자가 준 것: *"'원문: E036A094'"*).
+            // **왜:** 검색·문서·대화가 항목을 가리킬 때 쓰는 이름이 그 8자인데, **폰에서는 볼 길이 없었다.**
+            // 같은 결정으로 검색이 이 ID로도 찾는다(`SearchView.hits`) — 그래서 **읽어 옮겨 적을 수 있어야** 한다.
+            // 길게 눌러 복사되도록 `.textSelection` — 옮겨 적는 수고를 줄인다.
+            HStack(spacing: 5) {
+                sectionLabel("원문:")
+                Text(item.shortID)
+                    .font(.caption.weight(.semibold)).monospaced()
+                    .foregroundStyle(Palette.textTertiary)
+                    .textSelection(.enabled)
+            }
             // ⛔ **옛 서술(부분적으로 뒤집혔다 · 2026-08-21):** *"TextEditor 대신 axis:.vertical TextField —
             // 내용 따라 높이가 늘고 **자체 스크롤이 없어** 바깥 ScrollView가 그대로 스크롤된다"*.
             // **6줄까지는 그대로다**(안 넘치면 스크롤을 켜지 않는다). **넘으면 칸 안에서 스크롤한다** —

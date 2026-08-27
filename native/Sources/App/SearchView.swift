@@ -1,7 +1,7 @@
 import SwiftUI
 import SecondBrainCore
 
-/// 검색(pull) — 원문 부분일치로 걸러 본다. 대상은 **살아있는 것들**(원칙·새·살아있는·챙길것 + 완료).
+/// 검색(pull) — **원문 또는 기억 ID** 부분일치로 걸러 본다(ID는 2026-08-28에 더했다). 대상은 **살아있는 것들**(원칙·새·살아있는·챙길것 + 완료).
 /// 삭제·discard된 항목은 제외(되살리기는 보관된 기억 화면 몫 — 검색에서 상세로 열면 [삭제하기]가 애매).
 ///
 /// - 결과 터치 → 상세 화면(DetailView 재사용).
@@ -17,11 +17,18 @@ struct SearchView: View {
         !query.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    /// ①원문 부분일치 후보(타입 필터 전). 필터 칩의 "실제 있는 분류"도 이 후보 기준으로 뽑는다.
+    /// ①**원문 또는 기억 ID** 부분일치 후보(타입 필터 전). 필터 칩의 "실제 있는 분류"도 이 후보 기준으로 뽑는다.
+    ///
+    /// **ID로도 찾는다**(2026-08-28 사용자 결정): *"기억을 검색할 때 기억 ID로도 검색 가능하게 할 것임."*
+    /// - **대소문자 무시 + 부분일치**(사용자가 고른 것) — `e036`·`E036A094`·`036A0` 모두 걸린다.
+    /// - **전체 id에 대고 맞춘다**(보이는 앞 8자가 아니라) — 문서에서 전체 UUID를 붙여 넣어도 찾아진다.
+    /// - 원문과 **합집합**이다. 짧은 질의(`e0`)는 양쪽에 걸릴 수 있는데, 그것이 「못 찾는 것」보다 낫다.
     private var hits: [ResolvedItem] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
-        return (model.liveNonDone + model.doneItems).filter { ($0.raw ?? "").lowercased().contains(q) }
+        return (model.liveNonDone + model.doneItems).filter {
+            ($0.raw ?? "").lowercased().contains(q) || $0.id.lowercased().contains(q)
+        }
     }
 
     /// ①원문 부분일치 후보 → ②타입 필터. 필터는 특정 영역이 아니라 검색 결과 합집합에 적용된다.
@@ -47,7 +54,9 @@ struct SearchView: View {
             .navigationTitle("검색")
             .navigationDestination(for: ResolvedItem.self) { DetailView(item: $0, model: model) }
         }
-        .searchable(text: $query, prompt: "원문 검색")
+        // **문구 둘은 사용자가 골랐다**(2026-08-28) — ID로도 찾게 되면서 「원문…」이 사실과 어긋났다.
+        // 자리표시자 「기억 검색」 · 빈 화면 안내 「기억 찾기」.
+        .searchable(text: $query, prompt: "기억 검색")
     }
 
     @ViewBuilder private var resultsArea: some View {
@@ -57,6 +66,8 @@ struct SearchView: View {
             Text("결과 없음").font(.callout).foregroundStyle(Palette.textSecondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            // **한 번만 만든다** — 줄마다 부르면 `partition`이 그때마다 다시 돈다(InboxModel 주석).
+            let screens = model.screenNames
             List(results, id: \.id) { item in
                 NavigationLink(value: item) {
                     HStack(spacing: 10) {
@@ -81,6 +92,15 @@ struct SearchView: View {
                                 Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
                                 if !item.confirmed { ProvisionalBadge() }
                                 Spacer(minLength: 0)
+                                // **가장 오른쪽 = 그 기억이 지금 있는 화면 이름**(2026-08-28 사용자 결정).
+                                // *"현재 그 기억이 들어가 있는 화면의 이름을 표시하게 할 것임!"*
+                                // **섹션 층**을 적는다(사용자가 고름) — 원한 것이 「어디 가면 찾을 수 있나」이므로.
+                                // 이름·소속을 여기서 정하지 않는다 — `InboxModel.screenNames`가 진실원이다.
+                                // 폭이 좁아지면 **왼쪽 날짜가 줄고 이 이름은 안 줄게** 우선순위를 준다.
+                                if let screen = screens[item.id] {
+                                    Text(screen).font(.caption2).foregroundStyle(Palette.textTertiary)
+                                        .lineLimit(1).fixedSize().layoutPriority(1)
+                                }
                             }
                         }
                     }
@@ -97,7 +117,7 @@ struct SearchView: View {
     private var hint: some View {
         VStack(spacing: 10) {
             Image(systemName: "magnifyingglass").font(.system(size: 40)).foregroundStyle(Palette.textTertiary)
-            Text("원문으로 찾기").font(.callout).foregroundStyle(Palette.textSecondary)
+            Text("기억 찾기").font(.callout).foregroundStyle(Palette.textSecondary)
         }
     }
 }

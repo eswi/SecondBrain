@@ -90,6 +90,24 @@ struct TypeGlyph: View {
     }
 }
 
+// MARK: - 기억 ID
+
+extension ResolvedItem {
+    /// 화면에 보이는 **기억 ID 앞 8자**(2026-08-28 사용자 결정 · 상세 「원문: E036A094」).
+    ///
+    /// **왜 8자인가:** 문서·대화·worklog가 항목을 가리킬 때 쓰는 이름이 이 8자다.
+    /// 실데이터 204개에서 **앞 8자가 겹치는 것은 0개**였다(2026-08-28 맥미니 실측).
+    /// ⚠️ 겹치지 않는다는 것은 **이 데이터에서** 그렇다는 뜻이다 — 원리적 보장이 아니다.
+    /// 검색은 **전체 id**에 대고 맞추므로(`SearchView.hits`) 겹치더라도 전체를 붙여 넣으면 갈린다.
+    ///
+    /// **`legacy:` 머리는 떼고 보인다** — 안 떼면 「legacy:8」이 뜬다(실데이터에 하나 있는데
+    /// 삭제된 것이라 지금은 검색에 안 걸린다 · 2026-08-28 확인).
+    var shortID: String {
+        let core = id.hasPrefix("legacy:") ? String(id.dropFirst("legacy:".count)) : id
+        return String(core.prefix(8)).uppercased()
+    }
+}
+
 // MARK: - 항목 캡션(출처 · 시각 · 시점)
 
 /// 항목 캡션. `showCaptureTime`=false면 **수집 시각을 뺀다**(지금 챙길 것 목록 — 스케줄이 핵심이고 폭이 좁다;

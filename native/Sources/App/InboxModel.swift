@@ -196,6 +196,32 @@ final class InboxModel: ObservableObject {
         Array(Set(partition.living.map { norm($0.type) }))
     }
 
+    /// 항목 id → **「지금 그 기억이 있는 화면 이름」**(검색 결과 오른쪽에 붙는다 · 2026-08-28 사용자 결정).
+    /// 사용자 원문: *"지금은 검색이 되어도 어느 화면에 있는지 알 수가 없기 때문임."*
+    ///
+    /// ⛔ **소속 계산을 새로 만들지 않는다.** 어디에 속하는지를 정하는 것은 `partition`(그 안의
+    /// `ItemSchedule.isPublished`·`InboxSectionizer.split`)이고, **여기서는 그 결과에 이름표만 붙인다.**
+    /// 규칙이 바뀌면 저기 한 곳만 바뀌고 이 표는 따라온다. **두 번째 판단자를 만들면 화면이 서로 어긋난다.**
+    ///
+    /// **이름은 앱에 이미 있는 것을 쓴다**(항시 규칙 6) — 사용자가 고른 **섹션 층**:
+    /// 원칙 · 지금 챙길 것 · 새 기억들 · 살아있는 기억 · 완료된 기억.
+    ///
+    /// **빠지는 것이 없다**(2026-08-28 코드에서 확인): 게시 안 된 것(꺼둔 되풀이·미래 미리 알림)도
+    /// `InboxSectionizer.split`이 `recent`로 떨어뜨려 확정 여부로 갈린다 → 살아있는 기억 / 새 기억들.
+    /// 검색 대상(`liveNonDone + doneItems`)은 **전부 다섯 중 하나**다. 삭제된 것은 검색이 안 훑는다.
+    ///
+    /// ⚠️ **한 번 만들어 목록 전체가 나눠 쓴다** — 줄마다 부르면 `partition`이 그때마다 다시 돈다.
+    var screenNames: [String: String] {
+        var m: [String: String] = [:]
+        for it in principles { m[it.id] = "원칙" }          // partition이 원칙을 빼므로 먼저 넣는다
+        let p = partition
+        for e in p.upcoming     { m[e.item.id] = "지금 챙길 것" }
+        for it in p.newMemories { m[it.id] = "새 기억들" }
+        for it in p.living      { m[it.id] = "살아있는 기억" }
+        for it in doneItems     { m[it.id] = "완료된 기억" }
+        return m
+    }
+
     // 대시보드 5숫자
     var principleCount: Int { principles.count }               // 원칙(ambient 띠) 개수
     var upcomingCount: Int { partition.upcoming.count }        // 챙길 것 = 지금 챙길 것 섹션과 동일
