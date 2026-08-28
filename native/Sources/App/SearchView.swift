@@ -97,8 +97,20 @@ struct SearchView: View {
                                 // **섹션 층**을 적는다(사용자가 고름) — 원한 것이 「어디 가면 찾을 수 있나」이므로.
                                 // 이름·소속을 여기서 정하지 않는다 — `InboxModel.screenNames`가 진실원이다.
                                 // 폭이 좁아지면 **왼쪽 날짜가 줄고 이 이름은 안 줄게** 우선순위를 준다.
+                                //
+                                // **색은 원문과 같은 밝기다 — `textPrimary`**(2026-08-28 사용자 지시).
+                                // 사용자: *"색이 회색이라 좀 흐리지만 나중에 고치겠음."* → 그날 고쳤다.
+                                // ⛔ **한 단계만 올린 것(`textSecondary`)은 「덜 바꾼 것」으로 반려됐다** —
+                                // 화면에서 재서 보였더니 *"각 항목의 원문의 밝기 수준으로 바꿔줘."*
+                                // 잰 값(바탕 `bg` #131218 대비 · 시뮬 iOS 26.5 픽셀 실측):
+                                //   원문 #ECEBF1 = **15.72:1** ← 이 이름이 여기로 맞춰졌다
+                                //   `textSecondary` #A7A4B3 = 7.63:1 (반려된 중간값)
+                                //   날짜 `textTertiary` #746F82 = **3.85:1** ← **안 올렸다**
+                                // ⚠️ **날짜는 그대로다** — 흐리다고 한 것이 이 이름 하나였다.
+                                // **둘을 다시 같게 만들지 말 것**이고, **중간값으로 내리지도 말 것.**
+                                // 글자 크기는 `.caption2`로 남는다 — 바꾼 것은 밝기뿐이다.
                                 if let screen = screens[item.id] {
-                                    Text(screen).font(.caption2).foregroundStyle(Palette.textTertiary)
+                                    Text(screen).font(.caption2).foregroundStyle(Palette.textPrimary)
                                         .lineLimit(1).fixedSize().layoutPriority(1)
                                 }
                             }
