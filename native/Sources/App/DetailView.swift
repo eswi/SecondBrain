@@ -282,6 +282,10 @@ struct DetailView: View {
         // 커스텀 back이 dirty면 확인 대화상자, 아니면 즉시 닫기. [취소]는 명시적 버림이라 그대로 둔다.
         .navigationBarBackButtonHidden(true)
         .toolbar {
+            // ★★ **짝이 있다 — 수집 화면(`CaptureSheet`)의 `<`**(2026-08-31 사용자 결정:
+            //   *"상세화면과 같이 유지하자. 한쪽이 바뀌면 같이 바뀌기로 하고 둘이 맞추자."*)
+            //   ⛔ **한쪽만 고치지 말 것.** 꼴(`Label` + `chevron.backward` + `accent`)이 같고
+            //   글자는 **그 화면의 제목**을 쓴다(여기는 「기억」 · 수집은 「새 기억」).
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { backTapped() } label: { Label("기억", systemImage: "chevron.backward") }
                     .tint(Palette.accent)

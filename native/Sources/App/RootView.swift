@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// 앱 루트 — 하단 탭바와 다크 테마. 세 영역 용어로 통일(memory-philosophy.md §5):
 /// 새로운 기억 · 검색 · **살아있는 기억**(가운데, 앱의 심장) · 보관된 기억 · 설정.
@@ -88,10 +91,19 @@ struct RootView: View {
             }
         }
         // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
-        .onChange(of: launcher.showCapture) { _, show in if show { tab = .new } }
+        // ★ **그 순간의 탭을 적어 둔다** — [취소하기]로 나갈 때 **그 화면으로 되돌린 뒤** 내려놓는다
+        //   (2026-08-31 사용자: *"앱이 그 전에 suspend되어 있던 화면 상태로 suspend"*).
+        .onChange(of: launcher.showCapture) { _, show in
+            if show {
+                if launcher.tabBeforeHotkey == nil { launcher.tabBeforeHotkey = tab }
+                tab = .new
+            }
+        }
         // ⛔ **`origin: .hotkey`** — 이 시트는 **앱 밖(액션 버튼·단축어)에서** 열린 것이다.
-        //    그래서 `<`가 없고 [취소하기]가 **앱 밖으로** 나간다(`CaptureOrigin`).
-        .sheet(isPresented: $launcher.showCapture) { CaptureSheet(model: model, origin: .hotkey) }
+        //    `<`는 있고(「새로운 기억」으로) **[취소하기]가 앱 밖으로** 나간다(`CaptureOrigin`).
+        .sheet(isPresented: $launcher.showCapture, onDismiss: { hotkeyCaptureClosed() }) {
+            CaptureSheet(model: model, origin: .hotkey)
+        }
         .onChange(of: tab) { _, newTab in
             if scenePhase == .active {
                 // 사용자가 실제로 고른 탭(active일 때만 일어남) → 기억.
@@ -103,6 +115,34 @@ struct RootView: View {
             }
         }
         .onAppear { stableTab = tab }   // 최초 진입: 복원된 탭을 기준값으로
+    }
+
+    /// **핫키로 열린 수집이 닫혔다** — 어떻게 닫혔는지에 따라 갈린다(2026-08-31 사용자 결정).
+    ///
+    /// | 어떻게 닫혔나 | 무엇을 하나 |
+    /// |---|---|
+    /// | **`<`** | 아무것도 안 한다 — **「새로운 기억」에 남는다**(사용자가 정한 자리) |
+    /// | **[취소하기]** · 앱이 **이미 떠 있었다** | **그때 보던 탭으로 되돌리고** 내려놓는다(`suspend`) |
+    /// | **[취소하기]** · 핫키가 **앱을 깨웠다** | **끝낸다**(`exit(0)`) — *"아예 앱이 exit 상태였다면 exit상태로"* |
+    ///
+    /// ⛔ **왜 여기인가:** 되돌릴 탭을 아는 곳이 여기다. **시트에서 내려놓으면 되돌리기 전에
+    /// 화면이 얼어 수집 화면이 남은 채로 내려간다.**
+    /// ⚠️ **`likelyWokenByHotkey`는 추정이다** — 문턱 3초의 근거와 오판의 방향은 그 프로퍼티 주석에.
+    /// ⛔ **`exit(0)`은 크래시로 기록된다** — 사용자가 *"exit상태로"*를 명시해서 쓴다.
+    ///   ⚠️ **파일 쓰기는 이미 끝나 있다** — 수집을 버리고 나가는 길이라 append가 없다.
+    private func hotkeyCaptureClosed() {
+        #if os(iOS)
+        defer { launcher.tabBeforeHotkey = nil; launcher.cancelledOut = false }
+        guard launcher.cancelledOut else { return }        // `<`로 닫혔다 → 앱 안에 남는다
+        let woken = launcher.likelyWokenByHotkey
+        if let back = launcher.tabBeforeHotkey, !woken { setTabNoAnimation(back) }
+        if woken {
+            exit(0)
+        } else {
+            // 비공개 선택자 — `#selector`는 공개 API에만 쓸 수 있다. `NSSelectorFromString`은 경고가 없다.
+            UIApplication.shared.perform(NSSelectorFromString("suspend"))
+        }
+        #endif
     }
 
     /// 탭을 애니메이션 없이 설정 — 우발적 선택 원복 시 슬라이드가 눈에 보이지 않게.

@@ -189,9 +189,14 @@ struct CaptureSheet: View {
                 //   **가는 곳만 갈린다:** 앱 안이면 **온 화면**, 핫키면 **「새로운 기억」**.
                 //   ⛔ **옛 꼴(반나절 만에 뒤집혔다):** `if origin == .inApp`으로 **핫키에서 숨겼다** —
                 //   *"돌아갈 화면이 없기 때문"*이라 적었는데 **「새로운 기억」이 그 자리였다.**
+                //   ★★ **글자를 붙였다 — 상세와 짝이다** (2026-08-31 사용자: *"글자 붙이자.
+                //   상세화면과 같이 유지하자. 한쪽이 바뀌면 같이 바뀌기로 하고 둘이 맞추자."*)
+                //   ⛔ **한쪽만 고치지 말 것 — 짝은 `DetailView`의 `chevron.backward` 툴바 항목이다.**
+                //   글자는 **그 화면의 제목**을 쓴다(상세는 「기억」 · 여기는 「새 기억」).
+                //   ⛔ **옛 서술(뒤집혔다):** *"글자를 안 붙였다 — 제목과 나란히 두 번 읽힌다."*
                 ToolbarItem(placement: .cancellationAction) {
                     Button { leaveTapped(.back) } label: {
-                        Image(systemName: "chevron.backward")
+                        Label("새 기억", systemImage: "chevron.backward")
                     }
                     .tint(Palette.accent)
                 }
@@ -361,11 +366,14 @@ struct CaptureSheet: View {
     private func leaveNow(_ kind: LeaveKind) {
         #if os(iOS)
         discardTemps()
+        // ★★ **「앱 밖으로」는 여기서 안 한다 — `RootView`가 한다**(2026-08-31에 옮겼다).
+        //    **탭을 아는 쪽이 거기**이기 때문이다: 사용자 결정이 *"앱이 그 전에 suspend되어 있던
+        //    화면 상태로"*이므로 **나가기 전에 그 탭으로 되돌려야** 하고, 탭은 `RootView`의 것이다.
+        //    ⛔ **시트에서 `suspend`를 부르면** 되돌리기 전에 화면이 얼어 **수집 화면이 남은 채로 내려간다.**
+        //    여기서는 **뜻만 남긴다** — `RootView`의 `onDismiss`가 읽는다.
+        if kind == .cancel && origin == .hotkey { CaptureLauncher.shared.cancelledOut = true }
         #endif
         dismiss()
-        #if os(iOS)
-        if kind == .cancel && origin == .hotkey { Self.leaveApp() }
-        #endif
     }
 
     #if os(iOS)
@@ -584,30 +592,6 @@ struct CaptureSheet: View {
                     .padding(16)
                 }
             }
-    }
-
-    /// **앱 밖으로 나간다** — **핫키로 들어온 경우의 [취소하기]**(2026-08-31 사용자 결정:
-    /// *"앱 밖에서 핫키 눌러서 들어온 경우는 그냥 앱을 종료시켜야 해."*)
-    ///
-    /// ## ⛔⛔ iOS에는 **「앱을 끝내는」 공개 API가 없다** — 길이 둘뿐이고 둘 다 대가가 있다
-    ///
-    /// | 길 | 무엇이 되나 | 대가 |
-    /// |---|---|---|
-    /// | **`suspend`**(지금 이것) | 홈 단추를 누른 것처럼 **배경으로 내려간다** — 사용자 눈에는 앱 밖 | **비공개 선택자**다(문자열로 부른다) · 앱이 **끝나지는 않는다**(다시 열면 그 자리) |
-    /// | `exit(0)` | 프로세스가 **즉시 끝난다** | **크래시로 기록된다**(진단 리포트가 쌓인다) · **진행 중인 iCloud 쓰기를 끊을 수 있다** |
-    ///
-    /// ✅ **`suspend`를 골랐다 — 데이터를 끊지 않는 쪽이다.**
-    /// ⚠️⚠️ **이것은 내가 고른 것이고 사용자 확인이 필요하다** — *"종료"*라고 했으므로
-    /// **정말 끝내야 한다면 `exit(0)`로 바꿔야** 하고, 그때는 **위 대가를 함께 진다.**
-    /// ⛔ **App Store에 낸다면 `suspend`는 위험하다** — 이 앱은 개인 서명이라 지금은 문제가 없다.
-    ///
-    /// ⚠️ **`dismiss()`를 먼저 부른 뒤에 이것을 부른다** — 다시 열었을 때 **수집 화면이 남아 있지 않게.**
-    private static func leaveApp() {
-        // 문자열로 부른다(비공개 선택자) — 컴파일 시점에 이름을 알 수 없으므로 이 꼴뿐이다.
-        // ⚠️ **`Selector(("suspend"))`는 경고를 낸다**(*"use '#selector' instead"*) —
-        //    `#selector`는 **공개 API에만** 쓸 수 있으므로 여기서는 못 쓴다.
-        //    `NSSelectorFromString`이 **같은 일을 하고 경고가 없다**(2026-08-31에 바꿨다).
-        UIApplication.shared.perform(NSSelectorFromString("suspend"))
     }
 
     /// **잡혔다는 진동** — 끌 수 있게 된 순간 한 번(2026-08-31 사용자 결정).
