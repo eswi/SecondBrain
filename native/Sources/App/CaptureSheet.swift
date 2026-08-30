@@ -42,7 +42,12 @@ import UIKit
 /// ★ **그리고 정리를 [취소] 버튼이 직접 한다** — 수명 콜백에만 맡기면 이런 식으로 조용히 어긋난다.
 struct CaptureSheet: View {
     @ObservedObject var model: InboxModel
+    /// **어떻게 들어왔나** — 나가는 뜻이 갈린다(`CaptureOrigin` · 2026-08-31 사용자 결정).
+    /// 기본값은 `.inApp`이다(앱 안의 `+`). `RootView`가 띄우는 것만 `.hotkey`다.
+    var origin: CaptureOrigin = .inApp
     @Environment(\.dismiss) private var dismiss
+    /// 나가려는데 **적은 것이 있어서** 되묻는 중인가.
+    @State private var showLeaveConfirm = false
     @State private var text = ""
     @State private var saved = false   // [저장]으로 확정됐는지 — 임시 음성·사진 정리 판단용
     #if os(iOS)
@@ -176,11 +181,15 @@ struct CaptureSheet: View {
                 //   *"'navigationBarLeading' is unavailable in macOS"*). **`.cancellationAction`**은
                 //   두 플랫폼에 다 있고 iOS에서 **같은 자리(좌측 상단)**다.
                 //   ★ **맥을 함께 빌드하지 않으면 이 오류를 못 본다** — iOS만 초록이었다.
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { cancel() } label: {
-                        Image(systemName: "chevron.backward")
+                //   ⛔ **핫키로 들어왔으면 아예 없다** (2026-08-31 사용자: *"이 경우 `<` 아이콘은
+                //   없어야 하고"*) — **돌아갈 화면이 없기 때문이다.**
+                if origin == .inApp {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { leaveTapped() } label: {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .tint(Palette.accent)
                     }
-                    .tint(Palette.accent)
                 }
             }
             // ⛔ **오른쪽 위에는 단추가 없다** — **[저장]을 뺐다**(2026-08-31 사용자:
@@ -204,6 +213,20 @@ struct CaptureSheet: View {
         //    ★ 이것이 **데이터를 잃는 길이기도 했다** — 쓸어 닫히면 받아쓰기·녹음이 그대로 버려졌다.
         //    나가는 길은 **[취소]와 [저장] 둘뿐**이다.
         .interactiveDismissDisabled(true)
+        // **나가면 사라져요** — 적은 것이 있을 때만 되묻는다(2026-08-31 사용자: *"두 경우 모두
+        // 데이터가 입력되어 있다면 확인 팝업은 띄워야겠네"*).
+        // ⚠️ **문구는 내가 골랐다 — 확정 아니다**(항시 규칙 6). 꼴은 앱에 이미 있는 것을 그대로 썼다
+        //    (`ConfirmDialog` · 상세의 `discardDialog`가 [나가기]/[계속 수정하기]다).
+        .overlay {
+            if showLeaveConfirm {
+                ConfirmDialog(title: "나가면 지금 적은 내용이 사라져요",
+                              cancelTitle: "나가기", confirmTitle: "계속 쓰기",
+                              onCancel: { showLeaveConfirm = false; leaveNow() },
+                              onConfirm: { showLeaveConfirm = false })
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: showLeaveConfirm)
         #if os(iOS)
         .onAppear {
             // ⛔ **카메라가 닫힐 때도 여기 온다**(머리주석 표) — 그때 다시 start()하면 받아쓰기가 지워진다.
@@ -277,7 +300,7 @@ struct CaptureSheet: View {
             //   **상세 하단의 [취소]가 이미 `xmark` + `textSecondary`**이고(`DetailView.bottomBar`)
             //   **일관성이 이 지시의 이유**이기 때문이다. ⚠️ **색까지 바꾸라는 말은 없었다** —
             //   빨강으로 되돌리려면 `Palette.overdue`로 되돌린다.
-            Button { cancel() } label: {
+            Button { leaveTapped() } label: {
                 Label("취소하기", systemImage: "xmark")
                     .lineLimit(1)
                     .fixedSize()
@@ -301,13 +324,32 @@ struct CaptureSheet: View {
         }
     }
 
-    /// [취소] — 임시 음성·사진을 **여기서 직접** 버리고 닫는다.
+    /// **적은 것이 있나** — 되물을지 가르는 값. 원문뿐 아니라 **붙여 둔 자료도** 센다
+    /// (사진을 셋 찍어 두고 글은 안 쓴 경우도 잃을 것이 있다).
+    private var hasSomethingToLose: Bool {
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        #if os(iOS)
+        if !draftPhotos.isEmpty || !draftURLs.isEmpty { return true }
+        #endif
+        return false
+    }
+
+    /// **[취소하기]·`<`를 눌렀다** — 적은 것이 있으면 **되묻고**, 없으면 바로 나간다.
+    private func leaveTapped() {
+        if hasSomethingToLose { showLeaveConfirm = true } else { leaveNow() }
+    }
+
+    /// **나간다** — 임시 음성·사진을 버리고, **들어온 길에 따라 다른 곳으로** 간다.
+    ///
     /// ⛔ `onDisappear`에만 맡기지 않는다 — 그 콜백은 카메라가 덮을 때도 오기 때문이다(머리주석 표).
-    private func cancel() {
+    private func leaveNow() {
         #if os(iOS)
         discardTemps()
         #endif
         dismiss()
+        #if os(iOS)
+        if origin == .hotkey { Self.leaveApp() }
+        #endif
     }
 
     #if os(iOS)
@@ -526,6 +568,30 @@ struct CaptureSheet: View {
                     .padding(16)
                 }
             }
+    }
+
+    /// **앱 밖으로 나간다** — **핫키로 들어온 경우의 [취소하기]**(2026-08-31 사용자 결정:
+    /// *"앱 밖에서 핫키 눌러서 들어온 경우는 그냥 앱을 종료시켜야 해."*)
+    ///
+    /// ## ⛔⛔ iOS에는 **「앱을 끝내는」 공개 API가 없다** — 길이 둘뿐이고 둘 다 대가가 있다
+    ///
+    /// | 길 | 무엇이 되나 | 대가 |
+    /// |---|---|---|
+    /// | **`suspend`**(지금 이것) | 홈 단추를 누른 것처럼 **배경으로 내려간다** — 사용자 눈에는 앱 밖 | **비공개 선택자**다(문자열로 부른다) · 앱이 **끝나지는 않는다**(다시 열면 그 자리) |
+    /// | `exit(0)` | 프로세스가 **즉시 끝난다** | **크래시로 기록된다**(진단 리포트가 쌓인다) · **진행 중인 iCloud 쓰기를 끊을 수 있다** |
+    ///
+    /// ✅ **`suspend`를 골랐다 — 데이터를 끊지 않는 쪽이다.**
+    /// ⚠️⚠️ **이것은 내가 고른 것이고 사용자 확인이 필요하다** — *"종료"*라고 했으므로
+    /// **정말 끝내야 한다면 `exit(0)`로 바꿔야** 하고, 그때는 **위 대가를 함께 진다.**
+    /// ⛔ **App Store에 낸다면 `suspend`는 위험하다** — 이 앱은 개인 서명이라 지금은 문제가 없다.
+    ///
+    /// ⚠️ **`dismiss()`를 먼저 부른 뒤에 이것을 부른다** — 다시 열었을 때 **수집 화면이 남아 있지 않게.**
+    private static func leaveApp() {
+        // 문자열로 부른다(비공개 선택자) — 컴파일 시점에 이름을 알 수 없으므로 이 꼴뿐이다.
+        // ⚠️ **`Selector(("suspend"))`는 경고를 낸다**(*"use '#selector' instead"*) —
+        //    `#selector`는 **공개 API에만** 쓸 수 있으므로 여기서는 못 쓴다.
+        //    `NSSelectorFromString`이 **같은 일을 하고 경고가 없다**(2026-08-31에 바꿨다).
+        UIApplication.shared.perform(NSSelectorFromString("suspend"))
     }
 
     /// **잡혔다는 진동** — 끌 수 있게 된 순간 한 번(2026-08-31 사용자 결정).

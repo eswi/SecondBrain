@@ -89,7 +89,9 @@ struct RootView: View {
         }
         // 액션 버튼/단축어로 열린 수집 — 새로운 기억 탭으로 옮기고 시트 표시(STT 자동 시작).
         .onChange(of: launcher.showCapture) { _, show in if show { tab = .new } }
-        .sheet(isPresented: $launcher.showCapture) { CaptureSheet(model: model) }
+        // ⛔ **`origin: .hotkey`** — 이 시트는 **앱 밖(액션 버튼·단축어)에서** 열린 것이다.
+        //    그래서 `<`가 없고 [취소하기]가 **앱 밖으로** 나간다(`CaptureOrigin`).
+        .sheet(isPresented: $launcher.showCapture) { CaptureSheet(model: model, origin: .hotkey) }
         .onChange(of: tab) { _, newTab in
             if scenePhase == .active {
                 // 사용자가 실제로 고른 탭(active일 때만 일어남) → 기억.
