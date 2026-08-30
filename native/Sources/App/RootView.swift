@@ -146,14 +146,19 @@ struct RootView: View {
                 setTabNoAnimation(stableTab)
             }
         }
-        .onAppear { stableTab = tab }   // 최초 진입: 복원된 탭을 기준값으로
+        .onAppear {
+            stableTab = tab             // 최초 진입: 복원된 탭을 기준값으로
+            CaptureLauncher.probe("rootAppear")        // ⏸ 재는 장치 — 다 재면 지운다
+        }
         // ★★ **문** — 뜬 직후 짧게 덮어 목록이 스치는 것을 막는다(`launchGate` 주석이 근거다).
         //    ⛔ **가장 마지막에 얹는다** — 앞에 두면 시트·팝업이 이 위에 올라가 버린다.
         .overlay { if launchGate { Palette.bg.ignoresSafeArea().transition(.opacity) } }
         .task {
             // 콜드 런치에 한 번만 돈다(`RootView`는 앱 수명 동안 한 번 나타난다).
+            CaptureLauncher.probe("rootTask")          // ⏸ 재는 장치 — 다 재면 지운다
             try? await Task.sleep(for: .milliseconds(120))
             withAnimation(.easeOut(duration: 0.12)) { launchGate = false }
+            CaptureLauncher.probe("gateOpen")          // ⏸ 재는 장치 — 다 재면 지운다
         }
     }
 
