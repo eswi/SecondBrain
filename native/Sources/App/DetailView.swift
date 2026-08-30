@@ -286,9 +286,16 @@ struct DetailView: View {
             //   *"상세화면과 같이 유지하자. 한쪽이 바뀌면 같이 바뀌기로 하고 둘이 맞추자."*)
             //   ⛔ **한쪽만 고치지 말 것.** 꼴(`Label` + `chevron.backward` + `accent`)이 같고
             //   글자는 **그 화면의 제목**을 쓴다(여기는 「기억」 · 수집은 「새 기억」).
+            //   ⛔⛔ **`Label`은 글자를 안 보인다** — iOS 26이 툴바 앞자리를 **아이콘만**으로 그린다
+            //   (2026-08-31 시뮬 스크린샷으로 쟀다). **`HStack`으로 직접 놓는다.**
             ToolbarItem(placement: .navigationBarLeading) {
-                Button { backTapped() } label: { Label("기억", systemImage: "chevron.backward") }
-                    .tint(Palette.accent)
+                Button { backTapped() } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.backward")
+                        Text("기억")
+                    }
+                }
+                .tint(Palette.accent)
             }
         }
         #endif

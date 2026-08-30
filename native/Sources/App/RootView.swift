@@ -190,11 +190,17 @@ struct RootView: View {
         guard launcher.cancelledOut else { return }        // `<`로 닫혔다 → 앱 안에 남는다
         let woken = launcher.likelyWokenByHotkey
         if let back = launcher.tabBeforeHotkey, !woken { setTabNoAnimation(back) }
+        // 비공개 선택자 — `#selector`는 공개 API에만 쓸 수 있다. `NSSelectorFromString`은 경고가 없다.
+        UIApplication.shared.perform(NSSelectorFromString("suspend"))
+        // ★ **끝낼 때도 「내려놓고 나서」 끝낸다** (2026-08-31 사용자: *"너무 허무하게 끝나.
+        //   휙 사라져. 매우 빨리. 그래서 섭섭해…"*).
+        //   ⛔ **뜻은 안 바꿨다 — 앱은 여전히 끝난다.** 바뀐 것은 **나가는 모습**이다:
+        //   `suspend`가 **홈 단추를 누른 것처럼 미끄러져 내려가고**, 그 뒤에 프로세스가 끝난다.
+        //   ⚠️ **0.45초는 잰 값이 아니라 고른 값이다**(추정) — iOS의 내려가는 애니메이션이 그쯤이다.
+        //   **짧으면 애니메이션 중간에 끊기고, 길면 화면 밖에서 살아 있는 시간이 길어진다.**
+        //   ⛔ **화면이 이미 내려간 뒤에 끝나므로 「크래시처럼」 보이지 않는다** — 그것이 이 순서의 값이다.
         if woken {
-            exit(0)
-        } else {
-            // 비공개 선택자 — `#selector`는 공개 API에만 쓸 수 있다. `NSSelectorFromString`은 경고가 없다.
-            UIApplication.shared.perform(NSSelectorFromString("suspend"))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { exit(0) }
         }
         #endif
     }

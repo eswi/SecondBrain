@@ -194,9 +194,16 @@ struct CaptureSheet: View {
                 //   ⛔ **한쪽만 고치지 말 것 — 짝은 `DetailView`의 `chevron.backward` 툴바 항목이다.**
                 //   글자는 **그 화면의 제목**을 쓴다(상세는 「기억」 · 여기는 「새 기억」).
                 //   ⛔ **옛 서술(뒤집혔다):** *"글자를 안 붙였다 — 제목과 나란히 두 번 읽힌다."*
+                //   ⛔⛔ **`Label`을 쓰면 글자가 안 나온다 — 쟀다**(2026-08-31 시뮬 스크린샷):
+                //   iOS 26이 툴바 앞자리의 `Label`을 **동그라미 안 아이콘만**으로 그린다.
+                //   ✅ **`HStack`으로 직접 놓아야 글자가 보인다**(사용자: *"< 글자는 붙이자"*).
+                //   ⛔ **짝(`DetailView`)도 같은 꼴로 바꿨다 — 한쪽만 고치지 말 것.**
                 ToolbarItem(placement: .cancellationAction) {
                     Button { leaveTapped(.back) } label: {
-                        Label("새 기억", systemImage: "chevron.backward")
+                        HStack(spacing: 2) {
+                            Image(systemName: "chevron.backward")
+                            Text("새 기억")
+                        }
                     }
                     .tint(Palette.accent)
                 }
