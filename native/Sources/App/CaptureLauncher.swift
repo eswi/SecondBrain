@@ -43,6 +43,16 @@ final class CaptureLauncher: ObservableObject {
     /// (`RootView`가 launch 때 `.shared`를 잡는다). **핫키가 앱을 새로 깨웠는지** 가르는 데 쓴다.
     private static let processStarted = Date()
 
+    /// **앱이 이 URL 때문에 「떴다」** — 따뜻한 진입(이미 떠 있는데 URL이 온 것)과 갈린다.
+    ///
+    /// ★★ **왜 갈라야 하나** (2026-08-31): 옵션은 첫 프레임 전에 알지만
+    /// **`fullScreenCover`는 「띄우는 것」이라 한 프레임 뒤에 올라온다** — 그래서
+    /// **목록이 짧게 스쳤다**(사용자: *"짧은 시간동안 새로운 기억 화면이 띄긴 하네. 짧게."*).
+    /// ✅ **띄우지 않고 「뿌리로」 그리면 스칠 자리가 없다** — 같은 프레임에 그려진다.
+    /// ⛔ **따뜻한 진입은 뿌리로 바꾸면 안 된다** — 이미 화면이 있고, 갑자기 뿌리가 바뀌면
+    /// **그 화면이 사라진다.** 그 길은 그대로 `fullScreenCover`다.
+    var launchedByURL = false
+
     /// 핫키로 열 때 **그 순간의 탭** — [취소하기]로 나갈 때 **그 화면으로 되돌린다**(2026-08-31 사용자:
     /// *"앱이 그 전에 suspend되어 있던 화면 상태로 suspend"*). `RootView`가 넣고 `RootView`가 쓴다.
     var tabBeforeHotkey: AppTab?
@@ -74,7 +84,10 @@ final class CaptureLauncher: ObservableObject {
     /// ⚠️ **첫 프레임이 목록인 것 자체는 못 없앤다** — 앱이 떠야 인텐트가 돌고, 그 뒤에 시트가 뜬다.
     /// **없앨 수 있는 것은 「미끄러져 올라오는 동작」**이고, 그것을 없애면 **목록이 스쳐 보이는 시간이
     /// 애니메이션 길이(≈0.35초)만큼 줄어든다.** ⛔ **「바로」의 나머지는 앱 시작 시간이다.**
-    func requestCapture() {
+    /// - Parameter fromLaunch: **앱이 이 요청 때문에 떴나**(런치 옵션에서 왔나).
+    ///   `true`면 수집 화면이 **뿌리로** 그려진다(`launchedByURL`).
+    func requestCapture(fromLaunch: Bool = false) {
+        if fromLaunch { launchedByURL = true }
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) { showCapture = true }

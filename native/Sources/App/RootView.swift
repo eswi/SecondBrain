@@ -21,6 +21,24 @@ struct RootView: View {
 
 
     var body: some View {
+        // ★★ **런치 옵션으로 들어왔으면 수집 화면이 「뿌리」다** (2026-08-31).
+        //    ⛔ **띄우지 않는다** — `fullScreenCover`는 한 프레임 뒤에 올라와 **목록이 짧게 스쳤다**
+        //    (사용자: *"짧은 시간동안 새로운 기억 화면이 띄긴 하네. 짧게."*).
+        //    **`ZStack`의 형제로 그리면 같은 프레임에 나오므로 스칠 자리가 없다.**
+        //    ⚠️ **따뜻한 진입(이미 떠 있는데 URL이 옴)은 여기 안 온다** — 그쪽은 아래 `fullScreenCover`다.
+        ZStack {
+            mainBody
+            #if os(iOS)
+            if launcher.showCapture && launcher.launchedByURL {
+                CaptureSheet(model: model, origin: .hotkey)
+                    .background(Palette.bg.ignoresSafeArea())
+                    .transition(.identity)          // 나타날 때 움직임이 없어야 「처음부터 있던 것」이 된다
+            }
+            #endif
+        }
+    }
+
+    private var mainBody: some View {
         TabView(selection: $tab) {
             InboxView(model: model)
                 .tag(AppTab.new)
@@ -107,15 +125,16 @@ struct RootView: View {
         //    `fullScreenCover`는 **탭바까지 덮어** 그 자체가 화면이 된다.
         //    ⚠️ **앱 안의 `+`는 그대로 시트다**(`InboxView`) — 그쪽은 **되돌아갈 화면이 있고**
         //    카드처럼 얹히는 것이 맞다. **두 진입이 다르게 보이는 것이 뜻과 맞는다.**
+        //    ⚠️ **런치 옵션으로 들어온 것은 여기 안 온다** — 그것은 위 `ZStack`에서 **뿌리로** 그려진다.
+        //    이 커버는 **이미 떠 있는 앱에 URL·인텐트가 온 경우**만 맡는다.
         #if os(iOS)
-        .fullScreenCover(isPresented: $launcher.showCapture, onDismiss: { hotkeyCaptureClosed() }) {
-            CaptureSheet(model: model, origin: .hotkey)
-        }
+        .fullScreenCover(isPresented: warmCapture) { CaptureSheet(model: model, origin: .hotkey) }
         #else
-        .sheet(isPresented: $launcher.showCapture, onDismiss: { hotkeyCaptureClosed() }) {
-            CaptureSheet(model: model, origin: .hotkey)
-        }
+        .sheet(isPresented: warmCapture) { CaptureSheet(model: model, origin: .hotkey) }
         #endif
+        // ★ **닫힘 처리를 한 자리로 모았다** — 뿌리로 그려질 때는 `onDismiss`가 없다(띄운 것이 아니다).
+        //   ⛔ 두 자리에 두면 한쪽만 돌아 「앱 밖으로」가 빠진다.
+        .onChange(of: launcher.showCapture) { _, now in if !now { hotkeyCaptureClosed() } }
         .onChange(of: tab) { _, newTab in
             if scenePhase == .active {
                 // 사용자가 실제로 고른 탭(active일 때만 일어남) → 기억.
@@ -141,6 +160,13 @@ struct RootView: View {
         #endif
     }
 
+    /// **따뜻한 진입만 띄운다** — 런치 옵션으로 온 것은 뿌리로 그려지므로 여기서 제외한다.
+    /// ⚠️ **끌 때는 `showCapture`를 내린다** — 그러면 뿌리 갈래와 커버 갈래가 **같은 값 하나**로 닫힌다.
+    private var warmCapture: Binding<Bool> {
+        Binding(get: { launcher.showCapture && !launcher.launchedByURL },
+                set: { if !$0 { launcher.showCapture = false } })
+    }
+
     /// **핫키로 열린 수집이 닫혔다** — 어떻게 닫혔는지에 따라 갈린다(2026-08-31 사용자 결정).
     ///
     /// | 어떻게 닫혔나 | 무엇을 하나 |
@@ -156,7 +182,11 @@ struct RootView: View {
     ///   ⚠️ **파일 쓰기는 이미 끝나 있다** — 수집을 버리고 나가는 길이라 append가 없다.
     private func hotkeyCaptureClosed() {
         #if os(iOS)
-        defer { launcher.tabBeforeHotkey = nil; launcher.cancelledOut = false }
+        defer {
+            launcher.tabBeforeHotkey = nil
+            launcher.cancelledOut = false
+            launcher.launchedByURL = false      // 뿌리 갈래를 내려 목록이 다시 보이게
+        }
         guard launcher.cancelledOut else { return }        // `<`로 닫혔다 → 앱 안에 남는다
         let woken = launcher.likelyWokenByHotkey
         if let back = launcher.tabBeforeHotkey, !woken { setTabNoAnimation(back) }

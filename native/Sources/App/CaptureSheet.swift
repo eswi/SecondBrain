@@ -372,6 +372,9 @@ struct CaptureSheet: View {
         //    ⛔ **시트에서 `suspend`를 부르면** 되돌리기 전에 화면이 얼어 **수집 화면이 남은 채로 내려간다.**
         //    여기서는 **뜻만 남긴다** — `RootView`의 `onDismiss`가 읽는다.
         if kind == .cancel && origin == .hotkey { CaptureLauncher.shared.cancelledOut = true }
+        // ★ **뿌리로 그려졌을 때는 `dismiss()`가 아무 일도 안 한다**(띄운 것이 아니다) —
+        //   그래서 **신호를 직접 내린다.** 커버로 떴을 때도 이 값이 커버를 닫는다(`warmCapture`).
+        if origin == .hotkey { CaptureLauncher.shared.showCapture = false }
         #endif
         dismiss()
     }

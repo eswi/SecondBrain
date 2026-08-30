@@ -40,7 +40,11 @@ final class AppLaunchOptions: NSObject, UIApplicationDelegate {
 
     /// `secondbrain://capture` 면 수집을 켠다. **모르는 URL은 조용히 무시한다**(관용적 · 설계 §6).
     static func handle(_ contexts: Set<UIOpenURLContext>) {
-        for c in contexts where isCapture(c.url) { CaptureLauncher.shared.requestCapture(); return }
+        // ★ `fromLaunch: true` — **앱이 이 URL 때문에 떴다.** 그러면 수집 화면이 **뿌리로** 그려진다
+        //   (띄우면 한 프레임 늦어 목록이 스친다 · `CaptureLauncher.launchedByURL`).
+        for c in contexts where isCapture(c.url) {
+            CaptureLauncher.shared.requestCapture(fromLaunch: true); return
+        }
     }
 
     /// 앱이 떠 있는 동안 들어오는 길은 SwiftUI의 `onOpenURL`이 받는다(`RootView`).
