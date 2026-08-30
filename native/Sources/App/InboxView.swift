@@ -202,11 +202,17 @@ struct InboxView: View {
         HStack(alignment: .firstTextBaseline) {
             Text("새로운 기억").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
             Spacer()
-            // 폴더 관리는 설정으로 이관 — 여기는 수집(마이크). 폴더 없으면 온보딩 프롬프트가 처리.
-            // ⚠️ **"비었다"에서도 마이크는 있어야 한다** — 그 화면이 "아래 마이크를 눌러"라고 말한다(§0-A-1).
+            // 폴더 관리는 설정으로 이관 — 여기는 수집 진입. 폴더 없으면 온보딩 프롬프트가 처리.
+            // ⚠️ **"비었다"에서도 이 단추는 있어야 한다** — 그 화면이 이것을 가리켜 말한다(§0-A-1).
+            //
+            // ★ **아이콘이 `mic.fill` → `plus`로 바뀌었다** (2026-08-31 사용자:
+            //   *"이 아이콘은 + 기호로 바꾸자. 기억을 더한다는 의미야. 아이콘만 바꾸고 모든 것은 그대로 유지."*)
+            //   ⛔ **하는 일은 한 글자도 안 바뀌었다** — 여전히 수집 시트를 연다.
+            // ⏸ **그런데 빈 화면 문구가 아직 「아래 마이크를 눌러…」다**(이 파일의 `emptyText`) —
+            //    **화면에 나오는 말이라 사용자가 정한다**(항시 규칙 6). **물어야 한다.**
             if model.folderLink.canCapture {
                 Button { showCapture = true } label: {
-                    Image(systemName: "mic.fill").font(.title3).foregroundStyle(Palette.accent)
+                    Image(systemName: "plus").font(.title3).foregroundStyle(Palette.accent)
                 }
             }
         }

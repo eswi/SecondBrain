@@ -28,7 +28,11 @@ public enum EventLog {
             if let m = matches(itemRe, line) {
                 let date = cap(m, 1, line), time = cap(m, 2, line)
                 let source = cap(m, 3, line).trimmingCharacters(in: .whitespaces).lowercased()
-                let raw = cap(m, 4, line).trimmingCharacters(in: .whitespaces)
+                // ★ **접힌 줄바꿈을 되돌린다**(2026-08-31 · `RawLine`). ⚠️ **trim을 먼저** 한다 —
+                //    되돌린 뒤에 trim하면 원문 끝의 **의도된 빈 줄**까지 깎인다.
+                //    ⚠️ 옛 데이터의 create 블록에는 역슬래시가 0개라(그 문서의 「쟀다」) **decode가 항등이다** —
+                //    그래서 **레거시 id 해시가 안 바뀐다**(아래 `legacyID`가 이 값을 쓴다).
+                let raw = RawLine.decode(cap(m, 4, line).trimmingCharacters(in: .whitespaces))
                 var fields: [String: String] = [:]
                 var id: String?
                 var hlc: HLC?

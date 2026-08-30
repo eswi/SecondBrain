@@ -111,6 +111,12 @@ struct CaptureSheet: View {
                     }
                 #if os(iOS)
                 micControl
+                #endif
+                // ★★ **[삭제하기]·[저장 후 편집하기]** — 순서는 사용자가 정했다(2026-08-31):
+                //    **텍스트 → 마이크 → 버튼 둘 → 자료 카드.**
+                //    ⛔ **`#if` 밖에 둔다** — 맥에도 저장 단추가 있어야 한다(옛 [저장]은 툴바에 있었다).
+                decideRow
+                #if os(iOS)
                 // ★ **「보조 자료」 카드** — 옛 「사진 찍기」 줄이 있던 자리다(2026-08-30).
                 //   ⛔ **옛 꼴(지우지 않고 적어 둔다):** `photoControl` — [사진 찍기]/[다시 찍기] 버튼 +
                 //   40pt 썸네일 + 「사진 1장 첨부됨」 + X. **한 장이 상한이었고**, 못 누를 때
@@ -131,10 +137,11 @@ struct CaptureSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") { cancel() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") { save() }
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                // ⛔ **오른쪽 위의 [저장]을 뺐다** (2026-08-31 사용자: *"수집 화면에서 저장이 가장 위로
+                //    올라가 있잖아? 그런데 일관성 차원에서는 [저장 하기] 버튼은 텍스트 바로 아랫줄에
+                //    위치되는 것이 좋겠어."*) → 본문의 `decideRow`로 내려갔다.
+                // ⚠️ **[취소]는 남겼다** — 상세 화면의 `‹`(뒤로)에 대응하는 자리다.
+                //    ⏸ **[삭제하기]와 하는 일이 같다**(임시를 버리고 닫는다) — 하나로 줄일지는 사용자 결정.
             }
         }
         // ⛔ **아래로 쓸어 닫는 것을 막는다** (2026-08-30 사용자 지시: *"수집 화면 어디를 누르든
@@ -186,6 +193,45 @@ struct CaptureSheet: View {
         // ★ **자료 붙이기(위)가 신호보다 먼저 끝나 있어야 한다** — `load()`가 다 돌고 나서 닫히도록.
         if let newId { model.openDetailId = newId }
         dismiss()
+    }
+
+    /// **[삭제하기]·[저장 후 편집하기]** — ★ **상세 화면의 `decideRow`와 같은 자리·같은 꼴**이다
+    /// (2026-08-31 사용자: *"이 버튼 2개의 위치와 모양은 상세화면의 버튼 위치와 모양에 그대로 맞춰줘.
+    /// 일관성이야."*).
+    ///
+    /// ⛔ **꼴을 여기서 바꾸지 말 것** — 상세(`DetailView.decideRow`)와 갈리면 그 일관성이 깨진다.
+    /// **`HStack(spacing: 10)`** · 왼쪽 **`.bordered` + `overdue`** · 오른쪽 **`.borderedProminent` + `today`**
+    /// (오른쪽은 상세의 **[기억하기]** 자리이고, 여기서는 **[저장 후 편집하기]**가 그 자리를 대신한다 —
+    /// **문구는 사용자가 정했다**).
+    ///
+    /// ⚠️ **아이콘은 내가 골랐다 — 확정 아니다**(항시 규칙 6 · 아이콘도 사용자 사안이다).
+    /// 상세의 [기억하기]는 `checkmark.seal.fill`(확정의 도장)인데 **이 단추는 확정이 아니라 「편집으로
+    /// 이어진다」**라서 `square.and.pencil`로 뒀다. **바꾸라면 바꾼다.**
+    ///
+    /// ✅ **폭은 쟀다**(2026-08-31 맥미니 · `measure-text.swift`): 「저장 후 편집하기」 **111.7pt @17** ·
+    /// 「삭제하기」 **58.9pt @17**. 왼쪽이 ≈120pt를 먹고 남는 240pt에 오른쪽 내용 ≈162pt가 든다.
+    /// **XXL(21pt)에서도 222 대 190으로 남는다.** ⚠️ **계산이다 — 화면에서 닫을 값이다**(계측 규칙 4).
+    @ViewBuilder private var decideRow: some View {
+        HStack(spacing: 10) {
+            Button(role: .destructive) { cancel() } label: {
+                Label("삭제하기", systemImage: "trash")
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, 6)
+            }
+            .buttonStyle(.bordered).tint(Palette.overdue)
+
+            Button { save() } label: {
+                Label("저장 후 편집하기", systemImage: "square.and.pencil")
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.borderedProminent).tint(Palette.today)
+            // 원문이 없으면 저장할 것이 없다 — 「원문 없는 기억」을 막는 두 장치 중 하나
+            // (다른 하나는 `InboxModel.capture`의 guard).
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
     }
 
     /// [취소] — 임시 음성·사진을 **여기서 직접** 버리고 닫는다.

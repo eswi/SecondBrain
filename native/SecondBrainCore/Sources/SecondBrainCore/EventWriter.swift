@@ -9,7 +9,10 @@ public enum EventWriter {
     public static func serialize(_ e: Event) -> String {
         let f = e.fields
         if let date = f["date"], let time = f["time"], let source = f["source"], let raw = f["raw"] {
-            var lines = ["- \(date) \(time) | \(source) | \(raw)",
+            // ★ **원문의 줄바꿈을 `\n`(두 글자)으로 접는다**(2026-08-31 · `RawLine`) — create 블록은
+            //    **한 줄**이라 진짜 줄바꿈이 있으면 파서가 거기서 블록을 끊는다.
+            //    ⛔ **`raw`를 그대로 넣지 말 것** — 그러면 줄바꿈이 있는 수집이 조용히 쪼개진다.
+            var lines = ["- \(date) \(time) | \(source) | \(RawLine.encode(raw))",
                          "  id: \(e.id)",
                          "  hlc: \(e.hlc.serialized)"]
             // device = 최초 수집 기기(성역), audio = 원본 음성 포인터(<uuid>.m4a), photo = 원본 사진 포인터(<uuid>.jpg).

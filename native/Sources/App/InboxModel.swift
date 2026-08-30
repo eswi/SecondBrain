@@ -561,17 +561,19 @@ final class InboxModel: ObservableObject {
     /// ★ **왜 이 축인가:** create 블록에 여럿을 쓰려면 `EventWriter`의 고정 목록을 접두어로 열어야 하고
     /// (§3-W-4 1번) **성역은 한번 자라면 되돌릴 수 없다.** 그래서 **§3-Y-1 결정 2와 같은 모양**으로 갔다.
     /// ⚠️ **대가:** 「수집 당시 함께 들어온 사진」이라는 보장이 **데이터에서 사라진다**(사용자가 알고 골랐다).
+    ///
+    /// ## ★ 원문의 줄바꿈은 살아 있다 (2026-08-31)
+    /// **접는 일은 여기가 아니라 `EventWriter`가 `RawLine`으로** 한다(create 블록이 한 줄이라서).
+    /// ⛔ **여기서 `\n`을 빈칸으로 바꾸는 코드를 되살리지 말 것** — 그러면 새 녹음의 「빈 줄 둘」이
+    /// 저장하는 순간 사라진다(`TranscriptJoin` · `RawLineTests`).
     @discardableResult
     func capture(text: String, source: String, audioTemp: URL? = nil) -> String? {
-        // ⚠️ **`raw`는 한 줄이다** — create 블록 꼴이 `- <날짜> <시각> | <source> | <raw>`이므로
-        //    줄바꿈을 담을 수 없다(`EventWriter.serialize`). 그래서 여기서 접는다.
-        //    **빈 줄 둘(새 녹음 이음새 · `TranscriptJoin.paragraph`)을 먼저 빈칸 하나로** 접는다 —
-        //    안 그러면 `\n`→` ` 치환이 **빈칸 둘**을 남겨 「가나다  라마바」가 된다.
-        //    ⛔ 저장되면 단락 구분이 사라진다는 뜻이다. **화면 편집칸에서만 갈라 보인다.**
-        let raw = text
-            .replacingOccurrences(of: TranscriptJoin.paragraph, with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // ★ **줄바꿈을 그대로 둔다** (2026-08-31 사용자 결정: *"수집단에서 줄바꿈 처리한 것은
+        //    줄바꿈으로 계속 유지되어야 해."*) — 한 줄에 담는 일은 **`RawLine`이 `EventWriter`에서** 한다.
+        //    ⛔ **옛 꼴(되살리지 말 것):** 여기서 `TranscriptJoin.paragraph`를 빈칸으로,
+        //    `\n`을 빈칸으로 접었다 → **새 녹음의 「빈 줄 둘」이 저장하면 사라졌다.**
+        //    ⚠️ **앞뒤만 깎는다** — 가운데 빈 줄은 뜻이 있다(사용자가 만든 단락이다).
+        let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             if let audioTemp { AudioStore.deleteTemp(audioTemp) }   // 텍스트 없으면 저장 안 함 → 임시 정리
             return nil                                             // ⚠️ 임시 사진은 부르는 쪽이 지운다(op 경로)
