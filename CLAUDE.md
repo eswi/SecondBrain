@@ -60,12 +60,23 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    - ⚠️ **`open`으로 띄우면 디버거가 안 붙는다** — 성능 측정 규칙 1이 요구하는 조건이다.
    - ⛔ **식별자 둘을 섞어 쓰지 말 것.** `xcodebuild`는 **하드웨어 UDID**(`00008140-…` · 폰에 붙은 값이라
      기기를 넘어도 같다), `devicectl`은 **CoreDevice UUID**(2026-08-26 맥북에서 `95CF732E-…`).
-     ⚠️ **CoreDevice UUID가 맥마다 같은지는 못 잼** — **그 기기에서 `xcrun devicectl list devices`로 다시 읽는다.**
+     ✅ **CoreDevice UUID는 두 맥에서 같았다** — **`95CF732E-D847-5594-A346-EC354A1D8B6C`**
+     (맥북 2026-08-26 · **맥미니 2026-08-28** 실측). ⚠️ **그래도 「그 기기에서 `xcrun devicectl list devices`로
+     다시 읽는다」는 그대로 둔다** — 공짜고 확실하고, **표본이 두 맥뿐이다.**
+     *(옛 서술 · 2026-08-28에 쟀다: "⚠️ **CoreDevice UUID가 맥마다 같은지는 못 잼**" —
+     바뀐 것은 **「못 잼」이 「같다」가 된 것**뿐이다. 근거 `docs/worklog/2026-08-28-macmini.md` §7-4)*
    - ★ **ⓒ가 2026-08-25에 새로 얻은 수단이다** — 화면을 보고 판정하는 것밖에 없었는데,
      **앱이 스스로 적게 하고 그 파일을 가져와** 읽는다. **적게 만드는 것이 절반이다.**
      ⚠️ **상태를 안 바꾼다**(읽기만) — `measure-icloud-download.swift`와 반대다.
 
-7. **⚠️ `xcodebuild`·`git add`는 「어느 디렉터리에서 도는가」에 걸린다.** 프로젝트는 `native/`에,
+7. **⛔ `.app` 경로를 `$(ls -d …)`로 잡지 말 것 — 이 셸의 `ls`는 크기를 앞에 붙인다** (2026-08-30 맥미니에서 물렸다).
+   `ls`가 **`-s`가 붙은 별칭**이라 `$(ls -d …)`가 **`0 /Users/…/SecondBrain.app`**를 준다
+   (앞에 「`0 `」이 들어간다). 그 값을 `devicectl … install`에 넘기면 **`CoreDeviceError 3002`**로 죽는다
+   — 오류 문구는 **샌드박스·권한 이야기**를 해서 **경로가 망가진 것으로 안 보인다.**
+   ✅ **`command ls -d …`** 또는 글로브를 쓴다. **잡은 뒤 `echo "[$APP]"`로 한 번 찍어 본다.**
+   ⚠️ **다른 기기에서도 같은지는 못 잼** — 셸 프로필에 달린 값이다. **그 기기에서 `type ls`로 본다.**
+
+8. **⚠️ `xcodebuild`·`git add`는 「어느 디렉터리에서 도는가」에 걸린다.** 프로젝트는 `native/`에,
    저장소 루트는 그 위다. 2026-08-21에 **셋을 연달아 밟았다**(`native/`에서 `git add native/` 두 번,
    저장소 루트에서 `-project SecondBrain.xcodeproj` 한 번). **경로는 절대경로로 쓴다.**
 
@@ -474,6 +485,14 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
 1. **`git pull` — 제일 먼저. 파일 하나라도 열기 전에.**
 2. **`git status -sb`로 확인** — clean인가 · 원격과 `0 0`인가.
 3. 그다음에 HANDOFF·worklog·정본을 읽는다.
+   - ⛔ **★ 자동으로 실리는 `CLAUDE.md` 사본은 `git pull` 이전 판이다.** 절차대로 pull을 먼저 해도
+     **그 사본은 이미 읽힌 뒤**다 — 그래서 **거기서 값을 인용할 때는 파일을 다시 읽는다**
+     (`grep`·`sed`로 그 자리를 연다). 특히 **그 pull이 `CLAUDE.md`를 건드렸을 때.**
+   - 계기(2026-08-28): 시험 수를 **374**로 말했는데 파일은 **이미 410**이었다 — 그날 pull이 가져온
+     `496cde3`이 그 파일을 고친 것이었다. ⚠️ **아무것도 안 깨져서 안 걸릴 뻔했다**(사양서 반영하러
+     실제 자리를 찾다가 드러났다). 전말 → `docs/worklog/2026-08-28-macmini.md` §4.
+   - ★ **거꾸로도 쓴다:** 이 문서에서 인용한 값이 **실측과 어긋나면** 「내 기억이 틀렸다」보다
+     **「내가 읽은 사본이 낡았다」를 먼저 의심한다.**
 4. 기기가 바뀌었으면 `cd native && xcodegen generate` (`.xcodeproj`는 gitignore 생성물).
 5. 시뮬 UDID를 `xcrun simctl list devices available`로 **그 기기에서 다시 읽는다** (위 ③ — 이름으로 쓰지 않는다).
 6. 종료 명령 안내 (아래 종료 절차 7).
