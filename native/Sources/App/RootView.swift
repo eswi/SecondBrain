@@ -19,6 +19,27 @@ struct RootView: View {
     // 나가는 즉시(그리고 복귀 시 보강) 이 값으로 되돌린다. 시스템 제스처라 원천 차단은 불가.
     @State private var stableTab: AppTab = .new
 
+    /// **앱이 뜬 직후 아주 짧게 화면을 바탕색으로 덮는다** — 핫키로 들어왔는지 알 시간을 주는 문.
+    ///
+    /// ## ⛔ 왜 필요한가 — **순서를 보장하는 방법이 없다** (2026-08-31)
+    /// 사용자: *"핫키로 들어와서 어떻게 처리를 해도 앱 처음 열리는 순간 '새로운 기억' 화면을 띄운 후에
+    /// 수집 화면으로 가기 때문에 의미가 없어."*
+    ///
+    /// `openAppWhenRun`인 App Intent는 **앱이 뜬 뒤에** `perform()`이 돈다. 그런데 SwiftUI는
+    /// **그 전에 이미 첫 프레임을 그릴 수 있다** — 그래서 목록이 스친다.
+    /// ⛔ **애니메이션을 없앤 것으로는 못 막았다**(그것은 「미끄러짐」만 없앤다).
+    ///
+    /// ✅ **그래서 순서를 맞추려 하지 않고, 그 구간을 덮는다.**
+    /// 보이는 것은 **앱 바탕색 하나**라 **시작 화면이 이어지는 것처럼 보인다.**
+    /// ⛔ **탭을 안 그리게 바꾸지 않았다 — 덮기만 한다.** 그리는 비용은 싸고,
+    /// **구조를 바꾸면 탭 복원·`@SceneStorage`가 함께 흔들린다.**
+    ///
+    /// ⚠️ **120ms는 잰 값이 아니라 고른 값이다**(추정). 틀리는 방향 둘 다 가볍다:
+    /// **① 인텐트가 더 늦게 오면** 목록이 그때부터 보인다(지금과 같아진다) ·
+    /// **② 핫키가 아닌 보통 실행**은 시작이 **120ms 길어 보인다**(콜드 런치가 이미 그보다 훨씬 길다).
+    /// ⛔ **문을 길게 잡지 말 것** — 보통 실행이 느려지는 쪽이 훨씬 자주 일어난다.
+    @State private var launchGate = true
+
     var body: some View {
         TabView(selection: $tab) {
             InboxView(model: model)
@@ -101,9 +122,20 @@ struct RootView: View {
         }
         // ⛔ **`origin: .hotkey`** — 이 시트는 **앱 밖(액션 버튼·단축어)에서** 열린 것이다.
         //    `<`는 있고(「새로운 기억」으로) **[취소하기]가 앱 밖으로** 나간다(`CaptureOrigin`).
+        // ★★ **핫키 진입은 시트가 아니라 「전체 화면」이다** (2026-08-31).
+        //    ⛔ **시트는 카드처럼 목록 위에 얹혀 아래가 보인다** — *"바로 수집화면으로"*가 안 된다.
+        //    `fullScreenCover`는 **탭바까지 덮어** 그 자체가 화면이 된다.
+        //    ⚠️ **앱 안의 `+`는 그대로 시트다**(`InboxView`) — 그쪽은 **되돌아갈 화면이 있고**
+        //    카드처럼 얹히는 것이 맞다. **두 진입이 다르게 보이는 것이 뜻과 맞는다.**
+        #if os(iOS)
+        .fullScreenCover(isPresented: $launcher.showCapture, onDismiss: { hotkeyCaptureClosed() }) {
+            CaptureSheet(model: model, origin: .hotkey)
+        }
+        #else
         .sheet(isPresented: $launcher.showCapture, onDismiss: { hotkeyCaptureClosed() }) {
             CaptureSheet(model: model, origin: .hotkey)
         }
+        #endif
         .onChange(of: tab) { _, newTab in
             if scenePhase == .active {
                 // 사용자가 실제로 고른 탭(active일 때만 일어남) → 기억.
@@ -115,6 +147,14 @@ struct RootView: View {
             }
         }
         .onAppear { stableTab = tab }   // 최초 진입: 복원된 탭을 기준값으로
+        // ★★ **문** — 뜬 직후 짧게 덮어 목록이 스치는 것을 막는다(`launchGate` 주석이 근거다).
+        //    ⛔ **가장 마지막에 얹는다** — 앞에 두면 시트·팝업이 이 위에 올라가 버린다.
+        .overlay { if launchGate { Palette.bg.ignoresSafeArea().transition(.opacity) } }
+        .task {
+            // 콜드 런치에 한 번만 돈다(`RootView`는 앱 수명 동안 한 번 나타난다).
+            try? await Task.sleep(for: .milliseconds(120))
+            withAnimation(.easeOut(duration: 0.12)) { launchGate = false }
+        }
     }
 
     /// **핫키로 열린 수집이 닫혔다** — 어떻게 닫혔는지에 따라 갈린다(2026-08-31 사용자 결정).
