@@ -493,6 +493,32 @@ final class InboxModel: ObservableObject {
     /// 못 찾으면 nil — 부르는 쪽이 스냅숏으로 폴백한다(항목이 완료·삭제로 목록에서 빠진 경우).
     func current(_ id: String) -> ResolvedItem? { liveNonDone.first { $0.id == id } }
 
+    /// **방금 쓴 항목을 목록에서 찾을 수 있을 때까지 파일을 다시 읽는다.**
+    ///
+    /// ## ⛔⛔ 왜 필요한가 — `load()`는 **비동기**다 (2026-08-31에 물렸다)
+    /// `append(_:)`는 파일에 한 줄 붙이고 **`load()`**를 부르는데 그것이
+    /// **`func load() { Task { await reload() } }`** 다. 그래서 **`capture` 직후에는
+    /// `current(newId)`가 nil이다** — 목록이 아직 낡았다.
+    ///
+    /// ⛔ **한 번 `await reload()`하는 것으로도 부족하다:** `reload()`는 `loadGen`으로
+    /// **그사이 더 최신 로드가 시작되면 자기 결과를 버린다.** 저장 경로는 자료마다 `load()`를
+    /// 부르므로(사진 N장 · URL M개 · `addURL`의 미리보기 Task까지) **재로딩이 여럿 겹친다.**
+    /// → **그래서 「몇 번」이나 「몇 초」가 아니라 「찾을 때까지」로 기다린다.**
+    ///
+    /// ★ **이것이 `06aff97`의 350ms가 실제로 하던 일이었다** — 그때 나는 그 지연을
+    /// 「시트 닫힘을 기다린다」로 적었지만, **기다린 것은 이 재로딩**이었다.
+    /// ⛔ **그 오해 때문에 `onDismiss`로 옮기며 대기를 함께 잃었고, 아무 일도 안 일어났다.**
+    ///
+    /// ⚠️ **`Task.sleep`이 없다** — `reload()`가 실제 파일 I/O라 반복 자체가 시간을 쓴다.
+    /// 상한(`tries`)은 **무한 반복을 막는 안전장치**다(쓰기가 실패했으면 영영 안 나타난다).
+    func resolveAfterWrite(_ id: String, tries: Int = 10) async -> ResolvedItem? {
+        for _ in 0..<tries {
+            if let it = current(id) { return it }
+            await reload()
+        }
+        return current(id)
+    }
+
     /// 상세 화면 draft 커밋(edit-policy §2 [저장]). 바뀐 필드를 **이벤트 1개**(단일 HLC)로 붙인다
     /// → "[저장] 한 번 = 이력 한 묶음". `changes`엔 confirmed가 없다(수정 ≠ 기억하기) — EditDiff가 보장.
     ///

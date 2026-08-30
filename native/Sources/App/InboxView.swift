@@ -74,13 +74,22 @@ struct InboxView: View {
     /// **수집 [저장] 뒤에 그 기억의 상세로 민다** — ⚠️ **시트가 닫힌 뒤에만 불린다**(`onDismiss`).
     ///
     /// ⛔ **먼저 신호를 내린다** — 두 입구(여기 `+` · 액션 버튼)가 다 알려 와도 **한 번만** 밀도록.
-    /// ⚠️ **못 찾으면 밀지 않는다** — 저장 직후 `append`→`load`가 이미 돌았으므로 목록에 있어야 하고,
-    /// 없다면 저장이 안 된 것이다(원문이 빈 경우 `capture`가 nil을 준다 → 신호 자체가 안 올라온다).
+    ///
+    /// ## ⛔⛔ `model.current(id)`를 **바로 보면 nil이다** (2026-08-31에 물렸다)
+    /// `append`가 부르는 **`load()`가 비동기**이기 때문이다(`func load() { Task { await reload() } }`).
+    /// 그래서 **`resolveAfterWrite`로 「찾을 때까지」 기다린다** — 그 함수의 머리주석이 근거다.
+    /// ⛔ **옛 꼴(지우지 않는다):** `guard let item = model.current(id) else { return }` —
+    /// **아무 일도 안 일어났다.** 사용자: *"저장 하면 상세화면으로 자동으로 넘어가지 않고
+    /// 새로운 기억 화면에서 멈춤."*
+    /// ⚠️ **못 찾으면 밀지 않는다** — 쓰기가 실패한 경우다(원문이 비면 `capture`가 nil을 주므로
+    /// 신호 자체가 안 올라온다).
     private func openPendingDetail() {
         guard let id = model.openDetailId else { return }
         model.openDetailId = nil
-        guard let item = model.current(id) else { return }
-        path.append(item)
+        Task { @MainActor in
+            guard let item = await model.resolveAfterWrite(id) else { return }
+            path.append(item)
+        }
     }
 
     /// **자료 옮기기 배너** — 설계 `media-icloud-design.md` §8. **자리는 목록 위**(사용자가 고른 자리).
