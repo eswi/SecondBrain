@@ -28,6 +28,14 @@ final class InboxModel: ObservableObject {
     /// (상세 화면 [삭제하기]는 자체 확인 후 dismiss하므로 이 경로를 안 쓴다.)
     @Published var pendingDelete: ResolvedItem?
 
+    /// **수집 [저장] 뒤에 열 상세 화면의 항목 id** (2026-08-30 사용자 결정).
+    /// `CaptureSheet.save()`가 올리고 **`InboxView`가 내려 받아 밀고 nil로 내린다.**
+    /// ⛔ **여기에 두는 이유:** 수집 시트는 **두 곳에서** 뜬다(`InboxView`의 `+` · `RootView`의
+    /// 액션 버튼·단축어). 시트에 콜백을 물리면 **입구마다 배선이 갈리고 한쪽이 조용히 빠진다** —
+    /// 모델에 신호 하나를 두면 밀 곳(`NavigationPath`를 가진 `InboxView`)이 **한 자리**다.
+    /// ⚠️ **화면 상태이지 데이터가 아니다** — 파일에 안 나가고 병합과 무관하다(`pendingDelete`와 같은 성격).
+    @Published var openDetailId: String?
+
     /// 자동 분류 진행 상태(설정의 수동 버튼에서 그 자리 인라인 표시).
     enum ClassifyPhase: Equatable { case idle, running, done(Int), failed(String) }
     @Published var classifyPhase: ClassifyPhase = .idle
@@ -509,14 +517,23 @@ final class InboxModel: ObservableObject {
     /// - Parameter photoTemp: 촬영된 임시 사진 파일(리사이즈·압축본). 있으면 `<uuid>.jpg`로 확정하고
     ///   `photo:` 포인터를 성역에 찍는다(audio와 동형·불변). 확정 실패·없음이면 사진 없이 생성(graceful).
     ///   **원문 없는 기억은 만들지 않는다** — raw 비면 audio·photo 임시를 지우고 항목을 안 만든다(마지막 백스톱).
-    func capture(text: String, source: String, audioTemp: URL? = nil, photoTemp: URL? = nil) {
+    /// - Returns: 만들어진 항목의 **id**(저장 안 했으면 nil) — 부르는 쪽이 **그 상세 화면으로 이어가려고**
+    ///   쓴다(`CaptureSheet.save()` → `openDetailId`). 2026-08-30에 돌려주기 시작했다.
+    @discardableResult
+    func capture(text: String, source: String, audioTemp: URL? = nil, photoTemp: URL? = nil) -> String? {
+        // ⚠️ **`raw`는 한 줄이다** — create 블록 꼴이 `- <날짜> <시각> | <source> | <raw>`이므로
+        //    줄바꿈을 담을 수 없다(`EventWriter.serialize`). 그래서 여기서 접는다.
+        //    **빈 줄 둘(새 녹음 이음새 · `TranscriptJoin.paragraph`)을 먼저 빈칸 하나로** 접는다 —
+        //    안 그러면 `\n`→` ` 치환이 **빈칸 둘**을 남겨 「가나다  라마바」가 된다.
+        //    ⛔ 저장되면 단락 구분이 사라진다는 뜻이다. **화면 편집칸에서만 갈라 보인다.**
         let raw = text
+            .replacingOccurrences(of: TranscriptJoin.paragraph, with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             if let audioTemp { AudioStore.deleteTemp(audioTemp) }   // 텍스트 없으면 저장 안 함 → 임시 정리
             if let photoTemp { PhotoStore.deleteTemp(photoTemp) }
-            return
+            return nil
         }
         let now = Date()
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
@@ -533,6 +550,7 @@ final class InboxModel: ObservableObject {
         let e = Event.create(id: id, hlc: tick(),
                              date: date, time: time, source: source, raw: raw, extra: extra)
         append(e)
+        return id
     }
 
     // MARK: 자동 분류 (Claude API · 사양서 §0-A·§3)

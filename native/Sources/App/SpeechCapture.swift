@@ -2,6 +2,7 @@
 import Foundation
 import Speech
 import AVFoundation
+import SecondBrainCore
 
 /// 실시간 한국어 STT — 온디바이스 강제(프라이버시: 음성이 기기를 안 떠남, 사양서 §7).
 /// 온디바이스 미지원이면 서버로 안 보내고 막고, UI가 텍스트 입력으로 유도한다.
@@ -42,9 +43,15 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
     private var audioTempURL: URL?
     private var audioFile: AVAudioFile?
 
-    // 조각 누적 상태(전부 메인에서만 접근). transcript = committedText + (partial 있으면 " " + partial).
+    // 조각 누적 상태(전부 메인에서만 접근). transcript = committedText + (partial 있으면 `separator` + partial).
+    // ⚠️ 이음새는 하나가 아니다 — 새 녹음이면 **빈 줄 둘**, 조각 회전이면 **빈칸 하나**(`separator` 참조).
     private var committedText = ""            // isFinal로 확정된 이전 조각들
     private var partial = ""                   // 현재 조각의 진행 중 전사
+    /// **새 녹음으로 이어 붙일 자리인가** — 그러면 다음에 오는 첫 조각 앞에 **빈 줄 둘**을 넣는다
+    /// (2026-08-30 사용자 결정 · 이음새 표는 `TranscriptJoin` 머리주석).
+    /// ⛔ **조각 회전(같은 말 안)은 빈칸 하나 그대로다** — 이 값이 그 둘을 가른다.
+    /// 첫 조각이 committedText에 접히는 순간 `false`로 내린다(빈 줄 둘은 **새 녹음의 첫 조각에만**).
+    private var pendingBreak = false
     private var autoStopSeconds = SpeechSettings.defaultAutoStop
     private var lastActivity = Date()          // 마지막 새 발화 시각(침묵 경과 기준점)
     private var ticker: DispatchSourceTimer?   // 진행률 갱신 + 만료 감지 + 조각 회전(메인 큐, ~20fps)
@@ -78,6 +85,8 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async {
             self.committedText = reset ? "" : seededCommit
             self.partial = ""
+            // 새 수집(reset)은 이을 것이 없다. 재개는 **앞 내용이 있을 때만** 빈 줄 둘을 예약한다.
+            self.pendingBreak = reset ? false : !seededCommit.isEmpty
             self.transcript = self.committedText
             self.autoStopSeconds = SpeechSettings.autoStopSeconds
             if reset {
@@ -182,11 +191,19 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 지금 쓸 이음새 — **새 녹음이면 빈 줄 둘, 그 밖에는 빈칸 하나**(`TranscriptJoin`).
+    /// ⚠️ `display()`와 `commitSegment()`가 **같은 값을 봐야** 한다 — 갈리면 커밋하는 순간
+    /// 화면의 이음새가 바뀌어 글자가 튄다.
+    private var separator: String {
+        pendingBreak ? TranscriptJoin.paragraph : TranscriptJoin.segment
+    }
+
     /// 현재 조각(partial)을 committedText에 접어 넣는다. 표시값은 그대로 유지(깜빡임 없음).
     private func commitSegment() {
         let seg = partial.trimmingCharacters(in: .whitespacesAndNewlines)
         if !seg.isEmpty {
-            committedText = committedText.isEmpty ? seg : committedText + " " + seg
+            committedText = TranscriptJoin.join(committedText, seg, with: separator)
+            pendingBreak = false        // 빈 줄 둘은 새 녹음의 **첫 조각에만**
         }
         partial = ""
         transcript = display()
@@ -194,8 +211,7 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
 
     private func display() -> String {
         let p = partial.trimmingCharacters(in: .whitespacesAndNewlines)
-        if p.isEmpty { return committedText }
-        return committedText.isEmpty ? p : committedText + " " + p
+        return TranscriptJoin.join(committedText, p, with: separator)
     }
 
     private func teardown() {

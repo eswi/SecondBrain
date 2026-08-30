@@ -25,13 +25,23 @@ enum SystemCamera {
     static var isAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
 
     /// 카메라를 띄운다. 찍으면 **원본 `UIImage`**를 넘긴다(리사이즈·압축·임시저장은 부르는 쪽이 한다).
-    /// 취소하면 콜백이 오지 않는다.
-    static func present(onImage: @escaping (UIImage) -> Void) {
-        guard isAvailable, let top = topMost() else { return }
+    /// 찍지 않고 취소하면 `onImage`는 **오지 않는다.**
+    ///
+    /// - Parameter onFinish: **찍든 취소하든 · 아예 못 띄우든 반드시 한 번** 불린다.
+    ///   ★ **왜 있나 (2026-08-30):** 이 picker는 **`.fullScreen` 모달**이라, 뜨는 순간 밑에 있는
+    ///   SwiftUI 시트의 **`onDisappear`가 불리고** 닫힐 때 **`onAppear`가 다시 불린다.**
+    ///   부르는 쪽이 그 둘을 「시트가 끝났다」로 읽으면 **수집 내용을 지운다**(실제로 그랬다 —
+    ///   `CaptureSheet`의 ⛔ 블록). 그래서 **「카메라가 덮고 있다」를 부르는 쪽이 알아야** 하고,
+    ///   이 콜백이 그 구간의 **끝**을 알린다.
+    ///   ⛔ **못 띄운 경우(카메라 없음·최상위 VC 없음)에도 부른다** — 안 부르면 부르는 쪽 표시가
+    ///   `true`로 남아 정리가 영영 안 돈다(임시 파일이 샌다).
+    static func present(onImage: @escaping (UIImage) -> Void,
+                        onFinish: (() -> Void)? = nil) {
+        guard isAvailable, let top = topMost() else { onFinish?(); return }
         let picker = UIImagePickerController()
         picker.sourceType = .camera
         // ⚠️ delegate는 **weak**다 — 붙잡지 않으면 바로 사라져 콜백이 안 온다.
-        let delegate = Delegate(onImage: onImage)
+        let delegate = Delegate(onImage: onImage, onFinish: onFinish)
         retained = delegate
         picker.delegate = delegate
         top.present(picker, animated: true)
@@ -54,7 +64,11 @@ enum SystemCamera {
     private final class Delegate: NSObject, UIImagePickerControllerDelegate,
                                   UINavigationControllerDelegate {
         private let onImage: (UIImage) -> Void
-        init(onImage: @escaping (UIImage) -> Void) { self.onImage = onImage }
+        private let onFinish: (() -> Void)?
+        init(onImage: @escaping (UIImage) -> Void, onFinish: (() -> Void)?) {
+            self.onImage = onImage
+            self.onFinish = onFinish
+        }
 
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
@@ -69,6 +83,9 @@ enum SystemCamera {
         private func finish(_ picker: UIImagePickerController) {
             picker.dismiss(animated: true)
             SystemCamera.retained = nil
+            // ⚠️ **닫기 애니메이션이 끝나기 전에 부른다** — 그래야 뒤이어 오는 시트의 `onAppear`보다
+            //    먼저 도착해 「카메라가 덮고 있다」 표시가 내려간다(순서가 뒤바뀌면 정리가 헛돈다).
+            onFinish?()
         }
     }
 }

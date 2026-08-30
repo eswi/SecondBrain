@@ -50,6 +50,20 @@ struct InboxView: View {
             if case .success(let url) = result { model.setFolder(url) }
         }
         .sheet(isPresented: $showCapture) { CaptureSheet(model: model) }
+        // 수집 [저장] → **그 기억의 상세 화면**으로 이어 간다 (2026-08-30 사용자 결정).
+        // 신호는 `model.openDetailId` — 수집 시트가 **두 입구**(여기 `+` · `RootView`의 액션 버튼·
+        // 단축어)에서 뜨는데, 미는 자리는 `NavigationPath`를 가진 **여기 하나**다.
+        // ⚠️ **시트가 닫히는 동안 밀지 않는다** — 겹치면 미는 것이 삼켜진다. 닫힘 애니메이션(~0.35초)
+        //    뒤로 한 박자 물린다. ⛔ 이 지연을 지우면 「저장했는데 목록으로 나온다」가 된다.
+        .onChange(of: model.openDetailId) { _, id in
+            guard let id else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                // 저장 직후 `append`→`load`가 이미 돌았으므로 목록에 있다. 못 찾으면 밀지 않는다.
+                if let item = model.current(id) { path.append(item) }
+                model.openDetailId = nil
+            }
+        }
     }
 
     /// **자료 옮기기 배너** — 설계 `media-icloud-design.md` §8. **자리는 목록 위**(사용자가 고른 자리).
