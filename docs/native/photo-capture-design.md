@@ -32,6 +32,11 @@
 
 - **파일명 = 항목 UUID.** `<uuid>.jpg`. 항목 ↔ 사진 1:1 결정적(음성 `<uuid>.m4a`와 동형).
 - **포인터 필드 = create 블록의 `photo: <uuid>.jpg`.** `audio:`·`device:`와 같은 자리(성역·불변, create에만).
+  - ⛔ **2026-08-31: 수집 사진도 op으로 붙는다 — 이 줄은 「원칙」이고 구현이 절반만 지킨다.**
+    성역에 남는 자료는 **음성 하나**다. **원칙은 유지된다**(사용자 결정 ⓑ) ·
+    되돌릴 길 = **create 블록 필드 목록 열기**(`media-expansion-design.md` §3-W-4 1번 · ⏸).
+    전말 = `edit-policy.md` §6-② 아래 블록.
+
   - 파서(`EventLog`)는 create 블록 임의 `key: value`를 이미 처리 → **파싱 무변경.**
   - 직렬화(`EventWriter`)만 create-블록 화이트리스트에 **`"photo"` 1줄 추가.**
   - create에만 있으므로 per-field LWW상 **절대 안 덮임 = 사실상 불변.** (음성과 동일 보장.)
@@ -158,7 +163,7 @@ FieldSpec  { key, kind(.text/.longText/.photo/.date…), sanctuary(성역?), req
 | 필드 | kind | 성역/가변 | 필수/선택 | 담기는 곳 |
 |---|---|---|---|---|
 | id·date·time·device | — | 성역 | 필수 | create 블록(기존) |
-| `photo` | photo(카메라 1장) | **성역·불변** | 권장 | create `photo: <uuid>.jpg` (§2·§4) |
+| `photo` | photo(카메라 1장) | **성역·불변** ⛔ **2026-08-31부터 실제로는 op**(원칙만 유지 · §6-② 블록) | 권장 | create `photo: <uuid>.jpg` (§2·§4) |
 | GPS 좌표 | (사진 EXIF) | 성역·**사진 안에만**〔⚠️ 2026-08-20: 「기기전용」이던 딱지 — 사진이 iCloud로 가므로 좌표도 함께 간다. **그릇에 안 박는다는 결정은 유지**〕 | 있으면 | **사진 파일 안에만** (§5) |
 | `location` | 텍스트(긴 것 가능) | **가변** | 필수 | `fields.v1` JSON edit (§3) |
 | `memo` | 텍스트(긴 것 가능) | **가변** | 선택 | `fields.v1` JSON edit (§3) |
@@ -200,7 +205,7 @@ FieldSpec  { key, kind(.text/.longText/.photo/.date…), sanctuary(성역?), req
 > | **`searchDirs()`에 iCloud를 더한다** | 그렇게 하겠다 | ⛔ **안 됐다** — 보안 스코프·자리 계산 때문에 URL 목록에 안 담긴다. 찾기를 **세 갈래**로 갈랐다(`media-icloud-design.md` §4) |
 > | 확정(finalize) 목적지 | 로컬 | ✅ **로컬** |
 > | 로컬 사본 | 남긴다 | ✅ **남긴다** |
-> | `photo:` 포인터 · 위치 분리 | 불변 성역 | ✅ **불변 성역** |
+> | `photo:` 포인터 · 위치 분리 | 불변 성역 | ✅ **불변 성역** *(그때 그랬다 — 2026-08-31부터 수집 사진은 op이다)* |
 > | **GPS를 그릇에 안 박는다** | 그렇게 한다 | ✅ **그대로다** — 근거 하나가 사라졌을 뿐(§5-③) |
 >
 > ⚠️ **음성 §3에 있는 「보장이 둘이었다」(파일 ↔ STT)는 사진엔 안 걸린다** — 사진엔 STT가 없다.
