@@ -21,6 +21,8 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 *.xcodeproj/
+# xcodegen이 `project.yml`의 `info:`에서 만들어 내는 plist — 생성물이다(2026-08-31).
+native/Sources/App/Info-iOS.plist
 
 # ghostlab(실험용 계측 앱)의 xcodegen 생성물 — 도구 자체는 커밋한다
 native/tools/ghostlab/Info.plist

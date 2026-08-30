@@ -75,39 +75,9 @@ final class CaptureLauncher: ObservableObject {
     /// **없앨 수 있는 것은 「미끄러져 올라오는 동작」**이고, 그것을 없애면 **목록이 스쳐 보이는 시간이
     /// 애니메이션 길이(≈0.35초)만큼 줄어든다.** ⛔ **「바로」의 나머지는 앱 시작 시간이다.**
     func requestCapture() {
-        Self.probe("intent")
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) { showCapture = true }
     }
 
-    // MARK: ⏸ 재는 장치 (2026-08-31 · **다 재면 지운다**)
-    //
-    // ## 왜 있나 — **문(`RootView.launchGate`)의 값을 짐작으로 두 번 정할 수 없다**
-    // 핫키로 들어올 때 목록이 스치는 것을 **120ms 문**으로 막으려 했는데 **여전히 스쳤다**
-    // (사용자 판정 2026-08-31). 그러면 **인텐트가 그보다 늦게 오는 것**인데,
-    // ⛔ **얼마나 늦는지는 액션 버튼을 눌러야 알 수 있고 그것은 사용자가 하는 일이다**(항시 규칙 7).
-    // ★ **그래서 앱이 스스로 적게 하고, 그 파일을 맥으로 가져와 읽는다**(`CLAUDE.md` ⓒ).
-    //
-    // ⚠️ **이것은 「쓰는 도구」가 아니라 「한 번 재는 장치」다** — 값을 얻으면 **이 블록과 호출을 지운다.**
-    // ⛔ **상태를 안 바꾼다** — 파일 하나에 줄만 덧붙인다(append-only · 앱 동작에 영향 0).
-
-    /// 프로세스가 뜬 뒤 지난 밀리초를 한 줄 적는다. 실패하면 조용히 지나간다(재는 장치가 앱을 막지 않게).
-    static func probe(_ what: String) {
-        let ms = Int(Date().timeIntervalSince(processStarted) * 1000)
-        let fm = FileManager.default
-        guard let base = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
-                                     appropriateFor: nil, create: true) else { return }
-        let dir = base.appendingPathComponent("SecondBrain", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("launch-probe.log")
-        let line = "\(what) +\(ms)ms\n"
-        if let h = try? FileHandle(forWritingTo: url) {
-            defer { try? h.close() }
-            _ = try? h.seekToEnd()
-            try? h.write(contentsOf: Data(line.utf8))
-        } else {
-            try? Data(line.utf8).write(to: url)
-        }
-    }
 }

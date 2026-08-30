@@ -27,17 +27,39 @@ targets:
     dependencies:
       - package: SecondBrainCore
         product: SecondBrainCore
+    # ★★ **URL 스킴 = 「앱을 띄울 때 주는 옵션」** (2026-08-31 사용자 결정)
+    #    사용자: *"핫키로 띄울 때는 command line option처럼 invoke Option을 주게 하고, 우리는 그런
+    #    특정 옵션을 달아서 앱을 띄울 때는 다른 화면 안 보이고 바로 수집 화면으로 직행하도록"*
+    #    → iOS에서 그 자리가 **URL 스킴**이다. **`secondbrain://capture`**
+    #    ⛔ **App Intent에는 이런 사전 신호가 없다** — 그래서 시간을 재는 쪽으로 흘렀고, 그것이 틀렸다.
+    #    ✅ **URL은 첫 프레임보다 먼저** `didFinishLaunchingWithOptions`의 `launchOptions[.url]`로 온다.
+    info:
+      path: Sources/App/Info-iOS.plist
+      properties:
+        # ⚠️ **`UILaunchScreen`이 letterbox를 막는다** — 자동 생성이 넣어 주던 것이다. 빼지 말 것.
+        UILaunchScreen: {}
+        # ⚠️ **버전을 빌드 설정과 묶는다** — xcodegen 기본값은 `1.0`/`1`이라 `MARKETING_VERSION: 0.1`과
+        #    **조용히 갈렸다**(자동 생성일 때는 저절로 맞아 있었다).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSMicrophoneUsageDescription: "새 기억을 음성으로 받아쓰기 위해 마이크를 사용합니다."
+        NSSpeechRecognitionUsageDescription: "받아쓴 음성을 이 기기에서 글로 바꾸기 위해 음성 인식을 사용합니다(외부 전송 없음)."
+        NSCameraUsageDescription: "기억에 사진을 첨부하기 위해 카메라를 사용합니다. 사진은 이 기기에만 저장됩니다."
+        NSLocationWhenInUseUsageDescription: "사진에 촬영 위치를 함께 남기기 위해 위치를 사용합니다. 위치는 사진 안에만 저장되고 이 기기에만 남습니다."
+        CFBundleURLTypes:
+          - CFBundleURLName: kr.teri.secondbrain
+            CFBundleTypeRole: Editor
+            CFBundleURLSchemes: [secondbrain]
     settings:
       base:
         PRODUCT_NAME: SecondBrain
         PRODUCT_BUNDLE_IDENTIFIER: kr.teri.secondbrain
         TARGETED_DEVICE_FAMILY: "1"   # iPhone 전용(사양서 §0-A: v1=Mac+iPhone, iPad는 나중). iPad 방향 경고 제거.
-        GENERATE_INFOPLIST_FILE: "YES"
-        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # 런치스크린 자동생성 → 전체 화면(letterbox 방지)
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "새 기억을 음성으로 받아쓰기 위해 마이크를 사용합니다."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "받아쓴 음성을 이 기기에서 글로 바꾸기 위해 음성 인식을 사용합니다(외부 전송 없음)."
-        INFOPLIST_KEY_NSCameraUsageDescription: "기억에 사진을 첨부하기 위해 카메라를 사용합니다. 사진은 이 기기에만 저장됩니다."
-        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "사진에 촬영 위치를 함께 남기기 위해 위치를 사용합니다. 위치는 사진 안에만 저장되고 이 기기에만 남습니다."
+        # ⛔ **자동 생성을 껐다** (2026-08-31) — **URL 스킴(`CFBundleURLTypes`)은 배열·딕셔너리**라
+        #    `INFOPLIST_KEY_*` 빌드 설정으로는 넣을 수 없다. 그래서 plist를 명시한다(`info:` 아래).
+        #    ⚠️ **자동 생성이 넣어 주던 것을 직접 넣어야 한다** — 특히 **`UILaunchScreen`**:
+        #    빠지면 **letterbox**가 된다(옛 주석이 경고하던 그것).
+        GENERATE_INFOPLIST_FILE: "NO"
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
