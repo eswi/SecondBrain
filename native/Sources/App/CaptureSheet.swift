@@ -46,8 +46,12 @@ struct CaptureSheet: View {
     /// 기본값은 `.inApp`이다(앱 안의 `+`). `RootView`가 띄우는 것만 `.hotkey`다.
     var origin: CaptureOrigin = .inApp
     @Environment(\.dismiss) private var dismiss
-    /// 나가려는데 **적은 것이 있어서** 되묻는 중인가.
-    @State private var showLeaveConfirm = false
+    /// **나가는 뜻 둘** — `<`(되돌아간다)와 [취소하기](이 수집을 그만둔다).
+    /// ⛔ **앱 안에서는 가는 곳이 같지만 핫키로 들어왔을 때 갈린다**(`CaptureOrigin`의 표).
+    private enum LeaveKind { case back, cancel }
+    /// 되묻는 중이면 **어느 뜻으로 나가려던 것인지**를 들고 있다(nil = 안 묻는 중).
+    /// `model.pendingDelete`와 같은 성격이다 — 팝업의 「예」가 무엇을 할지 여기서 기억한다.
+    @State private var pendingLeave: LeaveKind?
     @State private var text = ""
     @State private var saved = false   // [저장]으로 확정됐는지 — 임시 음성·사진 정리 판단용
     #if os(iOS)
@@ -181,15 +185,15 @@ struct CaptureSheet: View {
                 //   *"'navigationBarLeading' is unavailable in macOS"*). **`.cancellationAction`**은
                 //   두 플랫폼에 다 있고 iOS에서 **같은 자리(좌측 상단)**다.
                 //   ★ **맥을 함께 빌드하지 않으면 이 오류를 못 본다** — iOS만 초록이었다.
-                //   ⛔ **핫키로 들어왔으면 아예 없다** (2026-08-31 사용자: *"이 경우 `<` 아이콘은
-                //   없어야 하고"*) — **돌아갈 화면이 없기 때문이다.**
-                if origin == .inApp {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button { leaveTapped() } label: {
-                            Image(systemName: "chevron.backward")
-                        }
-                        .tint(Palette.accent)
+                //   ★ **어떻게 들어왔든 늘 있다** (2026-08-31 사용자가 다시 정했다).
+                //   **가는 곳만 갈린다:** 앱 안이면 **온 화면**, 핫키면 **「새로운 기억」**.
+                //   ⛔ **옛 꼴(반나절 만에 뒤집혔다):** `if origin == .inApp`으로 **핫키에서 숨겼다** —
+                //   *"돌아갈 화면이 없기 때문"*이라 적었는데 **「새로운 기억」이 그 자리였다.**
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { leaveTapped(.back) } label: {
+                        Image(systemName: "chevron.backward")
                     }
+                    .tint(Palette.accent)
                 }
             }
             // ⛔ **오른쪽 위에는 단추가 없다** — **[저장]을 뺐다**(2026-08-31 사용자:
@@ -218,15 +222,17 @@ struct CaptureSheet: View {
         // ⚠️ **문구는 내가 골랐다 — 확정 아니다**(항시 규칙 6). 꼴은 앱에 이미 있는 것을 그대로 썼다
         //    (`ConfirmDialog` · 상세의 `discardDialog`가 [나가기]/[계속 수정하기]다).
         .overlay {
-            if showLeaveConfirm {
+            if let kind = pendingLeave {
                 ConfirmDialog(title: "나가면 지금 적은 내용이 사라져요",
                               cancelTitle: "나가기", confirmTitle: "계속 쓰기",
-                              onCancel: { showLeaveConfirm = false; leaveNow() },
-                              onConfirm: { showLeaveConfirm = false })
+                              // [나가기] = 버리고 나간다. ⚠️ **어느 뜻으로 눌렀는지를 그대로 이어간다** —
+                              //    `<`였으면 화면으로, [취소하기]였으면 그 뜻대로(핫키면 앱 밖).
+                              onCancel: { pendingLeave = nil; leaveNow(kind) },
+                              onConfirm: { pendingLeave = nil })       // [계속 쓰기] = 머무름
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.15), value: showLeaveConfirm)
+        .animation(.easeInOut(duration: 0.15), value: pendingLeave)
         #if os(iOS)
         .onAppear {
             // ⛔ **카메라가 닫힐 때도 여기 온다**(머리주석 표) — 그때 다시 start()하면 받아쓰기가 지워진다.
@@ -300,7 +306,7 @@ struct CaptureSheet: View {
             //   **상세 하단의 [취소]가 이미 `xmark` + `textSecondary`**이고(`DetailView.bottomBar`)
             //   **일관성이 이 지시의 이유**이기 때문이다. ⚠️ **색까지 바꾸라는 말은 없었다** —
             //   빨강으로 되돌리려면 `Palette.overdue`로 되돌린다.
-            Button { leaveTapped() } label: {
+            Button { leaveTapped(.cancel) } label: {
                 Label("취소하기", systemImage: "xmark")
                     .lineLimit(1)
                     .fixedSize()
@@ -334,21 +340,31 @@ struct CaptureSheet: View {
         return false
     }
 
-    /// **[취소하기]·`<`를 눌렀다** — 적은 것이 있으면 **되묻고**, 없으면 바로 나간다.
-    private func leaveTapped() {
-        if hasSomethingToLose { showLeaveConfirm = true } else { leaveNow() }
+    /// **`<` 또는 [취소하기]를 눌렀다** — 적은 것이 있으면 **되묻고**, 없으면 바로 나간다.
+    /// ⚠️ **되물을 때도 뜻을 잃지 않는다** — `pendingLeave`가 들고 있다가 [나가기]에서 그대로 이어간다.
+    private func leaveTapped(_ kind: LeaveKind) {
+        if hasSomethingToLose { pendingLeave = kind } else { leaveNow(kind) }
     }
 
-    /// **나간다** — 임시 음성·사진을 버리고, **들어온 길에 따라 다른 곳으로** 간다.
+    /// **나간다** — 임시 음성·사진을 버리고, **뜻과 들어온 길에 따라** 간다.
+    ///
+    /// | 뜻 | `.inApp` | `.hotkey` |
+    /// |---|---|---|
+    /// | **`.back`**(`<`) | 온 화면으로 | **「새로운 기억」으로** |
+    /// | **`.cancel`**([취소하기]) | 온 화면으로 | **앱 밖으로** |
+    ///
+    /// ★ **`.back`은 둘 다 `dismiss()` 하나로 끝난다** — 핫키로 열릴 때 `RootView`가 이미
+    /// **탭을 「새로운 기억」으로 옮겨 두기 때문**이다(`onChange(of: launcher.showCapture)`).
+    /// ⛔ **여기서 탭을 다시 옮기지 않는다** — 두 곳이 같은 일을 하면 한쪽이 조용히 어긋난다.
     ///
     /// ⛔ `onDisappear`에만 맡기지 않는다 — 그 콜백은 카메라가 덮을 때도 오기 때문이다(머리주석 표).
-    private func leaveNow() {
+    private func leaveNow(_ kind: LeaveKind) {
         #if os(iOS)
         discardTemps()
         #endif
         dismiss()
         #if os(iOS)
-        if origin == .hotkey { Self.leaveApp() }
+        if kind == .cancel && origin == .hotkey { Self.leaveApp() }
         #endif
     }
 
