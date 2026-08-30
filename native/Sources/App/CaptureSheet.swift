@@ -71,6 +71,29 @@ struct CaptureSheet: View {
     @State private var openingURL: OpeningURL?
     /// 크게 볼 임시 사진.
     @State private var zooming: ZoomingPhoto?
+
+    // MARK: 녹음 단추의 자리 (2026-08-31 · 끌어 옮길 수 있다)
+    //
+    // ⚠️ **치수는 「글꼴 크기」가 아니라 「잰 자리」다**(계측 규칙 1·2).
+    //    `mic.circle.fill`을 `.font(.system(size: 65))`로 그리면 실제로 먹는 자리는 **76 x 74pt**다
+    //    (2026-08-31 맥미니 `measure-text.swift` 실측 · 52pt일 때 61 x 59).
+    //    ⛔ **65를 한계 계산에 넣지 말 것** — 이동 범위가 틀린다.
+    /// 글꼴 크기 — **52의 25%를 키운 값**(사용자: *"25% 정도만 키우면 딱 좋을 거 같아"*).
+    private static let micFont: CGFloat = 65
+    /// 잰 자리 — 폭.
+    private static let micW: CGFloat = 76
+    /// 잰 자리 — 높이. ⚠️ 폭과 다르다.
+    private static let micH: CGFloat = 74
+    /// 칸 테두리와의 거리 — **사용자가 「지금처럼 유지」라고 한 값**이다. ⛔ 바꾸지 말 것.
+    private static let micPad: CGFloat = 10
+
+    /// 지금 보이는 이동량(끌고 있는 동안 따라온다).
+    @State private var micShift: EdgeSlide.Shift = .home
+    /// 손을 뗀 뒤 확정된 이동량 — 다음 끌기의 시작점.
+    /// ⛔ **저장하지 않는다** — 시트를 새로 열면 **늘 기본 자리(우측 하단)**다(사용자 결정).
+    @State private var micBase: EdgeSlide.Shift = .home
+    /// 이번 접촉이 **이동**이었나 — 이동 뒤에 오는 탭을 삼켜 녹음이 켜/꺼지지 않게 한다.
+    @State private var micMoved = false
     #endif
 
     var body: some View {
@@ -109,12 +132,12 @@ struct CaptureSheet: View {
                                 .foregroundStyle(Palette.textTertiary).padding(18).allowsHitTesting(false)
                         }
                     }
-                    // ★★ **녹음 단추를 이 칸 안 우측 하단에 얹는다**(2026-08-31 사용자 결정 · `micButton`).
+                    // ★★ **녹음 단추를 이 칸 안에 얹는다**(2026-08-31 사용자 결정 · `micLayer`).
                     //    ⛔ **테두리 overlay보다 뒤에 온다** — 앞에 두면 테두리가 단추 위에 그려진다.
                     //    ⚠️ **뜻이 자리로 드러난다:** *"그거 눌러서 말하면 그 텍스트 박스 안으로
                     //    타이핑된다는 의미야"* — 그래서 **칸 밖이 아니라 칸 안**이다.
                     #if os(iOS)
-                    .overlay(alignment: .bottomTrailing) { micButton.padding(10) }
+                    .overlay { micLayer }
                     #endif
                 // ★★ **[삭제하기]·[저장 후 편집하기]** — 순서는 사용자가 정했다(2026-08-31):
                 //    **텍스트 → 마이크 → 버튼 둘 → 자료 카드.**
@@ -216,21 +239,29 @@ struct CaptureSheet: View {
     /// **XXL(21pt)에서도 222 대 190으로 남는다.** ⚠️ **계산이다 — 화면에서 닫을 값이다**(계측 규칙 4).
     @ViewBuilder private var decideRow: some View {
         HStack(spacing: 10) {
-            Button(role: .destructive) { cancel() } label: {
-                Label("삭제하기", systemImage: "trash")
+            // ★ **[취소하기]** (2026-08-31 사용자: *"[삭제하기] 버튼은 X 아이콘을 넣은
+            //   [취소하기] 버튼으로 바꾸고"*). ⛔ **`role: .destructive`를 뗐고 색을 회색으로 내렸다** —
+            //   **상세 하단의 [취소]가 이미 `xmark` + `textSecondary`**이고(`DetailView.bottomBar`)
+            //   **일관성이 이 지시의 이유**이기 때문이다. ⚠️ **색까지 바꾸라는 말은 없었다** —
+            //   빨강으로 되돌리려면 `Palette.overdue`로 되돌린다.
+            Button { cancel() } label: {
+                Label("취소하기", systemImage: "xmark")
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 6)
             }
-            .buttonStyle(.bordered).tint(Palette.overdue)
+            .buttonStyle(.bordered).tint(Palette.textSecondary)
 
+            // ★ **바탕색을 `accent`로** (2026-08-31 사용자: *"'상세화면'에 있는 활성화된 저장 버튼
+            //   색깔로 바꾸자"*). 그 단추 = `DetailView.bottomBar`의 [저장] =
+            //   **`.borderedProminent` + `Palette.accent`**. ⛔ 옛 값은 `Palette.today`(앰버)였다.
             Button { save() } label: {
                 Label("저장 후 편집하기", systemImage: "square.and.pencil")
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
             }
-            .buttonStyle(.borderedProminent).tint(Palette.today)
+            .buttonStyle(.borderedProminent).tint(Palette.accent)
             // 원문이 없으면 저장할 것이 없다 — 「원문 없는 기억」을 막는 두 장치 중 하나
             // (다른 하나는 `InboxModel.capture`의 guard).
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -302,15 +333,58 @@ struct CaptureSheet: View {
     /// 글자가 쓰는 높이는 **≈60pt = 17pt에서 세 줄**(줄높이 20.1). 단추는 **52 + 여백 10 = 62pt**를
     /// 오른쪽 아래에서 먹으므로 **둘째·셋째 줄의 오른쪽이 가려진다.**
     /// **화면에서 판정받을 값이다**(계측 규칙 4) — 걸리면 자리를 바깥으로 반쯤 빼는 것이 다음 후보다.
-    @ViewBuilder private var micButton: some View {
-        Button {
-            if speech.isRecording { speech.stop() } else { speech.resume(seed: text) }
-        } label: {
-            Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                .font(.system(size: 52))
-                .foregroundStyle(speech.isRecording ? Palette.overdue : Palette.accent)
+    /// 단추가 얹히는 **층** — 칸 크기를 알아야 이동 한계가 나오므로 `GeometryReader`다.
+    ///
+    /// ⚠️ **`.position`은 「중심」을 놓는다** — 그래서 기본 자리가
+    /// `(폭 − 여백 − 폭/2, 높이 − 여백 − 높이/2)`다(모서리에서 여백만큼 뗀 자리).
+    /// ⛔ **층이 터치를 다 먹지 않게** `allowsHitTesting`을 층에 걸지 않는다 — 단추만 잡는다
+    /// (`GeometryReader`의 빈 자리는 그림이 없어 터치가 통과한다).
+    @ViewBuilder private var micLayer: some View {
+        GeometryReader { geo in
+            micButton
+                .position(x: geo.size.width - Self.micPad - Self.micW / 2 + micShift.dx,
+                          y: geo.size.height - Self.micPad - Self.micH / 2 + micShift.dy)
+                .gesture(micDrag(box: geo.size))
         }
-        .buttonStyle(.plain)
+    }
+
+    /// **녹음 단추** — 짧게 누르면 녹음 시작/정지, **꾹 눌러 끌면 자리를 옮긴다.**
+    ///
+    /// ⛔ **`Button`을 쓰지 않는다** — 끌기를 끝내고 손을 떼는 순간 `Button`이 자기 동작을 실행해
+    /// **옮겼을 뿐인데 녹음이 켜/꺼진다.** 그래서 `onTapGesture`로 갈랐고, 그래도 새는 경우를 막으려
+    /// `micMoved`로 **이동 뒤의 탭을 한 번 삼킨다.**
+    /// ⚠️ **`CLAUDE.md`의 「`LongPressGesture`로 돌아가지 말 것」은 이 자리가 아니다** —
+    /// 그것은 **원칙 목록의 드래그 정렬**(`List` 안의 순서 바꾸기)에서 두 번 실패한 기록이다.
+    /// 여기는 **자유 캔버스 위의 단추 하나**라 그 함정(리스트가 제스처를 먹는 것)이 없다.
+    ///
+    /// ⛔ **크기·모양·색은 자리 말고 아무것도 바꾸지 않았다** — `mic.circle.fill` /
+    /// 녹음 중 `stop.circle.fill` · accent / overdue. **글꼴만 52 → 65**(사용자가 정한 25%).
+    @ViewBuilder private var micButton: some View {
+        Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+            .font(.system(size: Self.micFont))
+            .foregroundStyle(speech.isRecording ? Palette.overdue : Palette.accent)
+            .contentShape(Circle())
+            .accessibilityAddTraits(.isButton)
+            .onTapGesture {
+                if micMoved { micMoved = false; return }   // 방금 옮긴 것이면 녹음을 건드리지 않는다
+                if speech.isRecording { speech.stop() } else { speech.resume(seed: text) }
+            }
+    }
+
+    /// **꾹 눌러 끌기** — 자리는 `EdgeSlide`가 ㄴ자 길(우측 변·하단 변)로 접는다.
+    /// ⚠️ **잰 자리(76 x 74)를 넘긴다** — 글꼴 65를 넘기면 한계가 틀린다.
+    private func micDrag(box: CGSize) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.25)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                micMoved = true
+                micShift = EdgeSlide.snap(base: micBase,
+                                          dx: drag.translation.width, dy: drag.translation.height,
+                                          boxW: box.width, boxH: box.height,
+                                          itemW: Self.micW, itemH: Self.micH, pad: Self.micPad)
+            }
+            .onEnded { _ in micBase = micShift }
     }
 
     /// 미저장 종료 → 임시 음성·사진 삭제. **[취소]와 `onDisappear` 둘이 부른다.**
