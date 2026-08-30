@@ -50,20 +50,22 @@ struct InboxView: View {
             if case .success(let url) = result { model.setFolder(url) }
         }
         .sheet(isPresented: $showCapture) { CaptureSheet(model: model) }
-        // 수집 [저장] → **그 기억의 상세 화면**으로 이어 간다 (2026-08-30 사용자 결정).
-        // 신호는 `model.openDetailId` — 수집 시트가 **두 입구**(여기 `+` · `RootView`의 액션 버튼·
-        // 단축어)에서 뜨는데, 미는 자리는 `NavigationPath`를 가진 **여기 하나**다.
-        // ⚠️ **시트가 닫히는 동안 밀지 않는다** — 겹치면 미는 것이 삼켜진다. 닫힘 애니메이션(~0.35초)
-        //    뒤로 한 박자 물린다. ⛔ 이 지연을 지우면 「저장했는데 목록으로 나온다」가 된다.
-        .onChange(of: model.openDetailId) { _, id in
-            guard let id else { return }
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(350))
-                // 저장 직후 `append`→`load`가 이미 돌았으므로 목록에 있다. 못 찾으면 밀지 않는다.
-                if let item = model.current(id) { path.append(item) }
-                model.openDetailId = nil
-            }
-        }
+        // ⛔⛔ **수집 [저장] → 상세로 자동 이동은 걷어냈다** (2026-08-31 사용자 판정).
+        //
+        // **옛 꼴(지우지 않고 적어 둔다):** `model.openDetailId`를 관찰해 닫힘 애니메이션(~0.35초)
+        // 뒤에 `path.append(item)`으로 밀었다. **06aff97에서는 통과했다.**
+        //
+        // ⛔ **그런데 자료 카드(22d62ad)가 들어오자 깨졌다:** [저장]이 `capture` 뒤에 `addPhoto`·
+        // `addURL`을 N번 부르고 그 하나하나가 `load()`를 돌린다 → **닫힘과 겹치는 그 350ms 동안
+        // 목록이 여러 번 다시 그려지고**, 미는 것이 **반쪽만 적용됐다**:
+        // **화면은 안 넘어가는데 내비 바에 back chevron 자국만 남았다.**
+        // 그 뒤 기억을 눌러 진짜로 밀면 **`‹`가 둘로 보였다**(사용자: *"< 아이콘이 좌측 상단에 2개"*).
+        //
+        // ✅ **사용자 판정:** *"수집 화면에서 바로 상세화면으로 가질 않더라. 그건 괜찮아. 유지하자.
+        // … 원래 기억 눌러서 상세로 들어가면 나오는 것을 유지해줘."*
+        // → **[저장]은 목록으로 돌아온다.** 상세로 가는 길은 **기억을 누르는 것 하나**다.
+        // ⚠️ **되살리려면 「닫힘 뒤에 민다」가 아니라 다른 짜임이 필요하다** — 지연으로는 못 막는다
+        //    (`load()`가 몇 번 도는지가 자료 수에 걸려 있어 350ms가 근거를 잃는다).
     }
 
     /// **자료 옮기기 배너** — 설계 `media-icloud-design.md` §8. **자리는 목록 위**(사용자가 고른 자리).
