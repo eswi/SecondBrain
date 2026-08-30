@@ -28,6 +28,16 @@ final class InboxModel: ObservableObject {
     /// (상세 화면 [삭제하기]는 자체 확인 후 dismiss하므로 이 경로를 안 쓴다.)
     @Published var pendingDelete: ResolvedItem?
 
+    /// **수집 [저장] 뒤에 열 상세 화면의 항목 id** (2026-08-30 사용자 결정 · 2026-08-31에 다시 세웠다).
+    ///
+    /// `CaptureSheet.save()`가 올리고 **`InboxView`가 「시트가 닫힌 뒤에」 소비한다**(`openPendingDetail`).
+    /// ⛔ **여기에 두는 이유:** 수집 시트는 **두 곳에서** 뜬다(`InboxView`의 `+` · `RootView`의
+    /// 액션 버튼·단축어). 시트에 콜백을 물리면 **입구마다 배선이 갈리고 한쪽이 조용히 빠진다** —
+    /// 모델에 신호 하나를 두면 밀 곳(`NavigationPath`를 가진 `InboxView`)이 **한 자리**다.
+    /// ⚠️ **화면 상태이지 데이터가 아니다** — 파일에 안 나가고 병합과 무관하다(`pendingDelete`와 같은 성격).
+    /// ⛔ **소비하는 쪽이 먼저 nil로 내린다** — 두 신호(자기 시트 · 액션 버튼 시트)가 다 와도 **한 번만** 민다.
+    @Published var openDetailId: String?
+
 
     /// 자동 분류 진행 상태(설정의 수동 버튼에서 그 자리 인라인 표시).
     enum ClassifyPhase: Equatable { case idle, running, done(Int), failed(String) }

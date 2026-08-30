@@ -20,6 +20,9 @@ struct InboxView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
     @State private var showCapture = false
+    /// 액션 버튼·단축어로 열린 수집 시트는 `RootView`가 띄운다 — **그것이 닫히는 것을 알아야**
+    /// 저장한 기억의 상세로 이어 갈 수 있다(아래 `openPendingDetail`).
+    @ObservedObject private var launcher = CaptureLauncher.shared
     @State private var path = NavigationPath()
     // "새 기억들" 표시 순서 뒤집기 토글. **세션 한정**(탭 전환엔 유지, 앱 재실행 시 기본=오래된 순).
     // 데이터·성역은 불변 — model.newTab.newMemories는 늘 오래된 순(선입선출)이고, 여기서 보기 순서만 뒤집는다.
@@ -49,23 +52,35 @@ struct InboxView: View {
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
         }
-        .sheet(isPresented: $showCapture) { CaptureSheet(model: model) }
-        // ⛔⛔ **수집 [저장] → 상세로 자동 이동은 걷어냈다** (2026-08-31 사용자 판정).
+        // **수집 [저장] → 그 기억의 상세 화면으로 이어 간다** (2026-08-30 사용자 결정).
+        // ★★ **미는 시점이 `onDismiss`다 — 시간 짐작이 없다**(2026-08-31에 여기로 옮겼다).
         //
-        // **옛 꼴(지우지 않고 적어 둔다):** `model.openDetailId`를 관찰해 닫힘 애니메이션(~0.35초)
-        // 뒤에 `path.append(item)`으로 밀었다. **06aff97에서는 통과했다.**
-        //
-        // ⛔ **그런데 자료 카드(22d62ad)가 들어오자 깨졌다:** [저장]이 `capture` 뒤에 `addPhoto`·
-        // `addURL`을 N번 부르고 그 하나하나가 `load()`를 돌린다 → **닫힘과 겹치는 그 350ms 동안
-        // 목록이 여러 번 다시 그려지고**, 미는 것이 **반쪽만 적용됐다**:
-        // **화면은 안 넘어가는데 내비 바에 back chevron 자국만 남았다.**
-        // 그 뒤 기억을 눌러 진짜로 밀면 **`‹`가 둘로 보였다**(사용자: *"< 아이콘이 좌측 상단에 2개"*).
-        //
-        // ✅ **사용자 판정:** *"수집 화면에서 바로 상세화면으로 가질 않더라. 그건 괜찮아. 유지하자.
-        // … 원래 기억 눌러서 상세로 들어가면 나오는 것을 유지해줘."*
-        // → **[저장]은 목록으로 돌아온다.** 상세로 가는 길은 **기억을 누르는 것 하나**다.
-        // ⚠️ **되살리려면 「닫힘 뒤에 민다」가 아니라 다른 짜임이 필요하다** — 지연으로는 못 막는다
-        //    (`load()`가 몇 번 도는지가 자료 수에 걸려 있어 350ms가 근거를 잃는다).
+        // ⛔ **옛 꼴(지우지 않고 적어 둔다):** `.onChange(of: model.openDetailId)` 안에서
+        //    `Task.sleep(350ms)` 뒤에 밀었다. **`06aff97`에서는 통과했다 — 자료가 없었을 때만.**
+        //    `22d62ad`에서 [저장]이 자료마다 `addPhoto`·`addURL` → `load()`를 돌리자
+        //    **그 350ms가 닫힘·재그리기와 겹쳐 미는 것이 반쪽만 적용됐다:**
+        //    **화면은 안 넘어가고 내비 바에 `‹` 자국만 남았다**(사용자: *"< 아이콘이 좌측 상단에 2개"*).
+        // ★ **왜 지연으로는 못 막나:** `load()`가 **몇 번 도는지가 자료 수에 걸려 있다** —
+        //    값을 늘려도 근거가 없다. ⛔ **다시 `Task.sleep`으로 돌아가지 말 것.**
+        .sheet(isPresented: $showCapture, onDismiss: { openPendingDetail() }) {
+            CaptureSheet(model: model)
+        }
+        // **액션 버튼·단축어로 열린 수집 시트는 `RootView`가 띄운다** — 그것이 닫힐 때도 같은 신호를 소비한다.
+        // ⛔ **입구마다 배선을 갈라 두지 않으려는 것이다**(한쪽이 조용히 빠진다).
+        // ⚠️ **두 신호가 다 와도 한 번만 민다** — `openPendingDetail`이 **먼저 nil로 내린다.**
+        .onChange(of: launcher.showCapture) { _, open in if !open { openPendingDetail() } }
+    }
+
+    /// **수집 [저장] 뒤에 그 기억의 상세로 민다** — ⚠️ **시트가 닫힌 뒤에만 불린다**(`onDismiss`).
+    ///
+    /// ⛔ **먼저 신호를 내린다** — 두 입구(여기 `+` · 액션 버튼)가 다 알려 와도 **한 번만** 밀도록.
+    /// ⚠️ **못 찾으면 밀지 않는다** — 저장 직후 `append`→`load`가 이미 돌았으므로 목록에 있어야 하고,
+    /// 없다면 저장이 안 된 것이다(원문이 빈 경우 `capture`가 nil을 준다 → 신호 자체가 안 올라온다).
+    private func openPendingDetail() {
+        guard let id = model.openDetailId else { return }
+        model.openDetailId = nil
+        guard let item = model.current(id) else { return }
+        path.append(item)
     }
 
     /// **자료 옮기기 배너** — 설계 `media-icloud-design.md` §8. **자리는 목록 위**(사용자가 고른 자리).
