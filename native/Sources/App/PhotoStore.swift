@@ -74,6 +74,14 @@ enum PhotoStore {
 
     /// 임시 파일을 `<id>.jpg`로 확정(이동). 이후 재오픈 없음 = **write-once·불변**.
     /// 성공 시 저장할 포인터 파일명 반환, 실패/파일없음이면 nil(→ 항목은 사진 없이 생성).
+    ///
+    /// ## ⛔ **2026-08-30부터 아무도 부르지 않는다 — 지우지 않고 남긴다**
+    /// 이것은 **성역(create 블록의 `photo`) 경로**였다. 수집 화면의 사진이 **op으로 옮겨가면서**
+    /// (사용자 결정 2026-08-30 · `InboxModel.capture` 머리주석) **호출자가 0이 됐다.**
+    /// **지금 쓰는 것은 `finalizeAdded`**(이름에 자료 id가 붙는 꼴 · §3-W-6)다.
+    /// ⚠️ **읽는 쪽은 살아 있다** — 이 이름 꼴(`<id>.jpg`)로 저장된 **옛 파일이 실데이터에 그대로 있고**
+    /// `MediaPointer`가 옛 단일 필드를 읽는다(§3-W-5). **그래서 이 함수의 「꼴」은 아직 정본이다.**
+    /// ⛔ **지우면 그 꼴의 근거가 코드에서 사라진다** — `AudioStore.finalize`(음성 성역)와 짝으로 남긴다.
     @discardableResult
     static func finalize(temp: URL, forId id: String) -> String? {
         guard let dir = localPhotoDir() else { return nil }
@@ -219,8 +227,15 @@ enum PhotoStore {
 
     /// 사진 파일 EXIF의 촬영 좌표. 없으면(권한 거부·실내 등) nil. 온디바이스.
     static func coordinate(name: String) -> CLLocationCoordinate2D? {
-        guard let url = url(name: name),
-              let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+        guard let url = url(name: name) else { return nil }
+        return coordinate(fileURL: url)
+    }
+
+    /// 같은 것을 **파일 경로로** 읽는다 — **아직 확정되지 않은 임시 사진**에 쓴다
+    /// (수집 화면의 「보조 자료」 카드 · 2026-08-30에 갈라냈다).
+    /// ⛔ **두 벌로 만들지 않았다** — 위 `coordinate(name:)`이 이것을 부른다.
+    static func coordinate(fileURL url: URL) -> CLLocationCoordinate2D? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
               let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any],
               let lat = gps[kCGImagePropertyGPSLatitude] as? Double,

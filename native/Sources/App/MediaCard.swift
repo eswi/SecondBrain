@@ -323,6 +323,79 @@ struct MediaEmptyTile: View {
 
 // MARK: - 카드
 
+// MARK: - 네모 줄 (두 카드가 함께 쓴다)
+
+/// 네모 줄의 치수 — **§0이 정본이다.** ⛔ **여기서 값을 바꾸지 말 것.**
+enum MediaStripMetrics {
+    /// 네모 사이 간격(§0 6번).
+    static let gap: CGFloat = 8
+    /// ㉰ 아래 점이 붙을 때 카드가 높아지는 양(§0 9번).
+    static let dotsHeight: CGFloat = 12
+    /// 넘침을 **미리** 재는 데 쓰는 폭(§0 6번) — 화면 402 − 바깥 16×2 − 카드 14×2 = **342**.
+    /// ⚠️ **`GeometryReader` 안에서는 늦다**(높이를 이미 정해 버린 뒤다) — 그래서 미리 계산할 값이 필요하다.
+    static let assumedWidth: CGFloat = 342
+}
+
+/// **「보조 자료」 네모 줄** — 제목 + 가로 62pt 네모 줄 + 넘침 점 + 카드 껍데기.
+///
+/// ★★ **두 카드가 이것을 함께 쓴다** (2026-08-30에 갈라냈다):
+/// | 누가 | 무엇을 그리나 |
+/// |---|---|
+/// | **`MediaCard`** (상세) | **저장된 항목**의 포인터 — `item.mediaValues(_:)` |
+/// | **`CaptureMediaCard`** (수집 화면) | **저장 전 임시 자료** — 아직 항목이 없다 |
+///
+/// ⛔ **왜 갈라냈나:** 수집 화면에도 같은 줄이 필요해졌는데, **복사하면 두 곳이 갈린다.**
+/// 62·8·12·342는 **재서 정한 값**이고 §0이 정본이라 **한 자리에 있어야** 한다.
+/// ⚠️ **`tileCount`는 추가 네모(`+`)를 포함한 수**다 — 넘침 판정이 그 수로 난다.
+struct MediaStrip<Content: View>: View {
+    let tileCount: Int
+    private let content: Content
+
+    init(tileCount: Int, @ViewBuilder content: () -> Content) {
+        self.tileCount = tileCount
+        self.content = content()
+    }
+
+    /// 네모 줄이 실제로 차지하는 폭 — 네모 n개 + 그 사이 간격 (n−1)개.
+    private var need: CGFloat {
+        CGFloat(tileCount) * MediaTile.side + CGFloat(tileCount - 1) * MediaStripMetrics.gap
+    }
+
+    /// 높이를 정하려면 넘치는지 **미리** 알아야 한다(`MediaStripMetrics.assumedWidth` 참조).
+    private var overflowsNow: Bool { need > MediaStripMetrics.assumedWidth }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // §0 2번 — 사용자가 고른 말. ⚠️ **글꼴은 다른 카드 제목과 같아야 한다**
+            // (`DetailView.sectionLabel` = `.caption.weight(.semibold)` + `textSecondary`).
+            // ⛔ 처음엔 `.callout`으로 넣었더니 **이 카드만 제목이 컸다**(2026-08-23 실기기에서 사용자가 잡았다).
+            Text("보조 자료")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.textSecondary)
+            GeometryReader { geo in
+                let overflows = need > geo.size.width + 0.5
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: MediaStripMetrics.gap) { content }
+                }
+                .overlay(alignment: .bottom) {
+                    // §0 9번 — ㉰ 아래 점. **네모를 안 덮는 대신 카드가 12pt 높아진다.**
+                    if overflows {
+                        HStack(spacing: 4) {
+                            Circle().fill(Palette.textSecondary).frame(width: 5, height: 5)
+                            Circle().fill(Palette.textTertiary.opacity(0.5)).frame(width: 5, height: 5)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.textTertiary)
+                        }
+                        .offset(y: MediaStripMetrics.dotsHeight)
+                    }
+                }
+            }
+            .frame(height: MediaTile.side + (overflowsNow ? MediaStripMetrics.dotsHeight : 0))
+        }
+        .padding(14).card()
+    }
+}
+
 /// 보조 자료 카드 — **폭 전체 · 접기 없음**(§0 1·2·4번).
 struct MediaCard: View {
     let item: ResolvedItem
@@ -348,19 +421,31 @@ struct MediaCard: View {
     @State private var urlPick: URLPick?
     #endif
 
-    private static let gap: CGFloat = 8        // §0 6번
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // §0 2번 — 사용자가 고른 말. ⚠️ **글꼴은 다른 카드 제목과 같아야 한다**
-            // (`DetailView.sectionLabel` = `.caption.weight(.semibold)` + `textSecondary`).
-            // ⛔ 처음엔 `.callout`으로 넣었더니 **이 카드만 제목이 컸다**(2026-08-23 실기기에서 사용자가 잡았다).
-            Text("보조 자료")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Palette.textSecondary)
-            tiles
+        // ★ **껍데기·치수는 `MediaStrip`이 갖는다**(2026-08-30) — 수집 화면 카드와 **같은 줄**을 쓰려고
+        //    갈라냈다. ⛔ **여기서 다시 그리지 말 것** — 두 곳이 갈린다.
+        MediaStrip(tileCount: presentKinds.count + 1) {
+            ForEach(presentKinds) { k in
+                #if os(iOS)
+                if k == .url { urlTileButton } else { plainTileButton(k) }
+                #else
+                plainTileButton(k)
+                #endif
+            }
+            // ★★ **추가 네모는 늘 맨 뒤에 있다** (2026-08-23 사용자 · §0 10번 개정).
+            //
+            // ⛔ **옛 꼴은 「자료가 0개일 때만」 점선 네모를 뒀다** — 그러면
+            //    **빈 카드가 다른 화면**이 된다(자료가 생기는 순간 추가 자리가 사라졌다).
+            //    사용자: *"그러면 빈 카드와 자료 있는 카드가 **같은 구조**가 된다."*
+            // ✅ **2026-08-23부터 눌린다** — `MediaAddSheet`(종류를 먼저 고른다)로 간다.
+            //    ⛔ **옛 서술(지우지 않는다):** *"⏸ 아직 안 눌린다 … 누르면 아무 일 없는 단추를
+            //    만들지 않고, 없는 기능을 알리는 문구도 짓지 않는다."*
+            //    ⚠️ **뒷문장이 뒤집혔다**(사용자 결정): 시트는 **종류 여섯을 다 보이고**
+            //    아직 안 되는 다섯을 누르면 **「아직 못 담아요」**를 그 줄에 띄운다.
+            //    **앞문장은 유지된다** — `+` 자체는 이제 **실제로 무언가를 연다.**
+            Button { onAdd() } label: { MediaEmptyTile() }
+                .buttonStyle(.plain)
         }
-        .padding(14).card()
         .task(id: item.id) {
             // ✅ **그 예고가 맞았다** — 옛 주석: *"여럿이 되면 자료마다 상태가 필요하다."*
             //    2026-08-26 맥에서 실제로 드러났고(표본 `BFE53B0B`) `byName`이 그 자리다.
@@ -372,54 +457,6 @@ struct MediaCard: View {
             audioFetch.measure(.audio, names: voices)
             photoFetch.measure(.photo, names: photos)
         }
-    }
-
-    @ViewBuilder private var tiles: some View {
-        let kinds = presentKinds
-        GeometryReader { geo in
-            // ⚠️ **추가 네모(+)를 함께 센다** — 늘 있으므로 **네모 수 = 종류 수 + 1**이다.
-            let n = kinds.count + 1
-            let need = CGFloat(n) * MediaTile.side + CGFloat(n - 1) * Self.gap
-            let overflows = need > geo.size.width + 0.5
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Self.gap) {
-                    ForEach(kinds) { k in
-                        #if os(iOS)
-                        if k == .url { urlTileButton } else { plainTileButton(k) }
-                        #else
-                        plainTileButton(k)
-                        #endif
-                    }
-                    // ★★ **추가 네모는 늘 맨 뒤에 있다** (2026-08-23 사용자 · §0 10번 개정).
-                    //
-                    // ⛔ **옛 꼴은 「자료가 0개일 때만」 점선 네모를 뒀다** — 그러면
-                    //    **빈 카드가 다른 화면**이 된다(자료가 생기는 순간 추가 자리가 사라졌다).
-                    //    사용자: *"그러면 빈 카드와 자료 있는 카드가 **같은 구조**가 된다."*
-                    // ✅ **2026-08-23부터 눌린다** — `MediaAddSheet`(종류를 먼저 고른다)로 간다.
-                    //    ⛔ **옛 서술(지우지 않는다):** *"⏸ 아직 안 눌린다 … 누르면 아무 일 없는 단추를
-                    //    만들지 않고, 없는 기능을 알리는 문구도 짓지 않는다."*
-                    //    ⚠️ **뒷문장이 뒤집혔다**(사용자 결정): 시트는 **종류 여섯을 다 보이고**
-                    //    아직 안 되는 다섯을 누르면 **「아직 못 담아요」**를 그 줄에 띄운다.
-                    //    **앞문장은 유지된다** — `+` 자체는 이제 **실제로 무언가를 연다.**
-                    Button { onAdd() } label: { MediaEmptyTile() }
-                        .buttonStyle(.plain)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                // §0 9번 — ㉰ 아래 점. **네모를 안 덮는 대신 카드가 12pt 높아진다.**
-                // ⚠️ 지금 데이터(최대 둘)로는 안 뜬다.
-                if overflows {
-                    HStack(spacing: 4) {
-                        Circle().fill(Palette.textSecondary).frame(width: 5, height: 5)
-                        Circle().fill(Palette.textTertiary.opacity(0.5)).frame(width: 5, height: 5)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.textTertiary)
-                    }
-                    .offset(y: 12)
-                }
-            }
-        }
-        .frame(height: MediaTile.side + (overflowsNow ? 12 : 0))
     }
 
     private func plainTileButton(_ k: MediaCardKind) -> some View {
@@ -469,13 +506,6 @@ struct MediaCard: View {
             .map { URLEntry(assetId: $0.assetId, value: $0.value) }
     }
     #endif
-
-    /// 높이를 정하려면 넘치는지 **미리** 알아야 한다(`GeometryReader` 안에서는 늦다).
-    /// 폭은 §0 6번의 **342pt**를 쓴다 — 화면 폭 402 − `ScrollView` 16×2 − 카드 14×2.
-    private var overflowsNow: Bool {
-        let n = presentKinds.count + 1        // 추가 네모(+)가 늘 있다
-        return CGFloat(n) * MediaTile.side + CGFloat(n - 1) * Self.gap > 342
-    }
 
     /// 0개인 종류는 네모를 안 보인다(§0 7번). **포인터 값을 읽어** 센다(C 뒤 — 9-b 해소).
     private var presentKinds: [MediaCardKind] {

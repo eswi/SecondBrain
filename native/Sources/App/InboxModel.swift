@@ -519,8 +519,17 @@ final class InboxModel: ObservableObject {
     ///   **원문 없는 기억은 만들지 않는다** — raw 비면 audio·photo 임시를 지우고 항목을 안 만든다(마지막 백스톱).
     /// - Returns: 만들어진 항목의 **id**(저장 안 했으면 nil) — 부르는 쪽이 **그 상세 화면으로 이어가려고**
     ///   쓴다(`CaptureSheet.save()` → `openDetailId`). 2026-08-30에 돌려주기 시작했다.
+    ///
+    /// ## ⛔ 축이 바뀌었다 — **수집 사진도 이제 op이다** (2026-08-30 사용자 결정)
+    /// **옛 꼴:** `photoTemp:`를 받아 **create 블록의 `photo`**(성역)에 넣었다 — **한 장이 상한**이었다.
+    /// **지금:** 수집 화면의 「보조 자료」 카드가 자료를 여럿 받으므로 **전부 op**(`addPhoto`·`addURL`)으로
+    /// 붙는다. **성역에 남는 자료는 녹음 원본 `audio` 하나**다.
+    /// ⛔ **읽는 쪽은 안 바뀌었다** — 옛 단일 필드(`photo`)는 `MediaPointer`가 그대로 읽는다(§3-W-5).
+    /// ★ **왜 이 축인가:** create 블록에 여럿을 쓰려면 `EventWriter`의 고정 목록을 접두어로 열어야 하고
+    /// (§3-W-4 1번) **성역은 한번 자라면 되돌릴 수 없다.** 그래서 **§3-Y-1 결정 2와 같은 모양**으로 갔다.
+    /// ⚠️ **대가:** 「수집 당시 함께 들어온 사진」이라는 보장이 **데이터에서 사라진다**(사용자가 알고 골랐다).
     @discardableResult
-    func capture(text: String, source: String, audioTemp: URL? = nil, photoTemp: URL? = nil) -> String? {
+    func capture(text: String, source: String, audioTemp: URL? = nil) -> String? {
         // ⚠️ **`raw`는 한 줄이다** — create 블록 꼴이 `- <날짜> <시각> | <source> | <raw>`이므로
         //    줄바꿈을 담을 수 없다(`EventWriter.serialize`). 그래서 여기서 접는다.
         //    **빈 줄 둘(새 녹음 이음새 · `TranscriptJoin.paragraph`)을 먼저 빈칸 하나로** 접는다 —
@@ -532,8 +541,7 @@ final class InboxModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             if let audioTemp { AudioStore.deleteTemp(audioTemp) }   // 텍스트 없으면 저장 안 함 → 임시 정리
-            if let photoTemp { PhotoStore.deleteTemp(photoTemp) }
-            return nil
+            return nil                                             // ⚠️ 임시 사진은 부르는 쪽이 지운다(op 경로)
         }
         let now = Date()
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
@@ -543,9 +551,6 @@ final class InboxModel: ObservableObject {
         var extra = ["device": CaptureDevice.currentLabel()]
         if let audioTemp, let name = AudioStore.finalize(temp: audioTemp, forId: id) {
             extra["audio"] = name   // 원본 음성 포인터(성역·불변)
-        }
-        if let photoTemp, let name = PhotoStore.finalize(temp: photoTemp, forId: id) {
-            extra["photo"] = name   // 원본 사진 포인터(성역·불변)
         }
         let e = Event.create(id: id, hlc: tick(),
                              date: date, time: time, source: source, raw: raw, extra: extra)
