@@ -109,9 +109,13 @@ struct CaptureSheet: View {
                                 .foregroundStyle(Palette.textTertiary).padding(18).allowsHitTesting(false)
                         }
                     }
-                #if os(iOS)
-                micControl
-                #endif
+                    // ★★ **녹음 단추를 이 칸 안 우측 하단에 얹는다**(2026-08-31 사용자 결정 · `micButton`).
+                    //    ⛔ **테두리 overlay보다 뒤에 온다** — 앞에 두면 테두리가 단추 위에 그려진다.
+                    //    ⚠️ **뜻이 자리로 드러난다:** *"그거 눌러서 말하면 그 텍스트 박스 안으로
+                    //    타이핑된다는 의미야"* — 그래서 **칸 밖이 아니라 칸 안**이다.
+                    #if os(iOS)
+                    .overlay(alignment: .bottomTrailing) { micButton.padding(10) }
+                    #endif
                 // ★★ **[삭제하기]·[저장 후 편집하기]** — 순서는 사용자가 정했다(2026-08-31):
                 //    **텍스트 → 마이크 → 버튼 둘 → 자료 카드.**
                 //    ⛔ **`#if` 밖에 둔다** — 맥에도 저장 단추가 있어야 한다(옛 [저장]은 툴바에 있었다).
@@ -133,16 +137,15 @@ struct CaptureSheet: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") { cancel() }
-                }
-                // ⛔ **오른쪽 위의 [저장]을 뺐다** (2026-08-31 사용자: *"수집 화면에서 저장이 가장 위로
-                //    올라가 있잖아? 그런데 일관성 차원에서는 [저장 하기] 버튼은 텍스트 바로 아랫줄에
-                //    위치되는 것이 좋겠어."*) → 본문의 `decideRow`로 내려갔다.
-                // ⚠️ **[취소]는 남겼다** — 상세 화면의 `‹`(뒤로)에 대응하는 자리다.
-                //    ⏸ **[삭제하기]와 하는 일이 같다**(임시를 버리고 닫는다) — 하나로 줄일지는 사용자 결정.
-            }
+            // ⛔⛔ **위쪽 툴바에 단추가 없다** (2026-08-31 사용자 결정).
+            //    ① **[저장]을 뺐다** — *"일관성 차원에서는 [저장 하기] 버튼은 텍스트 바로 아랫줄에
+            //       위치되는 것이 좋겠어."* → 본문의 `decideRow`로 내려갔다.
+            //    ② **[취소]도 뺐다** — *"3번은 취소 버튼을 지우는 방식으로 결론내자."*
+            //       ([취소]와 [삭제하기]가 **하는 일이 같아서** 하나로 줄인 것이다.)
+            //    ⛔ **그래서 나가는 길은 [삭제하기] 하나다** — 쓸어 닫기도 막혀 있다
+            //       (`.interactiveDismissDisabled(true)`).
+            //    ⏸ **[삭제하기]는 아직 되묻지 않는다** — 잘못 누르면 받아쓰기·녹음이 바로 사라진다.
+            //       **확인을 붙일지는 사용자 결정**(문구가 필요하다 · 항시 규칙 6).
         }
         // ⛔ **아래로 쓸어 닫는 것을 막는다** (2026-08-30 사용자 지시: *"수집 화면 어디를 누르든
         //    터치하여 아래로 스와이프하면 화면이 취소되고 사라짐. 취소 버튼이 있으니 이 기능은 지워버리세요."*)
@@ -285,19 +288,29 @@ struct CaptureSheet: View {
         }
     }
 
-    @ViewBuilder private var micControl: some View {
-        HStack {
-            Spacer()
-            Button {
-                if speech.isRecording { speech.stop() } else { speech.resume(seed: text) }
-            } label: {
-                Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                    .font(.system(size: 52))
-                    .foregroundStyle(speech.isRecording ? Palette.overdue : Palette.accent)
-            }
-            .buttonStyle(.plain)
-            Spacer()
+    /// **녹음 단추 — 텍스트 칸 우측 하단에 얹힌 꼴**(2026-08-31 사용자 결정).
+    ///
+    /// 사용자: *"텍스트 아래에 마이크 아이콘은 정말 안 어울린다. 조화롭지 않아. 이 버튼은
+    /// 크기,모양 그대로 유지한채로 Floating Button 방식으로 바꿔서 텍스트 박스 우측 하단에
+    /// 위치시키자. 그거 눌러서 말하면 그 텍스트 박으로 안으로 타이핑된다는 의미야."*
+    ///
+    /// ⛔ **크기·모양·색을 바꾸지 말 것** — 52pt · `mic.circle.fill` / 녹음 중 `stop.circle.fill` ·
+    /// accent / 녹음 중 overdue. **바뀐 것은 자리 하나다.**
+    /// ⛔ **옛 꼴:** 텍스트 칸 **아래 한 줄에 가운데 정렬**(`HStack` + `Spacer` 둘). 그 줄이 없어졌다.
+    ///
+    /// ⚠️ **글자와 겹칠 수 있다 — 쟀다:** 칸의 시작 높이가 **80pt**이고 안쪽 여백이 10×2라
+    /// 글자가 쓰는 높이는 **≈60pt = 17pt에서 세 줄**(줄높이 20.1). 단추는 **52 + 여백 10 = 62pt**를
+    /// 오른쪽 아래에서 먹으므로 **둘째·셋째 줄의 오른쪽이 가려진다.**
+    /// **화면에서 판정받을 값이다**(계측 규칙 4) — 걸리면 자리를 바깥으로 반쯤 빼는 것이 다음 후보다.
+    @ViewBuilder private var micButton: some View {
+        Button {
+            if speech.isRecording { speech.stop() } else { speech.resume(seed: text) }
+        } label: {
+            Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                .font(.system(size: 52))
+                .foregroundStyle(speech.isRecording ? Palette.overdue : Palette.accent)
         }
+        .buttonStyle(.plain)
     }
 
     /// 미저장 종료 → 임시 음성·사진 삭제. **[취소]와 `onDisappear` 둘이 부른다.**
