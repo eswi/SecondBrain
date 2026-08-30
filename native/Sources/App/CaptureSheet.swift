@@ -94,6 +94,10 @@ struct CaptureSheet: View {
     @State private var micBase: EdgeSlide.Shift = .home
     /// 이번 접촉이 **이동**이었나 — 이동 뒤에 오는 탭을 삼켜 녹음이 켜/꺼지지 않게 한다.
     @State private var micMoved = false
+    /// **잡혔다**(끌 수 있게 됐다) — 진동을 **한 번만** 주려는 표시. 손을 떼면 내린다.
+    @State private var micGrabbed = false
+    /// 처음 열릴 때의 **흔들기**를 한 번만 하려는 표시.
+    @State private var didHint = false
     #endif
 
     var body: some View {
@@ -181,6 +185,10 @@ struct CaptureSheet: View {
             guard !didStart else { return }
             didStart = true
             speech.start()                                    // 열리면 바로 STT(+ 원본 음성 녹음)
+            // ★ **「끌 수 있다」를 몸으로 알린다** — 짧게 흔든다(2026-08-31 사용자 결정 · `micHintWiggle`).
+            //   ⚠️ **녹음이 시작된 뒤다** — 사용자: *"아마 그 때는 녹음이 시작되어 있을 거야.
+            //   그러니 녹음되는 중에 그렇게 동작해 달라는 의미야."*
+            if !didHint { didHint = true; Task { await micHintWiggle() } }
         }
         .onChange(of: speech.transcript) { _, t in text = t } // 실시간 전사를 편집칸에
         .onDisappear {
@@ -377,14 +385,20 @@ struct CaptureSheet: View {
         LongPressGesture(minimumDuration: 0.25)
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
+                guard case .second(true, let drag) = value else { return }
+                // ★ **잡혔다 — 여기서 한 번 진동한다**(2026-08-31 사용자: *"그래그해서 이동할 수
+                //   있게 잡혔다면 약간의 진동을 넣어줘"*).
+                //   ⚠️ **`drag`가 nil인 첫 알림에서도 잡힌 것이다** — `minimumDistance: 0`이라
+                //   손가락이 안 움직여도 끌기가 바로 시작될 수 있어 **둘 다 받아** 놓쳐지지 않게 한다.
+                if !micGrabbed { micGrabbed = true; Self.grabHaptic() }
+                guard let drag else { return }
                 micMoved = true
                 micShift = EdgeSlide.snap(base: micBase,
                                           dx: drag.translation.width, dy: drag.translation.height,
                                           boxW: box.width, boxH: box.height,
                                           itemW: Self.micW, itemH: Self.micH, pad: Self.micPad)
             }
-            .onEnded { _ in micBase = micShift }
+            .onEnded { _ in micBase = micShift; micGrabbed = false }
     }
 
     /// 미저장 종료 → 임시 음성·사진 삭제. **[취소]와 `onDisappear` 둘이 부른다.**
@@ -487,6 +501,41 @@ struct CaptureSheet: View {
                     .padding(16)
                 }
             }
+    }
+
+    /// **잡혔다는 진동** — 끌 수 있게 된 순간 한 번(2026-08-31 사용자 결정).
+    /// ⚠️ **`.light`다** — *"약간의 진동"*이라고 했다. ⛔ 세기를 올리지 말 것.
+    private static func grabHaptic() {
+        let gen = UIImpactFeedbackGenerator(style: .light)
+        gen.prepare()
+        gen.impactOccurred()
+    }
+
+    /// **처음 열릴 때 짧게 흔든다** — 「이 단추는 움직인다」를 몸으로 알린다.
+    ///
+    /// 사용자(2026-08-31): *"이 화면에 처음 진입하면 마이크 버튼이 움직일 수 있다는 느낌을 주기 위해
+    /// default 위치에서 위로 두번 정도 왼쪽으로 두번정도 흔들어줘. 짧게."*
+    ///
+    /// **움직일 수 있는 두 방향을 그대로 보인다** — 위(우측 변) 두 번 · 왼쪽(하단 변) 두 번.
+    /// ⛔ **`EdgeSlide.snap`을 통과하지 않는다.** 이것은 **이동이 아니라 신호**이고,
+    /// 칸이 낮을 때(80pt) `snap`은 **위로 0**을 주므로 통과시키면 **위 흔들기가 아예 안 보인다.**
+    /// ⚠️ **그래서 12pt가 칸 밖으로 조금 나간다** — 짧고 한 번뿐이라 그대로 뒀다. **화면에서 볼 값이다.**
+    /// ⛔ **끝나면 반드시 기본 자리로 돌아온다** — `micBase`는 건드리지 않으므로 다음 끌기의 기준은 그대로다.
+    private func micHintWiggle() async {
+        let amount = 12.0
+        let step = 0.09          // 한 칸 0.09초 × 8칸 ≈ 0.72초 — *"짧게"*
+        func move(_ to: EdgeSlide.Shift) async {
+            withAnimation(.easeInOut(duration: step)) { micShift = to }
+            try? await Task.sleep(for: .seconds(step))
+        }
+        for _ in 0..<2 {                                  // 위로 두 번
+            await move(EdgeSlide.Shift(dx: 0, dy: -amount))
+            await move(.home)
+        }
+        for _ in 0..<2 {                                  // 왼쪽으로 두 번
+            await move(EdgeSlide.Shift(dx: -amount, dy: 0))
+            await move(.home)
+        }
     }
 
     /// `sheet(item:)`·`fullScreenCover(item:)`이 요구하는 그릇 둘.
