@@ -40,7 +40,7 @@ struct LivingView: View {
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
             } else {
                 ForEach(items, id: \.id) { item in
-                    MemoryRow(item: item, model: model)
+                    MemoryRow(item: item, model: model, backTitle: "살아있는 기억")
                         .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                         .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

@@ -29,9 +29,11 @@ struct RootView: View {
         ZStack {
             mainBody
             #if os(iOS)
-            // ★ **`holdForExit`** — 끝내는 0.45초 동안 **수집 화면을 붙잡아 둔다**(2026-09-02).
-            //   ⛔ 없으면 `showCapture`가 내려가는 순간 **목록이 드러나 그대로 미끄러져 내려간다.**
-            if (launcher.showCapture || launcher.holdForExit) && launcher.launchedByURL {
+            // ★★ **끝내는 길에서는 `showCapture`가 안 내려간다** — 그래서 이 조건이 그대로 참이고
+            //   **수집 화면이 마지막까지 그려진 채로** 미끄러져 내려간다(`CaptureSheet.leaveNow`).
+            //   ⛔ **옛 시도(하루 만에 걷어냈다): `holdForExit`** — 내려간 **뒤에** 다시 붙잡으려 했고
+            //   **`suspend`가 그보다 빨랐다**(사용자: *"3번은 전혀 안 바뀌었음"*).
+            if launcher.showCapture && launcher.launchedByURL {
                 CaptureSheet(model: model, origin: .hotkey)
                     .background(Palette.bg.ignoresSafeArea())
                     .transition(.identity)          // 나타날 때 움직임이 없어야 「처음부터 있던 것」이 된다
@@ -137,6 +139,10 @@ struct RootView: View {
         // ★ **닫힘 처리를 한 자리로 모았다** — 뿌리로 그려질 때는 `onDismiss`가 없다(띄운 것이 아니다).
         //   ⛔ 두 자리에 두면 한쪽만 돌아 「앱 밖으로」가 빠진다.
         .onChange(of: launcher.showCapture) { _, now in if !now { hotkeyCaptureClosed() } }
+        // ★★ **[취소하기]는 이 값으로 온다** (2026-09-02) — 끝내는 길에서는 `showCapture`가
+        //   **안 내려가므로** 위 줄이 안 돈다. ⚠️ **둘 다 도는 경우가 있다**(앱 안에 머무는 길) —
+        //   먼저 도는 쪽이 `cancelledOut`을 내리므로 **뒤엣것은 guard에서 되돌아 나간다.**
+        .onChange(of: launcher.cancelledOut) { _, now in if now { hotkeyCaptureClosed() } }
         .onChange(of: tab) { _, newTab in
             if scenePhase == .active {
                 // 사용자가 실제로 고른 탭(active일 때만 일어남) → 기억.
@@ -179,13 +185,14 @@ struct RootView: View {
     ///
     /// ⛔ **왜 여기인가:** 되돌릴 탭을 아는 곳이 여기다. **시트에서 내려놓으면 되돌리기 전에
     /// 화면이 얼어 수집 화면이 남은 채로 내려간다.**
-    /// ⚠️ **`likelyWokenByHotkey`는 추정이다** — 문턱 3초의 근거와 오판의 방향은 그 프로퍼티 주석에.
+    /// ✅ **「깨웠나」는 이제 추정이 아니다** — `wokenByHotkey`(= `launchedByURL`)가 그 사실이다.
+    /// ⛔ **옛 서술: *"`likelyWokenByHotkey`는 추정이다 — 문턱 3초…"*** (2026-09-02에 죽었다).
     /// ⛔ **`exit(0)`은 크래시로 기록된다** — 사용자가 *"exit상태로"*를 명시해서 쓴다.
     ///   ⚠️ **파일 쓰기는 이미 끝나 있다** — 수집을 버리고 나가는 길이라 append가 없다.
     private func hotkeyCaptureClosed() {
         #if os(iOS)
         // ⚠️ **`woken`을 defer보다 먼저 정한다** — defer가 이 값에 걸린다.
-        let woken = launcher.cancelledOut && launcher.likelyWokenByHotkey
+        let woken = launcher.cancelledOut && launcher.wokenByHotkey
         defer {
             launcher.tabBeforeHotkey = nil
             launcher.cancelledOut = false
@@ -194,10 +201,6 @@ struct RootView: View {
         }
         guard launcher.cancelledOut else { return }        // `<`로 닫혔다 → 앱 안에 남는다
         if let back = launcher.tabBeforeHotkey, !woken { setTabNoAnimation(back) }
-        // ★★ **붙잡는 것이 먼저다 — `suspend`보다 앞** (2026-09-02).
-        //   같은 갱신 주기 안에서 켜지므로 **목록이 한 프레임도 안 드러난다**(`if`의 조건이 계속 참이라
-        //   수집 화면의 정체성도 유지된다 — 다시 만들어지지 않는다).
-        if woken { launcher.holdForExit = true }
         // 비공개 선택자 — `#selector`는 공개 API에만 쓸 수 있다. `NSSelectorFromString`은 경고가 없다.
         UIApplication.shared.perform(NSSelectorFromString("suspend"))
         // ★ **끝낼 때도 「내려놓고 나서」 끝낸다** (2026-08-31 사용자: *"너무 허무하게 끝나.

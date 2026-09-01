@@ -391,9 +391,15 @@ struct CaptureSheet: View {
         //    ⛔ **시트에서 `suspend`를 부르면** 되돌리기 전에 화면이 얼어 **수집 화면이 남은 채로 내려간다.**
         //    여기서는 **뜻만 남긴다** — `RootView`의 `onDismiss`가 읽는다.
         if kind == .cancel && origin == .hotkey { CaptureLauncher.shared.cancelledOut = true }
+        // ★★ **끝내는 길에서는 이 화면을 안 내린다** (2026-09-02 · 사용자: *"종료되는 과정이라면
+        //   당연히 다른 화면이 보이지 말아야 하고"*). **내리는 순간 뿌리가 목록으로 되돌아가고,
+        //   `suspend`가 그 목록을 데리고 내려간다.** ⛔ **내려간 뒤에 다시 붙잡는 것으로는 안 됐다**
+        //   (`holdForExit` · 하루 만에 걷어냈다). **아예 안 내리는 것이 답이다.**
+        //   ⚠️ **이 길의 끝은 `exit(0)`이라 되돌아올 자리가 없다** — 안 내려도 남는 것이 없다.
+        let willExitApp = kind == .cancel && CaptureLauncher.shared.wokenByHotkey
         // ★ **뿌리로 그려졌을 때는 `dismiss()`가 아무 일도 안 한다**(띄운 것이 아니다) —
         //   그래서 **신호를 직접 내린다.** 커버로 떴을 때도 이 값이 커버를 닫는다(`warmCapture`).
-        if origin == .hotkey { CaptureLauncher.shared.showCapture = false }
+        if origin == .hotkey && !willExitApp { CaptureLauncher.shared.showCapture = false }
         #endif
         dismiss()
     }

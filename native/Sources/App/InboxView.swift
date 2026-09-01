@@ -169,7 +169,7 @@ struct InboxView: View {
                     emptyNewRow
                 } else {
                     ForEach(orderedNew, id: \.id) { item in
-                        MemoryRow(item: item, model: model, provisional: true)
+                        MemoryRow(item: item, model: model, provisional: true, backTitle: "새로운 기억")
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                             .swipeActions(edge: .leading, allowsFullSwipe: true) { confirmAction(item) }
@@ -567,11 +567,17 @@ struct MemoryRow: View {
     let item: ResolvedItem
     @ObservedObject var model: InboxModel
     var provisional: Bool = false   // 미확정이면 "임시" 배지
+    /// **상세의 `<`에 붙을 글자** — **이 줄이 놓인 화면의 이름**이다(`DetailRoute`).
+    /// ⛔⛔ **기본값을 두지 않는다 — 이 줄을 두 화면이 함께 쓴다**(`InboxView`의 「새 기억들」 ·
+    /// `LivingView`). **2026-09-02에 여기서 물렸다:** 이름을 「새로운 기억」으로 **박아 두었더니**
+    /// 「살아있는 기억」에서 연 상세도 「‹ 새로운 기억」이라 했다(사용자가 폰에서 잡았다).
+    /// ★ **화면 이름을 줄 안에 박으면, 그 줄이 다른 화면에 놓이는 순간 조용히 거짓말을 한다.**
+    let backTitle: String
 
     var body: some View {
         HStack(spacing: 10) {
             TypeMenuButton(item: item) { model.changeType(item, to: $0) }   // 글리프 탭 = 인라인 분류변경
-            NavigationLink(value: DetailRoute(item: item, backTitle: "새로운 기억")) {   // 나머지 탭 = 상세 화면
+            NavigationLink(value: DetailRoute(item: item, backTitle: backTitle)) {   // 나머지 탭 = 상세 화면
                 // **★ 두 줄 구조로 바꿨다 (2026-08-18 사용자 결정) — 원문 줄 + 캡션 줄.**
                 //
                 // **왜:** 「임시」 배지와 `SourceBadge`가 **원문과 같은 줄에서 폭을 나눠 쓰고 있었다.**
