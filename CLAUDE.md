@@ -15,8 +15,8 @@
 ```sh
 git pull
 cd native && xcodegen generate          # .xcodeproj는 gitignore 생성물 — 매번 재생성
-swift test --package-path SecondBrainCore   # ← 410개(2026-08-26 맥북 실측). 경로 빼면 실패한다(아래 ①)
-                                            #   *(옛 값: 374개 2026-08-21 — 코드가 자라며 밀렸다)*
+swift test --package-path SecondBrainCore   # ← 434개(2026-09-01 맥미니 실측). 경로 빼면 실패한다(아래 ①)
+                                            #   *(옛 값: 410개 2026-08-26 · 374개 2026-08-21 — 코드가 자라며 밀렸다)*
 xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
   -destination 'id=<UDID>' build          # ← 이름 말고 UDID(아래 ③)
 ```
