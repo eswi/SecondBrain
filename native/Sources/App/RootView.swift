@@ -183,6 +183,12 @@ struct RootView: View {
     /// | **[취소하기]** · 앱이 **이미 떠 있었다** | **그때 보던 탭으로 되돌리고** 내려놓는다(`suspend`) |
     /// | **[취소하기]** · 핫키가 **앱을 깨웠다** | **끝낸다**(`exit(0)`) — *"아예 앱이 exit 상태였다면 exit상태로"* |
     ///
+    /// ★★ **한 줄로 하면 이것이다** (2026-09-02 사용자):
+    /// *"액션 버튼으로 들어간 경우는 **들어가기 직전 앱의 상태를 봐뒀다가 취소하고 나올 때 그 상태로**
+    /// 만들어달라는거야."* — 위 표의 두 줄은 **그 한 원칙의 두 경우**다.
+    /// ⚠️ **떠 있던 경우는 「그 화면이 그대로 보여도 괜찮다」**고 사용자가 명시했다
+    /// (*"앱을 완전 종료시킬 필요도 없고"*) — **되돌릴 상태가 「살아 있음」이기 때문**이다.
+    ///
     /// ⛔ **왜 여기인가:** 되돌릴 탭을 아는 곳이 여기다. **시트에서 내려놓으면 되돌리기 전에
     /// 화면이 얼어 수집 화면이 남은 채로 내려간다.**
     /// ✅ **「깨웠나」는 이제 추정이 아니다** — `wokenByHotkey`(= `launchedByURL`)가 그 사실이다.
@@ -201,8 +207,18 @@ struct RootView: View {
         }
         guard launcher.cancelledOut else { return }        // `<`로 닫혔다 → 앱 안에 남는다
         if let back = launcher.tabBeforeHotkey, !woken { setTabNoAnimation(back) }
+        // ★★★ **내려놓기 전에 「배경 시간」을 연다** (2026-09-02 · 폰에서 잡혔다).
+        //   ⛔ **`suspend` 뒤에는 메인 큐가 멈춘다** — 그래서 아래 0.45초짜리 `exit(0)`이
+        //   **한 번도 안 돌았다.** 화면만 내려가고 **앱은 살아 있었다**
+        //   (사용자: *"깨끗하게 나와지네. 이건 좋아. 그런데.. 앱이 살아있어."*).
+        //   ⚠️ **눈에는 끝난 것처럼 보였다** — 그래서 08-31 판정에서도 안 걸렸다.
+        //   ✅ `beginBackgroundTask`가 **내려간 뒤에도 잠깐 돌 시간**을 준다(넉넉히 수십 초).
+        //   ⛔ **닫지 않는다**(`endBackgroundTask`) — 이 길의 끝은 `exit(0)`이다.
+        //   만료 처리로도 `exit(0)`을 걸어 둔다 — **어느 쪽으로 가든 앱은 끝난다.**
+        let app = UIApplication.shared
+        if woken { _ = app.beginBackgroundTask(withName: "capture-exit") { exit(0) } }
         // 비공개 선택자 — `#selector`는 공개 API에만 쓸 수 있다. `NSSelectorFromString`은 경고가 없다.
-        UIApplication.shared.perform(NSSelectorFromString("suspend"))
+        app.perform(NSSelectorFromString("suspend"))
         // ★ **끝낼 때도 「내려놓고 나서」 끝낸다** (2026-08-31 사용자: *"너무 허무하게 끝나.
         //   휙 사라져. 매우 빨리. 그래서 섭섭해…"*).
         //   ⛔ **뜻은 안 바꿨다 — 앱은 여전히 끝난다.** 바뀐 것은 **나가는 모습**이다:
