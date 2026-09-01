@@ -52,7 +52,7 @@ struct SearchView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
             .navigationTitle("검색")
-            .navigationDestination(for: ResolvedItem.self) { DetailView(item: $0, model: model) }
+            .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
         }
         // **문구 둘은 사용자가 골랐다**(2026-08-28) — ID로도 찾게 되면서 「원문…」이 사실과 어긋났다.
         // 자리표시자 「기억 검색」 · 빈 화면 안내 「기억 찾기」.
@@ -69,7 +69,7 @@ struct SearchView: View {
             // **한 번만 만든다** — 줄마다 부르면 `partition`이 그때마다 다시 돈다(InboxModel 주석).
             let screens = model.screenNames
             List(results, id: \.id) { item in
-                NavigationLink(value: item) {
+                NavigationLink(value: DetailRoute(item: item, backTitle: "검색")) {
                     HStack(spacing: 10) {
                         TypeGlyph(type: item.type)
                         VStack(alignment: .leading, spacing: 3) {

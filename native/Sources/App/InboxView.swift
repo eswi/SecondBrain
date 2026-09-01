@@ -46,7 +46,7 @@ struct InboxView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
             .hiddenNavBar()
-            .navigationDestination(for: ResolvedItem.self) { DetailView(item: $0, model: model) }
+            .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
             .navigationDestination(for: PrincipleListRoute.self) { _ in PrincipleListView(model: model, path: $path) }
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
@@ -88,7 +88,7 @@ struct InboxView: View {
         model.openDetailId = nil
         Task { @MainActor in
             guard let item = await model.resolveAfterWrite(id) else { return }
-            path.append(item)
+            path.append(DetailRoute(item: item, backTitle: "새로운 기억"))
         }
     }
 
@@ -503,7 +503,7 @@ struct UpcomingCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             TypeMenuButton(item: entry.item) { model.changeType(entry.item, to: $0) }   // 글리프 = 인라인 분류변경
-            NavigationLink(value: entry.item) {                                          // 나머지 = 상세 화면
+            NavigationLink(value: DetailRoute(item: entry.item, backTitle: "새로운 기억")) {   // 나머지 = 상세 화면
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
                         // 원문이 보이는 곳은 좌우 맞춤(2026-08-21 사용자 요구). 굵기·크기·줄 제한은 전과 같다.
@@ -571,7 +571,7 @@ struct MemoryRow: View {
     var body: some View {
         HStack(spacing: 10) {
             TypeMenuButton(item: item) { model.changeType(item, to: $0) }   // 글리프 탭 = 인라인 분류변경
-            NavigationLink(value: item) {                                    // 나머지 탭 = 상세 화면
+            NavigationLink(value: DetailRoute(item: item, backTitle: "새로운 기억")) {   // 나머지 탭 = 상세 화면
                 // **★ 두 줄 구조로 바꿨다 (2026-08-18 사용자 결정) — 원문 줄 + 캡션 줄.**
                 //
                 // **왜:** 「임시」 배지와 `SourceBadge`가 **원문과 같은 줄에서 폭을 나눠 쓰고 있었다.**

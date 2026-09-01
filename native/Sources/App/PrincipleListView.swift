@@ -122,12 +122,13 @@ struct PrincipleListView: View {
             items: items,
             activeCount: n,
             onReorder: { model.reorderPrinciples($0) },
-            onSelect: { path.append($0) }
+            // ★ **「원칙」에서 연 상세의 `<`는 「원칙」이다** — 같은 스택이지만 온 화면이 다르다.
+            onSelect: { path.append(DetailRoute(item: $0, backTitle: "원칙")) }
         )
         #else
         List {
             ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
-                NavigationLink(value: p) {
+                NavigationLink(value: DetailRoute(item: p, backTitle: "원칙")) {
                     PrincipleCard(item: p, number: idx + 1, active: idx < n)
                 }
                 .listRowBackground(Palette.bg)

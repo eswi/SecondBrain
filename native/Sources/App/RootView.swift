@@ -29,7 +29,9 @@ struct RootView: View {
         ZStack {
             mainBody
             #if os(iOS)
-            if launcher.showCapture && launcher.launchedByURL {
+            // ★ **`holdForExit`** — 끝내는 0.45초 동안 **수집 화면을 붙잡아 둔다**(2026-09-02).
+            //   ⛔ 없으면 `showCapture`가 내려가는 순간 **목록이 드러나 그대로 미끄러져 내려간다.**
+            if (launcher.showCapture || launcher.holdForExit) && launcher.launchedByURL {
                 CaptureSheet(model: model, origin: .hotkey)
                     .background(Palette.bg.ignoresSafeArea())
                     .transition(.identity)          // 나타날 때 움직임이 없어야 「처음부터 있던 것」이 된다
@@ -182,14 +184,20 @@ struct RootView: View {
     ///   ⚠️ **파일 쓰기는 이미 끝나 있다** — 수집을 버리고 나가는 길이라 append가 없다.
     private func hotkeyCaptureClosed() {
         #if os(iOS)
+        // ⚠️ **`woken`을 defer보다 먼저 정한다** — defer가 이 값에 걸린다.
+        let woken = launcher.cancelledOut && launcher.likelyWokenByHotkey
         defer {
             launcher.tabBeforeHotkey = nil
             launcher.cancelledOut = false
-            launcher.launchedByURL = false      // 뿌리 갈래를 내려 목록이 다시 보이게
+            // ★ **끝내는 길이면 뿌리를 그대로 둔다** (2026-09-02) — 내리면 목록이 드러난다.
+            if !woken { launcher.launchedByURL = false }   // 뿌리 갈래를 내려 목록이 다시 보이게
         }
         guard launcher.cancelledOut else { return }        // `<`로 닫혔다 → 앱 안에 남는다
-        let woken = launcher.likelyWokenByHotkey
         if let back = launcher.tabBeforeHotkey, !woken { setTabNoAnimation(back) }
+        // ★★ **붙잡는 것이 먼저다 — `suspend`보다 앞** (2026-09-02).
+        //   같은 갱신 주기 안에서 켜지므로 **목록이 한 프레임도 안 드러난다**(`if`의 조건이 계속 참이라
+        //   수집 화면의 정체성도 유지된다 — 다시 만들어지지 않는다).
+        if woken { launcher.holdForExit = true }
         // 비공개 선택자 — `#selector`는 공개 API에만 쓸 수 있다. `NSSelectorFromString`은 경고가 없다.
         UIApplication.shared.perform(NSSelectorFromString("suspend"))
         // ★ **끝낼 때도 「내려놓고 나서」 끝낸다** (2026-08-31 사용자: *"너무 허무하게 끝나.

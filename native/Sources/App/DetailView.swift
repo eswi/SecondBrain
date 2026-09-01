@@ -20,12 +20,35 @@ import CoreLocation
 ///   저장해도 항목은 여전히 미기억일 수 있다 — **수정 ≠ 기억하기** (§2).
 /// - **[취소]** = 수정 전부 버리고 닫기(아무것도 반영 안 됨).
 /// - **[삭제하기]** = 기억 자체 삭제(tombstone, 보관함서 복구 가능).
+/// **상세로 밀 때 「어디서 왔는지」를 함께 나른다** (2026-09-02).
+///
+/// ⛔ **왜 항목만으로는 안 되나:** `<`의 글자가 **「누르면 나타날 화면의 이름」**이 되면서
+/// **같은 항목이라도 어느 화면에서 열었느냐에 따라 글자가 달라진다.**
+/// ⚠️ **그리고 화면과 경로가 1:1이 아니다** — 「원칙」 목록은 **「새로운 기억」의 내비 스택 안**이라
+/// 목적지 선언이 하나뿐이다. 그래서 **이름을 값에 실어** 보낸다.
+///
+/// | 미는 쪽 | `backTitle` |
+/// |---|---|
+/// | `InboxView`(목록 · 저장 직후) | 「새로운 기억」 |
+/// | `PrincipleListView` | **「원칙」** ← 같은 스택인데 이름이 다른 자리 |
+/// | `LivingView` | 「살아있는 기억」 |
+/// | `SearchView` | 「검색」 |
+struct DetailRoute: Hashable {
+    let item: ResolvedItem
+    let backTitle: String
+}
+
 struct DetailView: View {
     /// 자료 받아오기(§6) — 상세를 열 때 그 항목 것 **하나만** 받는다. 음성·사진 각각.
     @StateObject private var audioFetch = MediaFetch()
     @StateObject private var photoFetch = MediaFetch()
     let item: ResolvedItem
     @ObservedObject var model: InboxModel
+    /// **좌측 상단 `<`에 붙는 글자** — **`<`를 누르면 나타날 화면의 이름**이다
+    /// (2026-09-02 사용자 결정 · 수집 화면의 `<`와 같은 규칙).
+    /// ⛔ **기본값을 두지 않는다** — 상세는 **온 화면이 셋**이라(「새로운 기억」·「살아있는 기억」·「검색」)
+    /// **부르는 쪽만 안다.** 기본값을 두면 새 진입점이 생겼을 때 **틀린 이름이 조용히 붙는다.**
+    let backTitle: String
     @Environment(\.dismiss) private var dismiss
 
     // draft — 편집 대상 필드. raw(원문)도 편집 대상(edit-policy.md §6 텍스트 층 가변).
@@ -119,9 +142,10 @@ struct DetailView: View {
     /// (「어디는 되고 어디는 안 되는」이 된다). **첫 자리가 규칙이 되는 꼴이다.**
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(item: ResolvedItem, model: InboxModel) {
+    init(item: ResolvedItem, model: InboxModel, backTitle: String) {
         self.item = item
         self.model = model
+        self.backTitle = backTitle
         _type = State(initialValue: item.type)
         _due = State(initialValue: item.due)
         _resurface = State(initialValue: item.resurface)
@@ -284,15 +308,20 @@ struct DetailView: View {
         .toolbar {
             // ★★ **짝이 있다 — 수집 화면(`CaptureSheet`)의 `<`**(2026-08-31 사용자 결정:
             //   *"상세화면과 같이 유지하자. 한쪽이 바뀌면 같이 바뀌기로 하고 둘이 맞추자."*)
-            //   ⛔ **한쪽만 고치지 말 것.** 꼴(`Label` + `chevron.backward` + `accent`)이 같고
-            //   글자는 **그 화면의 제목**을 쓴다(여기는 「기억」 · 수집은 「새 기억」).
+            //   ⛔ **한쪽만 고치지 말 것.** 꼴(`chevron.backward` + `accent`)이 같고
+            //   글자는 **`<`를 누르면 나타날 화면의 이름**을 쓴다(`backTitle` · 2026-09-02 사용자 결정:
+            //   *"< 누르면 나타날 화면의 이름으로 < 버튼의 제목을 달아야 한다"*).
+            //   ⛔ **옛 규칙(뒤집혔다):** *"글자는 **그 화면의 제목**을 쓴다(여기는 「기억」 ·
+            //   수집은 「새 기억」)."* — **자기 이름을 달던 것**이라 수집에서 제목과 두 번 읽혔다.
+            //   ⚠️ **여기는 두 번 읽히지 않았다**(제목 「기억」 · 글자도 「기억」이라 눈에 안 띄었다) —
+            //   **드러난 자리는 수집이고, 규칙은 둘 다에 걸린다.**
             //   ⛔⛔ **`Label`은 글자를 안 보인다** — iOS 26이 툴바 앞자리를 **아이콘만**으로 그린다
             //   (2026-08-31 시뮬 스크린샷으로 쟀다). **`HStack`으로 직접 놓는다.**
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { backTapped() } label: {
                     HStack(spacing: 2) {
                         Image(systemName: "chevron.backward")
-                        Text("기억")
+                        Text(backTitle)
                     }
                 }
                 .tint(Palette.accent)
