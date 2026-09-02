@@ -37,6 +37,11 @@
 
 ### ⏸ 새로 열린 것 하나 — **음성 지우기** (사진이 길을 냈다 · 사양서 「아직인 것」)
 
+### ✅ 문서화도 끝냈다 (원본 자리는 `docs/worklog/2026-09-03-macmini.md` **§7**)
+사양서 · `edit-policy.md` ③ · `media-expansion-design.md`(§3-Z-10-6 · §3-Z-12 · §0 19번) ·
+`media-icloud-design.md` §9 · **`CLAUDE.md` 새 절 「고칠 때 훑는 법」 + 기록 규칙 11 + 9의 셋째 갈래** ·
+**`docs/lessons/2026-09-03-fix-one-sweep-the-shape.md`** 신설.
+
 ---
 
 # ▶ 그 앞(09-02 새벽) 한 것 — **`<` 글자 규칙이 뒤집혔다 · 「끝내기」는 미결**
