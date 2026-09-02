@@ -29,14 +29,25 @@ enum SystemCamera {
     ///
     /// ## ★★ 연달아 찍는다 (`continuous` · 2026-09-03 사용자 결정)
     /// 사용자: *"사진을 찍을 때에도 여러개 찍은 후 한꺼번에 저장 어떨까?"*
-    /// **`continuous`면 한 장 찍어도 안 닫는다** — 카메라가 그대로 남아 **다음 장을 바로 찍는다.**
-    /// `onImage`가 **장마다** 오고, **나가는 것은 카메라의 [취소]**다(그때 `onFinish`).
+    /// **`continuous`면 한 장 찍은 뒤 카메라를 다시 띄운다** — [취소]로 나갈 때까지 이어진다.
+    /// `onImage`가 **장마다** 오고, `onFinish`는 **정말 끝날 때 한 번만** 온다
+    /// (⛔ **장마다 부르지 않는다** — 부르면 「카메라가 덮고 있다」 표시가 내려가
+    /// 사이사이에 **수집 내용을 지우는 정리가 돈다**).
     /// ⛔ **「한꺼번에 저장」은 원래 되고 있었다** — 찍은 것은 카드에 쌓이고
     /// **[저장 후 편집하기]가 한 번에 붙인다**(`CaptureSheet.save`). **바뀐 것은 「연달아 찍는 것」이다.**
-    /// ⚠️ **나가는 단추 이름이 [취소]다** — 시스템 화면이라 **우리가 못 바꾼다.**
-    /// 찍어 둔 것은 **안 버려진다**(카드에 이미 쌓였다). **사용자 판정 대기.**
-    /// ⚠️ **닫지 않으면 카메라가 다시 촬영 화면으로 돌아오는지는 실기기에서만 갈린다** —
-    /// **시뮬레이터에는 카메라가 없다.** ⛔ **못 잼**(추정 · 사용자가 판정한다).
+    ///
+    /// ### ⛔⛔ 첫 시도가 틀렸다 — **「안 닫고 버티기」** (2026-09-03에 폰에서 깨졌다)
+    /// **옛 꼴:** 찍어도 `dismiss`를 안 했다. **picker가 스스로 촬영 화면으로 돌아올 것**이라 봤다.
+    /// **사용자 판정:** *"카메라로 한장 찍으면 바로 수집화면으로 나가버려. 연속으로 찍을 수 없는거지.
+    /// 그래서 혹시나 하고 빠르게 촬영 버튼 두번 눌렀더니 앱이 멈춰버려. 뭘 눌러도 반응이 없게 돼."*
+    /// ⛔ **둘이 났다:** ① 안 닫아도 **화면은 닫혔다**(우리가 아닌 쪽이 닫았다) ② **앱이 멈췄다.**
+    /// ✅ **지금 꼴: 닫힘이 「끝난 뒤」 다시 띄운다**(`dismiss`의 완료 자리). **겹치지 않는다.**
+    /// ⚠️ **사이에 닫힘·열림 애니메이션이 한 번씩 보인다** — 이 API로 겹치지 않게 하는 값이다.
+    ///
+    /// ### ⛔ 그리고 **셔터를 두 번 받지 않는다** (`done`)
+    /// 콜백이 두 번 오면 **`present`/`dismiss`가 겹쳐** 보이지 않는 화면이 얹힌 채로 남는다 —
+    /// **앱이 살아 있는데 아무것도 안 눌리는** 그 모습이다. **한 번만 받는다.**
+    /// ★ **앨범의 「빠른 탭」과 같은 형태다**(`AlbumPicker.finished`) — **같은 날 두 자리에서 났다.**
     ///
     /// - Parameter onFinish: **찍든 취소하든 · 아예 못 띄우든 반드시 한 번** 불린다.
     ///   ★ **왜 있나 (2026-08-30):** 이 picker는 **`.fullScreen` 모달**이라, 뜨는 순간 밑에 있는
@@ -85,26 +96,40 @@ enum SystemCamera {
             self.continuous = continuous
         }
 
+        /// **콜백을 한 번만 받는다** — 셔터를 두 번 누르면 `present`/`dismiss`가 겹쳐
+        /// **앱이 멈춘 것처럼 된다**(2026-09-03 폰에서 났다 · 머리주석 ⛔ 블록).
+        private var done = false
+
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            guard !done else { return }
+            done = true
             if let img = info[.originalImage] as? UIImage { onImage(img) }
-            // ★ **연달아 찍기면 닫지 않는다** — 닫지 않으면 picker가 촬영 화면으로 돌아온다.
-            //   ⛔ **다시 띄우는 방식은 쓰지 않았다** — `finish`가 **닫힘 애니메이션이 끝나기 전에**
-            //   `onFinish`를 부르므로(아래 ⚠️), 그 안에서 다시 present하면 **닫히는 중에 겹쳐** 조용히 실패한다.
-            guard !continuous else { return }
-            finish(picker)
+            // ★ **연달아 찍기면 닫고 나서 다시 띄운다** — 「안 닫고 버티기」는 실패했다(머리주석).
+            close(picker, thenReopen: continuous)
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            finish(picker)
+            guard !done else { return }
+            done = true
+            // ⛔ **취소는 언제나 정말 끝이다** — 연달아 찍기의 **출구**가 이 자리다.
+            close(picker, thenReopen: false)
         }
 
-        private func finish(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
+        private func close(_ picker: UIImagePickerController, thenReopen: Bool) {
             SystemCamera.retained = nil
             // ⚠️ **닫기 애니메이션이 끝나기 전에 부른다** — 그래야 뒤이어 오는 시트의 `onAppear`보다
             //    먼저 도착해 「카메라가 덮고 있다」 표시가 내려간다(순서가 뒤바뀌면 정리가 헛돈다).
-            onFinish?()
+            // ⛔ **다시 띄울 때는 부르지 않는다** — 내려가면 **사이사이에 정리가 돌아 사진·녹음이 사라진다.**
+            if !thenReopen { onFinish?() }
+            let onImage = self.onImage
+            let onFinish = self.onFinish
+            picker.dismiss(animated: true) {
+                guard thenReopen else { return }
+                // ★★ **닫힘이 「끝난 뒤」다** — 닫히는 중에 present하면 조용히 실패한다.
+                //   ⚠️ **`onFinish`를 그대로 넘긴다** — 출구는 [취소] 하나이고 그때 한 번만 불린다.
+                SystemCamera.present(continuous: true, onImage: onImage, onFinish: onFinish)
+            }
         }
     }
 }
