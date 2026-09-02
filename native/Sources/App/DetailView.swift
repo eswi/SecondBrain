@@ -402,11 +402,19 @@ struct DetailView: View {
             //    뷰어는 낡은 값을 받고 있었다. 그래서 **뷰어를 한 번 열었다가 상세로 나와 사진을 더 붙이면
             //    카드의 개수는 늘는데 뷰어에는 새 사진이 없었다**(사용자가 잡았다).
             //    ★ **C에서 카드는 고치고 뷰어는 빠뜨린 자리다** — 같은 값을 두 곳에서 넘기면 한쪽만 고쳐진다.
-            MediaViewer(item: model.current(item.id) ?? item, kind: k, audio: audio) { viewerKind = nil }
+            MediaViewer(source: .saved(model.current(item.id) ?? item), kind: k, audio: audio,
+                        onClose: { viewerKind = nil },
+                        // ★ **사진만 지운다** — 음성·URL은 아직이다(사양서 「아직인 것」).
+                        //   ⚠️ **X를 안 그리는 것으로 갈린다**(`onDelete == nil`).
+                        onDelete: k == .photo ? { i in deletePhoto(at: i) } : nil)
         }
         #else
         .sheet(item: $viewerKind) { k in
-            MediaViewer(item: model.current(item.id) ?? item, kind: k, audio: audio) { viewerKind = nil }
+            MediaViewer(source: .saved(model.current(item.id) ?? item), kind: k, audio: audio,
+                        onClose: { viewerKind = nil },
+                        // ★ **사진만 지운다** — 음성·URL은 아직이다(사양서 「아직인 것」).
+                        //   ⚠️ **X를 안 그리는 것으로 갈린다**(`onDelete == nil`).
+                        onDelete: k == .photo ? { i in deletePhoto(at: i) } : nil)
                 // ⛔ **`min`만 주면 창이 사진을 따라 커진다** — 맥 시트는 **내용 크기로 열린다.**
                 //    그래서 **가로 사진과 세로 사진에서 창 높이가 달랐고**, 아래에 붙은 썸네일 줄이
                 //    그만큼 **오르락내리락했다**(2026-08-26 사용자가 잡았다).
@@ -446,6 +454,19 @@ struct DetailView: View {
                   onOpenURL: openURL(_:),
                   onDeleteURL: { deletingURLAsset = $0 },
                   onRefetchURL: { model.refetchURLPreview($0) })
+    }
+
+    /// **뷰어의 n번째 사진을 지운다** (2026-09-03 사용자 결정 · 자리도 사용자가 골랐다).
+    ///
+    /// ⚠️ **묻는 것은 뷰어가 이미 했다** — 여기는 **실행**이다(문구는 한 자리에 둔다 · `MediaViewer`).
+    /// ⛔ **`i`는 「뷰어에서 보이는 순서」다** — 그래서 **같은 함수로 값과 자료 id를 함께 읽는다**
+    /// (`mediaAssets` · 순서가 `mediaValues`와 같다). **둘을 따로 계산하면 어긋난다.**
+    /// ⚠️ **최신 항목에서 읽는다** — 뷰어에 넘긴 것과 같은 값이어야 한다(위 `fullScreenCover` 주석).
+    private func deletePhoto(at i: Int) {
+        let cur = model.current(item.id) ?? item
+        let assets = cur.mediaAssets(.photo)
+        guard assets.indices.contains(i) else { return }
+        model.removePhoto(from: cur.id, assetId: assets[i].assetId, name: assets[i].value)
     }
 
     /// `+` 시트를 연다 — iOS만.

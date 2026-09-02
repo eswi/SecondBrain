@@ -137,6 +137,44 @@ enum PhotoStore {
         return nil
     }
 
+    /// **사본을 버린다** — 자료 삭제 정본(`edit-policy.md` ③)의 뒷부분이다.
+    ///
+    /// > *"기억에서 떼는 것 **+ SecondBrain이 복사해 둔 사본을 버리는 것.** 복사 전 원본은 안 건드린다."*
+    ///
+    /// **2026-09-03 사용자 결정: 「정본 그대로 — 사본도 지운다」.**
+    /// **로컬 사본**(`Application Support/SecondBrain/photo`)과 **iCloud 사본**(자리 둘 다) 모두 지운다.
+    /// ⚠️ **자리를 둘 다 본다** — 하위 폴더와 루트에 흩어져 있을 수 있다(`MediaCloud.candidates`의 이유와 같다).
+    /// **한쪽만 지우면 다음 실행이 남은 것을 「있다」로 읽는다.**
+    ///
+    /// ## ⛔ 받아들인 대가 — **다른 기기가 옛 사본을 들고 있으면 iCloud에 다시 올라올 수 있다**
+    /// 업로더가 **op 로그를 안 보고 폴더에 있는 파일 전부**를 올린다
+    /// (`media-icloud-design.md` §9 — 2026-08-19에 알고 받아들인 것).
+    /// ✅ **그래도 화면에는 안 보인다** — **포인터를 이미 비웠기 때문**이다.
+    /// 되살아나는 것은 **고아 파일**이고, `native/tools/media-audit.py`가 그것을 잡는다.
+    /// ⛔ **「지워졌나」를 파일 존재로 판정하지 말 것** — 판정선은 **포인터**다.
+    ///
+    /// ⚠️ **원본 사진(앨범·카메라 롤)은 건드리지 않는다** — 우리가 만든 사본만 지운다.
+    /// 확인 문구가 그것을 말한다(*"원본은 그대로 있어요"*).
+    /// - Returns: 실제로 지운 개수 — **로컬·iCloud를 갈라 돌려준다**(0이어도 실패가 아니다).
+    @discardableResult
+    static func deleteCopies(name: String) -> (local: Int, cloud: Int) {
+        let fm = FileManager.default
+        var local = 0
+        for dir in searchDirs() {
+            let u = dir.appendingPathComponent(name)
+            if fm.fileExists(atPath: u.path), (try? fm.removeItem(at: u)) != nil { local += 1 }
+        }
+        let cloud = FragmentFolder.withFolder { folder -> Int in
+            var n = 0
+            for u in MediaCloud.candidates(.photo, name: name, folder: folder) {
+                // ⚠️ **dataless여도 지운다** — 이름이 있으면 그것이 사본의 자리다(§0-B).
+                if fm.fileExists(atPath: u.path), (try? fm.removeItem(at: u)) != nil { n += 1 }
+            }
+            return n
+        } ?? 0
+        return (local, cloud)
+    }
+
     /// **iCloud에 바이트가 있고 로컬에 없으면 로컬로 들여온다**(§2-A C안). `AudioStore`의 미러.
     @discardableResult
     static func adoptFromCloudIfNeeded(name: String) -> Bool {

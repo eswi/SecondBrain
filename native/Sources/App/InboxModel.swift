@@ -783,6 +783,34 @@ final class InboxModel: ObservableObject {
     ///
     /// ⏸ **미리보기 캐시는 안 지운다** — 캐시는 **URL로 묶여 있어서** 다른 기억이 같은 URL을
     /// 쓰고 있을 수 있다. 기기에만 있고 작아서 남겨도 해가 없다(설계 §3-Z-2 E).
+    /// **사진 자료를 기억에서 뗀다 + 사본을 버린다** (2026-09-03 사용자 결정).
+    ///
+    /// ## 정본 그대로다 (`edit-policy.md` ③)
+    /// > *"기억에서 떼는 것 + SecondBrain이 복사해 둔 사본을 버리는 것.
+    /// > 복사 전 원본은 안 건드린다. 되돌리기 없음."*
+    ///
+    /// ★ **URL이 낸 길을 그대로 쓴다**(`removeURL`) — `set photo.<자료id>=`.
+    /// **새 규약을 만들지 않았다:** `MergeEngine`이 *"빈 문자열은 값 지움"*이고
+    /// 읽는 쪽(`MediaPointer.pointers`)이 **이미 빈 값을 거른다.**
+    /// ⛔ **URL과 다른 것은 하나다 — 지울 파일이 있다.** 그 뒷부분이 `PhotoStore.deleteCopies`다.
+    ///
+    /// ⚠️ **순서가 뜻이 있다: 포인터를 먼저 비운다.**
+    /// **화면의 판정선은 포인터**이므로, 파일 지우기가 반쪽으로 끝나도 **자료는 이미 떼어져 있다.**
+    /// ⛔ **거꾸로 하면** 파일이 없는데 포인터가 남아 **「어디에도 없다」 네모**가 생긴다(유령).
+    ///
+    /// ⚠️ **op 로그는 append-only라 원래 값이 파일에 남는다** — 화면에서 사라지는 것이고
+    /// **기록이 지워지는 것이 아니다.** 앱에는 되살리는 길이 없다(정본: 되돌리기 없음).
+    /// - Parameters:
+    ///   - assetId: 새 꼴은 `photo.<자료id>` · **옛 단일 필드는 nil**이라 `photo` 칸을 비운다.
+    ///   - name: 포인터 값(= 파일명) — **사본을 찾는 유일한 근거**다.
+    func removePhoto(from itemId: String, assetId: String?, name: String) {
+        let key = assetId.map { MediaPointer.key(.photo, $0) } ?? MediaPointer.Kind.photo.rawValue
+        append(.edit(id: itemId, hlc: tick(), [key: ""]))
+        let n = PhotoStore.deleteCopies(name: name)
+        // ⚠️ **0이어도 실패가 아니다** — 다른 기기에만 있던 사본일 수 있다(로컬 사본은 기기별이다).
+        NSLog("[removePhoto] \(name) — 사본 지움 local=\(n.local) cloud=\(n.cloud)")
+    }
+
     func removeURL(from itemId: String, assetId: String?) {
         let key = assetId.map { MediaPointer.key(.url, $0) } ?? MediaPointer.Kind.url.rawValue
         append(.edit(id: itemId, hlc: tick(), [key: ""]))

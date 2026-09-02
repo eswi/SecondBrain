@@ -30,10 +30,27 @@ import SecondBrainCore
 //
 
 struct MediaViewer: View {
-    let item: ResolvedItem
+    /// **무엇을 보나** (2026-09-03에 갈랐다).
+    ///
+    /// ⛔ **옛 꼴: `let item: ResolvedItem`** — 저장된 기억만 볼 수 있었고, 그래서
+    /// **수집 화면은 이 뷰어를 못 썼다**(옛 주석: *"`MediaViewer`를 못 쓴다 —
+    /// 저장된 항목의 포인터를 읽는다"*). 거기엔 **첫 장만 크게 보는 맨몸 화면**이 따로 있었다.
+    /// ★ **사용자가 두 화면을 같은 방식으로 정했다**(*"수집화면에도 뷰어가 있어야겠네. 그렇게 만들자"*) —
+    /// 그래서 **읽는 자리 하나만 갈랐다.** ⚠️ `item`이 쓰이던 곳은 **`names` 한 줄뿐이었다.**
+    enum Source {
+        /// 저장된 기억 — 포인터 값(파일명)을 읽는다.
+        case saved(ResolvedItem)
+        /// **아직 저장 전** — 임시 파일 그대로다(포인터도 자료 id도 없다).
+        case draft([URL])
+    }
+    let source: Source
     let kind: MediaCardKind
     @ObservedObject var audio: AudioPlayer
     var onClose: () -> Void
+    /// **썸네일의 빨간 X를 눌렀다** — 몇 번째인가. **nil이면 X를 안 그린다.**
+    /// ⚠️ **묻는 것은 뷰어가 하고, 지우는 것은 부르는 쪽이 한다** — 저장 전(임시 파일)과
+    /// 저장 후(포인터+사본)가 **지우는 방법이 다르기 때문**이다. **문구는 한 자리에 둔다.**
+    var onDelete: ((Int) -> Void)? = nil
 
     /// 막대를 끌기 **직전에** 듣고 있었나 — 손을 떼고 이어 들을지 정한다.
     @State private var wasPlayingBeforeScrub = false
@@ -43,6 +60,8 @@ struct MediaViewer: View {
     @State private var stripVisible = true
     /// 손이 닿을 때마다 늘어난다 — **이 값이 바뀌면 사라짐 시계가 처음부터 다시 간다.**
     @State private var touchTick = 0
+    /// **지우려고 묻는 중인 자리** — nil이면 안 묻는 중(`model.pendingDelete`와 같은 성격).
+    @State private var deleting: Int?
 
     /// **손을 뗀 뒤 얼마나 있다 사라지나.** **5초**(2026-08-24 사용자 — 처음엔 *"3초쯤"*이었다).
     private static let stripHideAfter: Duration = .seconds(5)
@@ -74,11 +93,27 @@ struct MediaViewer: View {
 
     /// 이 종류의 자료 파일 이름들 — **포인터 값을 읽는다**(C 뒤 · `ResolvedItem.mediaValues`).
     /// ⚠️ 첫째는 **수집 당시의 원본**이다(성역을 먼저 읽는다 · §3-Y-8).
-    private var names: [String] { item.mediaValues(kind) }
+    private var names: [String] {
+        switch source {
+        case .saved(let it): return it.mediaValues(kind)
+        // ⚠️ **파일명을 id로 쓴다** — 임시 파일 이름은 `sb-photo-<uuid>.jpg`라 서로 안 겹친다.
+        case .draft(let urls): return urls.map(\.lastPathComponent)
+        }
+    }
+
+    /// **그 이름의 파일 자리** — 저장된 것은 포인터 값으로 찾고, 저장 전은 **손에 든 임시 파일**이다.
+    private func photoURL(_ name: String) -> URL? {
+        switch source {
+        case .saved: return PhotoStore.url(name: name)
+        case .draft(let urls): return urls.first { $0.lastPathComponent == name }
+        }
+    }
 
     /// 받아올 수 있는 종류인가 — **파일이 있는 둘만**이다.
     /// ⛔ **URL은 nil이다** — 파일이 없으므로 받을 것이 없다(설계 §3-Z-2 A).
     private var fetchKind: MediaKind? {
+        // ⛔ **저장 전에는 받아올 것이 없다** — 파일이 이미 손에 있다(클라우드에 올라간 적이 없다).
+        if case .draft = source { return nil }
         switch kind {
         case .voice: return .audio
         case .photo: return .photo
@@ -102,6 +137,26 @@ struct MediaViewer: View {
             arrows
             filmstrip
             downloadToast
+            // ★ **지우기 확인** — 문구는 사용자가 골랐다(2026-09-03 · 항시 규칙 6):
+            //   **「사진을 지울까요? / 되돌릴 수 없어요. / 원본은 그대로 있어요.」** · 버튼 **「지우기」**.
+            //   ⚠️ **마지막 줄이 정본이 요구한 말이다**(`edit-policy.md` ③ —
+            //   *"확인 문구에 「원본은 지워지지 않는다」를 넣는다"*). **URL에는 안 넣었다** —
+            //   거기는 사본이 없어 그 말이 당연한 말이 되기 때문이다(설계 §3-Z-10-4).
+            //   ⛔ **버튼은 「삭제」가 아니라 「지우기」다** — 앱의 「삭제」는 **항목을 버리는 것**이고
+            //   「지우기」는 **한 칸의 값을 없애는 것**이다. **이것이 바로 그 일이다.**
+            if let i = deleting {
+                ConfirmDialog(title: "사진을 지울까요?\n되돌릴 수 없어요.\n원본은 그대로 있어요.",
+                              confirmTitle: "지우기", confirmTint: Palette.overdue,
+                              onCancel: { deleting = nil },
+                              onConfirm: {
+                                  deleting = nil
+                                  // ⚠️ **자리를 먼저 당겨 둔다** — 마지막 장을 지우면 목록이 짧아진다.
+                                  //    `name`이 이미 「넘치면 첫째로」를 하지만, index를 그대로 두면
+                                  //    **지운 자리의 다음 장이 아니라 첫 장으로 튄다.**
+                                  if i <= index, index > 0 { index -= 1 }
+                                  onDelete?(i)
+                              })
+            }
         }
         // ★ **어떤 목적으로 손을 대든** 썸네일 줄이 다시 나타난다(사용자 문장).
         //   `minimumDistance: 0`이라 **누르는 순간** 걸리고, `simultaneousGesture`라
@@ -153,7 +208,7 @@ struct MediaViewer: View {
     //   그래서 **썸네일과 실물이 다르게 보이는 것이 정상이다.**
     @ViewBuilder private var photoBody: some View {
         // C 뒤 — **포인터 값으로 찾는다**(§3-X). `‹` `›`로 고른 것을 본다.
-        if let url = name.flatMap({ PhotoStore.url(name: $0) }) {
+        if let url = name.flatMap({ photoURL($0) }) {
             #if os(iOS)
             // ⛔ **손으로 만든 확대를 버리고 `UIScrollView`로 갔다** (2026-08-23 · 실기기 판정).
             //    셋이 함께 풀린다: **두드린 지점 중심** · **부드러운 확대/축소** · **경계 제한**.
@@ -330,9 +385,14 @@ struct MediaViewer: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(Array(names.enumerated()), id: \.element) { i, n in
-                                    Button { pick(i) } label: { thumb(n, selected: i == index) }
-                                        .buttonStyle(.plain)
-                                        .id(n)
+                                    // ★ **X는 네모 「위에」 얹은 형제다** — `label:` 안에 두면
+                                    //   SwiftUI가 **바깥 단추의 일부**로 읽어 따로 눌리지 않는다.
+                                    ZStack(alignment: .topTrailing) {
+                                        Button { pick(i) } label: { thumb(n, selected: i == index) }
+                                            .buttonStyle(.plain)
+                                        if onDelete != nil { deleteBadge(i) }
+                                    }
+                                    .id(n)
                                 }
                             }
                             .padding(.horizontal, 10)
@@ -359,8 +419,38 @@ struct MediaViewer: View {
 
     private static let thumbSide: CGFloat = 56
 
+    /// **썸네일 우측 상단의 빨간 X** — 자리와 방식 모두 사용자가 정했다(2026-09-03:
+    /// *"뷰어 들어가서 아래 썸네일 목록에서 지우는 방식으로 하고 썸네일 우측 상단에 빨간 X표시를 붙여서
+    /// 그걸 누르면 지우게 해줘. 지울 때는 확인 팝업 띄워주고."*).
+    ///
+    /// ⛔ **새 꼴을 안 지었다** — **`xmark` + `Palette.overdue` + `.semibold`**는 URL 지우기가
+    /// 이미 쓰는 꼴이고(`URLPickSheet`), **어두운 동그라미 바탕**은 뷰어의 닫기 단추가 쓰는 꼴이다.
+    /// ⚠️ **바탕이 필요한 이유는 여기가 사진 위라는 것이다** — 밝은 사진에서는 빨강만으로는 묻힌다
+    /// (URL 목록은 어두운 줄 위라 바탕이 필요 없었다 · 그쪽 주석에 대비 실측이 있다).
+    ///
+    /// ## ⚠️ 표적이 44pt가 못 된다 — **30pt다** (계측 규칙 1: 권장 표적은 44pt)
+    /// **네모 자체가 56pt**인데(사용자가 판정한 값) 그 안에 44pt 표적을 두면
+    /// **네모를 고르는 손댐을 거의 다 먹는다** — 「사진을 고르려는데 지우기가 눌린다」가 된다.
+    /// ✅ **그래서 30pt로 줄이고 자리를 모서리에 뒀다** — 고르기와 지우기가 갈린다.
+    /// ⛔ **이것은 「덮는 값」이 아니라 받아들인 대가다** — 잘못 눌러도 **확인 팝업이 막는다.**
+    private static let badgeSide: CGFloat = 30
+
+    @ViewBuilder private func deleteBadge(_ i: Int) -> some View {
+        Button { deleting = i } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.overdue)
+                .frame(width: Self.badgeSide, height: Self.badgeSide)
+                .background(Circle().fill(.black.opacity(0.55)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        // 모서리에 살짝 걸치게 — 네모 안쪽으로 2pt만 들여 놓는다(줄이 잘리지 않는 자리).
+        .offset(x: 2, y: -2)
+    }
+
     @ViewBuilder private func thumb(_ name: String, selected: Bool) -> some View {
-        let img = PhotoStore.url(name: name).flatMap { MediaCard.thumbnail($0, side: Self.thumbSide) }
+        let img = photoURL(name).flatMap { MediaCard.thumbnail($0, side: Self.thumbSide) }
         ZStack {
             if let img {
                 img.resizable().scaledToFill()

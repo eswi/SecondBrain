@@ -72,6 +72,16 @@ extension ResolvedItem {
         guard let pk = k.pointerKind else { return [] }
         return MediaPointer.pointers(pk, in: fields).map(\.value)
     }
+
+    /// **값과 나란히 자료 id도 준다** — 지우려면 **어느 칸을 비울지** 알아야 한다(2026-09-03).
+    /// ⛔ **`mediaValues`와 순서가 같아야 한다** — 둘 다 `MediaPointer.pointers`를 그대로 쓴다.
+    /// **그것이 「뷰어의 n번째」와 「그 포인터」를 잇는 유일한 근거다.**
+    /// ⚠️ **옛 단일 필드는 `assetId == nil`이다**(`photo` · 이름을 안 바꾼 옛 파일) —
+    /// 지우는 쪽이 그 경우 **필드 이름 자체**(`photo`)를 비운다(`InboxModel.removePhoto`).
+    func mediaAssets(_ k: MediaCardKind) -> [(assetId: String?, value: String)] {
+        guard let pk = k.pointerKind else { return [] }
+        return MediaPointer.pointers(pk, in: fields)
+    }
 }
 
 // MARK: - 네모 하나

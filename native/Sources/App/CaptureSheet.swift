@@ -73,13 +73,18 @@ struct CaptureSheet: View {
     @State private var draftURLs: [String] = []
     /// `+` 시트와 그 뒤에 열 것 — ⚠️ **시트가 닫힌 뒤에 연다**(겹쳐 띄우면 둘째가 무시된다).
     @State private var showAddSheet = false
+    /// **뷰어가 떠 있나** — 사진 네모를 누르면 열린다(2026-09-03).
+    @State private var showViewer = false
+    /// ⚠️ **뷰어가 요구하는 재생기 — 여기서는 한 번도 안 쓴다.**
+    /// 뷰어는 음성도 볼 수 있어서 재생기를 받는데, **수집 화면은 사진만 넘긴다**(`kind: .photo`).
+    /// ⛔ **뷰어 쪽을 옵셔널로 고치지 않았다** — 음성 갈래 여러 줄이 그 값을 쓰고 있어서
+    /// **고칠 자리가 늘고 얻는 것이 없다.** 빈 재생기 하나가 더 싸다.
+    @StateObject private var viewerAudio = AudioPlayer()
     @State private var pendingAdd: MediaAddRoute?
     @State private var showAlbum = false
     @State private var showURLSheet = false
     /// 앱 안 보기로 열 URL.
     @State private var openingURL: OpeningURL?
-    /// 크게 볼 임시 사진.
-    @State private var zooming: ZoomingPhoto?
 
     // MARK: 녹음 단추의 자리 (2026-08-31 · 끌어 옮길 수 있다)
     //
@@ -543,7 +548,9 @@ struct CaptureSheet: View {
             photos: draftPhotos,
             urls: draftURLs,
             onAdd: { showAddSheet = true },
-            onTapPhoto: { if let f = draftPhotos.first { zooming = ZoomingPhoto(url: f) } },
+            // ★ **뷰어를 연다** (2026-09-03) — ⛔ **옛 꼴: 첫 장만 크게 보는 맨몸 화면**
+            //   (`ZoomingPhoto`). 사용자가 **두 화면을 같은 방식으로** 정했다.
+            onTapPhoto: { showViewer = true },
             onTapURL: { u in if let url = URL(string: u) { openingURL = OpeningURL(url: url) } },
             onRemovePhoto: { i in
                 guard draftPhotos.indices.contains(i) else { return }
@@ -601,24 +608,22 @@ struct CaptureSheet: View {
             }
             // **앱 안 보기** — 닫으면 바로 수집 화면으로 돌아온다(사파리로 나가지 않는다).
             .sheet(item: $openingURL) { o in SafariSheet(url: o.url).ignoresSafeArea() }
-            // **크게 보기** — ⛔ `MediaViewer`를 못 쓴다(저장된 항목의 포인터를 읽는다).
-            //   ⚠️ **닫기는 아이콘이다** — 뷰어와 같은 꼴(`MediaViewer.closeButton`). 화면에 새 말이 없다.
-            .fullScreenCover(item: $zooming) { z in
-                ZStack(alignment: .topLeading) {
-                    Color.black.ignoresSafeArea()
-                    if let img = UIImage(contentsOfFile: z.url.path) {
-                        ZoomableImage(image: img).ignoresSafeArea()
-                    }
-                    Button { zooming = nil } label: {
-                        Image(systemName: "xmark")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(12)
-                            .background(Circle().fill(.black.opacity(0.45)))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(16)
-                }
+            // ★★ **수집 화면에도 뷰어가 있다** (2026-09-03 사용자 결정: *"수집화면에도 뷰어가
+            //   있어야겠네. 그래. 그렇게 만들자."*) — **상세와 같은 뷰어**다(`MediaViewer`).
+            //   그래서 **넘기기·하단 썸네일 줄·썸네일의 빨간 X·확인 팝업이 두 화면에서 같다.**
+            //   ⛔ **옛 꼴(지우지 않고 적어 둔다):** *"**크게 보기** — ⛔ `MediaViewer`를 못 쓴다
+            //   (저장된 항목의 포인터를 읽는다)"* — **그 제약을 없앴다**(뷰어가 `Source`로 갈린다).
+            //   ⚠️ **여기서 지우는 것은 임시 파일이다** — 포인터도 사본도 없다(아직 저장 전).
+            //   ⛔ **그래서 상세와 지우는 방법이 다르다** — 묻는 문구만 같은 자리에서 나온다.
+            .fullScreenCover(isPresented: $showViewer) {
+                MediaViewer(source: .draft(draftPhotos), kind: .photo, audio: viewerAudio,
+                            onClose: { showViewer = false },
+                            onDelete: { i in
+                                guard draftPhotos.indices.contains(i) else { return }
+                                PhotoStore.deleteTemp(draftPhotos.remove(at: i))   // 고아 방지
+                                // ⚠️ **마지막 장을 지우면 볼 것이 없다** — 뷰어를 닫는다.
+                                if draftPhotos.isEmpty { showViewer = false }
+                            })
             }
     }
 
@@ -659,9 +664,10 @@ struct CaptureSheet: View {
         }
     }
 
-    /// `sheet(item:)`·`fullScreenCover(item:)`이 요구하는 그릇 둘.
+    /// `sheet(item:)`이 요구하는 그릇.
+    /// ⛔ **`ZoomingPhoto`를 지웠다**(2026-09-03) — 맨몸 「크게 보기」가 **뷰어로 바뀌면서**
+    /// **한 장을 담아 나를 자리가 없어졌다**(뷰어는 목록 전체를 본다).
     private struct OpeningURL: Identifiable { let id = UUID(); let url: URL }
-    private struct ZoomingPhoto: Identifiable { let id = UUID(); let url: URL }
 
     #endif
 }
