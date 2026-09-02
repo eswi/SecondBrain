@@ -161,6 +161,24 @@ enum PhotoStore {
                                             cloudBytesPresent: c.bytesPresent)
     }
 
+    /// **다른 형식의 이미지 파일을 JPEG로 옮긴다** — 앨범에서 온 HEIC를 위한 그물(2026-09-03).
+    ///
+    /// ⛔ **다시 렌더하지 않는다** — `CGImageDestinationAddImageFromSource`가 **픽셀과 메타를 함께**
+    /// 옮기므로 **EXIF(촬영 위치·시각)가 살아 있다**(`saveCaptured`의 재렌더와 다른 길이다).
+    /// ⚠️ **JPEG로 바꾸는 것 자체는 손실이다** — 그래서 **첫 길은 시스템 변환**이고 이것은 **둘째**다
+    /// (`AlbumPicker` 머리주석).
+    /// - Returns: 옮겼으면 `true`.
+    static func transcodeToJPEG(from src: URL, to dest: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(src as CFURL, nil),
+              CGImageSourceGetCount(source) > 0,
+              let out = CGImageDestinationCreateWithURL(
+                dest as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return false }
+        // 0.9 — `saveCaptured`와 같은 값을 쓴다(그쪽 주석에 근거가 있다).
+        CGImageDestinationAddImageFromSource(
+            out, source, 0, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        return CGImageDestinationFinalize(out)
+    }
+
     // MARK: 촬영 이미지 저장 (음성엔 없던 것 — 리사이즈·압축 + EXIF GPS)
 
     #if os(iOS)
