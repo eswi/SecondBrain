@@ -3,7 +3,21 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
-/// **아이폰 사진 앨범에서 한 장 골라온다** — 자료 추가의 두 번째 길(2026-08-23 사용자 결정 · §3-T-1).
+/// **아이폰 사진 앨범에서 골라온다 — 여러 장** (2026-09-03 사용자 결정).
+/// 자료 추가의 두 번째 길(2026-08-23 · §3-T-1).
+///
+/// ## ★★ 한 장 → 여러 장 (2026-09-03)
+/// 사용자: *"고를 때 복수로 선택하게 하고 [완료] 같은 버튼 누르면 선택한 것 모두 저장되게 할 수 없을까?"*
+/// ✅ **선택기가 이미 그 화면을 갖고 있다** — `selectionLimit = 0`이면 **여러 장을 고르고
+/// 시스템의 [추가] 단추로 끝낸다.** ⛔ **우리가 화면을 만들지 않았다**(새 문구도 없다).
+/// ⛔ **옛 값: `selectionLimit = 1`** — *"⏸ 여러 장은 이번 범위가 아니다"*라 적어 뒀던 자리다.
+///
+/// ## ⛔ 그리고 그 값이 결함의 원인이었다 — **빠르게 누르면 여러 장이 들어왔다**
+/// 사용자: *"사진을 빨리 선택하면 복수로 선택되어 골라져. 즉, 실제로 2장 빠르면 3장이 선택되어
+/// 기억으로 들어와."*
+/// **한 장 모드는 「누르는 순간」 끝난다** — 닫히는 동안 손가락이 더 닿으면 **콜백이 여러 번** 온다.
+/// ✅ **여러 장 모드에서는 누르는 것이 「고르기」일 뿐이라 그 경합이 사라진다.**
+/// ✅ **그래도 문을 하나 달았다** — `finished`로 **콜백을 한 번만** 받는다(같은 형태를 다시 안 밟게).
 ///
 /// ## ★ 권한 문구가 필요 없다 (`PHPickerViewController`)
 /// 이 선택기는 **앱 밖(별도 프로세스)에서** 돌고 **고른 것만** 앱에 건네준다.
@@ -33,17 +47,21 @@ import UniformTypeIdentifiers
 /// ⚠️ **그 변환의 품질은 못 쟀다**(시스템이 정한다). 우리가 굽는 자리가 아니라 **깎을 값을 못 정한다.**
 /// ⚠️ **시스템이 준 임시 파일은 콜백이 끝나면 사라진다** — 그래서 **우리 임시 폴더로 복사**한다.
 struct AlbumPicker: UIViewControllerRepresentable {
-    /// 고른 사진의 **임시 파일**(JPEG). 호출부가 확정(`finalizeAdded`)하거나 지운다.
+    /// 고른 사진들의 **임시 파일**(JPEG) — **고른 순서 그대로.**
+    /// ⚠️ **여럿이다**(2026-09-03) — 옛 꼴은 한 장(`(URL) -> Void`)이었다.
+    /// 호출부가 확정(`finalizeAdded`)하거나 지운다.
     ///
     /// ⚠️ **`@MainActor`로 못 박는다** — 시스템 콜백이 **메인 밖**에서 오고, 거기서 이 콜로저를
     /// 그대로 건네면 **데이터 경합으로 컴파일이 막힌다**(Swift 6). 메인에 묶여 있으면 건네도 안전하다.
-    var onPick: @MainActor (URL) -> Void
+    var onPick: @MainActor ([URL]) -> Void
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()          // 라이브러리 접근 없음(사진만 건네받는다)
         config.filter = .images
-        config.selectionLimit = 1                     // ⏸ 여러 장은 이번 범위가 아니다(사진 추가만)
+        // ★★ **0 = 무제한** (2026-09-03 사용자 결정) — 시스템이 **고르기 + [추가]** 화면을 준다.
+        //   ⛔ **옛 값 `1`**: *"⏸ 여러 장은 이번 범위가 아니다"* — 그리고 **빠른 탭 결함의 원인**이었다.
+        config.selectionLimit = 0
         // ★★ **`.compatible`이어야 JPEG로 받아올 수 있다** (2026-09-03에 고쳤다 — 머리주석 참조).
         //   ⛔ **옛 값(깨져 있었다): `.current`** — *"원본 형식 그대로, 변환하지 말라"*는 뜻이라
         //   **HEIC 사진에 `public.jpeg` 표현이 없었다.**
@@ -63,32 +81,56 @@ struct AlbumPicker: UIViewControllerRepresentable {
         let parent: AlbumPicker
         init(_ parent: AlbumPicker) { self.parent = parent }
 
+        /// **콜백을 한 번만 받는다** — 빠른 탭이 델리게이트를 여러 번 태우던 자리(위 ⛔ 블록).
+        private var finished = false
+
         @MainActor
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            guard let provider = results.first?.itemProvider else {
-                parent.dismiss(); return
-            }
-            let finish: @MainActor (URL?) -> Void = { [onPick = parent.onPick,
-                                                       dismiss = parent.dismiss] picked in
-                if let picked { onPick(picked) }
+            guard !finished else { return }
+            finished = true
+            guard !results.isEmpty else { parent.dismiss(); return }   // [취소]로 닫았다
+            let providers = results.map(\.itemProvider)
+            // ⚠️ **고른 순서를 지킨다** — **하나씩 차례로** 받는다(동시에 받으면 먼저 끝난 것이 앞으로 온다).
+            //    ★ **첫째가 카드 네모의 얼굴이 되므로 순서에 뜻이 있다**(`CaptureMediaCard`).
+            //    ⛔ **`async`로 묶으려다 되돌렸다** — `NSItemProvider`가 `Sendable`이 아니라
+            //    메인 밖으로 넘기는 순간 컴파일이 막힌다(*"sending 'p' risks causing data races"*).
+            //    ✅ **콜백 사슬은 이 값을 메인 안에 둔 채로 돈다** — 옛 꼴이 하던 그대로다.
+            // ⚠️ **`DismissAction`을 그대로 못 넘긴다** — 함수 타입이 아니다. **감싸서 넘긴다.**
+            let dismiss = parent.dismiss
+            pickNext(providers, 0, [], onPick: parent.onPick, dismiss: { dismiss() })
+        }
+
+        /// **i번째부터 차례로 받아 쌓는다** — 다 받으면 한 번에 넘기고 선택기를 닫는다.
+        /// ⚠️ **못 받은 장은 그냥 빠진다**(그물이 둘 다 실패한 경우) — 나머지는 살린다.
+        @MainActor
+        private func pickNext(_ providers: [NSItemProvider], _ i: Int, _ acc: [URL],
+                              onPick: @escaping @MainActor ([URL]) -> Void,
+                              dismiss: @escaping @MainActor () -> Void) {
+            guard i < providers.count else {
+                if !acc.isEmpty { onPick(acc) }
                 dismiss()
+                return
             }
-            // ⚠️ 콜백은 **메인 밖**에서 온다 — 그래서 「어디로 돌려줄지」를 `Task { @MainActor … }`로 닫는다
-            //    (콜로저를 그대로 다른 스레드에 넘기면 데이터 경합으로 컴파일이 막힌다).
-            provider.loadFileRepresentation(forTypeIdentifier: UTType.jpeg.identifier) { url, err in
-                if let url, let picked = Self.keepAsJPEG(url) {
-                    Task { @MainActor in finish(picked) }
+            let p = providers[i]
+            let next: @MainActor (URL?) -> Void = { [weak self] picked in
+                self?.pickNext(providers, i + 1, picked.map { acc + [$0] } ?? acc,
+                               onPick: onPick, dismiss: dismiss)
+            }
+            // ⚠️ 콜백은 **메인 밖**에서 온다 — 그래서 「어디로 돌려줄지」를 `Task { @MainActor … }`로 닫는다.
+            p.loadFileRepresentation(forTypeIdentifier: UTType.jpeg.identifier) { url, err in
+                if let url, let kept = Self.keepAsJPEG(url) {
+                    Task { @MainActor in next(kept) }
                     return
                 }
-                // ★ **그물** — JPEG 표현이 없었다. **아무 이미지로 받아 우리가 JPEG로 옮긴다.**
-                //   ⛔ 여기까지 왔다는 것은 `.compatible`이 기대대로 안 돈 것이다 — 그래서 남긴다.
+                // ★ **그물** — JPEG 표현이 없었다. ⛔ 여기까지 왔다는 것은 `.compatible`이
+                //   기대대로 안 돈 것이다 — 그래서 남긴다.
                 NSLog("[AlbumPicker] jpeg 표현 실패(\(err?.localizedDescription ?? "url=nil")) → 이미지로 다시 청한다")
-                provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { any, err2 in
-                    let picked = any.flatMap { Self.keepAsJPEG($0) }
-                    if picked == nil {
+                p.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { any, err2 in
+                    let kept = any.flatMap { Self.keepAsJPEG($0) }
+                    if kept == nil {
                         NSLog("[AlbumPicker] 이미지 표현도 실패(\(err2?.localizedDescription ?? "url=nil")) — 붙일 것이 없다")
                     }
-                    Task { @MainActor in finish(picked) }
+                    Task { @MainActor in next(kept) }
                 }
             }
         }

@@ -27,6 +27,17 @@ enum SystemCamera {
     /// 카메라를 띄운다. 찍으면 **원본 `UIImage`**를 넘긴다(리사이즈·압축·임시저장은 부르는 쪽이 한다).
     /// 찍지 않고 취소하면 `onImage`는 **오지 않는다.**
     ///
+    /// ## ★★ 연달아 찍는다 (`continuous` · 2026-09-03 사용자 결정)
+    /// 사용자: *"사진을 찍을 때에도 여러개 찍은 후 한꺼번에 저장 어떨까?"*
+    /// **`continuous`면 한 장 찍어도 안 닫는다** — 카메라가 그대로 남아 **다음 장을 바로 찍는다.**
+    /// `onImage`가 **장마다** 오고, **나가는 것은 카메라의 [취소]**다(그때 `onFinish`).
+    /// ⛔ **「한꺼번에 저장」은 원래 되고 있었다** — 찍은 것은 카드에 쌓이고
+    /// **[저장 후 편집하기]가 한 번에 붙인다**(`CaptureSheet.save`). **바뀐 것은 「연달아 찍는 것」이다.**
+    /// ⚠️ **나가는 단추 이름이 [취소]다** — 시스템 화면이라 **우리가 못 바꾼다.**
+    /// 찍어 둔 것은 **안 버려진다**(카드에 이미 쌓였다). **사용자 판정 대기.**
+    /// ⚠️ **닫지 않으면 카메라가 다시 촬영 화면으로 돌아오는지는 실기기에서만 갈린다** —
+    /// **시뮬레이터에는 카메라가 없다.** ⛔ **못 잼**(추정 · 사용자가 판정한다).
+    ///
     /// - Parameter onFinish: **찍든 취소하든 · 아예 못 띄우든 반드시 한 번** 불린다.
     ///   ★ **왜 있나 (2026-08-30):** 이 picker는 **`.fullScreen` 모달**이라, 뜨는 순간 밑에 있는
     ///   SwiftUI 시트의 **`onDisappear`가 불리고** 닫힐 때 **`onAppear`가 다시 불린다.**
@@ -35,13 +46,14 @@ enum SystemCamera {
     ///   이 콜백이 그 구간의 **끝**을 알린다.
     ///   ⛔ **못 띄운 경우(카메라 없음·최상위 VC 없음)에도 부른다** — 안 부르면 부르는 쪽 표시가
     ///   `true`로 남아 정리가 영영 안 돈다(임시 파일이 샌다).
-    static func present(onImage: @escaping (UIImage) -> Void,
+    static func present(continuous: Bool = false,
+                        onImage: @escaping (UIImage) -> Void,
                         onFinish: (() -> Void)? = nil) {
         guard isAvailable, let top = topMost() else { onFinish?(); return }
         let picker = UIImagePickerController()
         picker.sourceType = .camera
         // ⚠️ delegate는 **weak**다 — 붙잡지 않으면 바로 사라져 콜백이 안 온다.
-        let delegate = Delegate(onImage: onImage, onFinish: onFinish)
+        let delegate = Delegate(onImage: onImage, onFinish: onFinish, continuous: continuous)
         retained = delegate
         picker.delegate = delegate
         top.present(picker, animated: true)
@@ -65,14 +77,21 @@ enum SystemCamera {
                                   UINavigationControllerDelegate {
         private let onImage: (UIImage) -> Void
         private let onFinish: (() -> Void)?
-        init(onImage: @escaping (UIImage) -> Void, onFinish: (() -> Void)?) {
+        /// **한 장 찍고도 안 닫는다** — 연달아 찍기(위 ★★ 블록).
+        private let continuous: Bool
+        init(onImage: @escaping (UIImage) -> Void, onFinish: (() -> Void)?, continuous: Bool) {
             self.onImage = onImage
             self.onFinish = onFinish
+            self.continuous = continuous
         }
 
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             if let img = info[.originalImage] as? UIImage { onImage(img) }
+            // ★ **연달아 찍기면 닫지 않는다** — 닫지 않으면 picker가 촬영 화면으로 돌아온다.
+            //   ⛔ **다시 띄우는 방식은 쓰지 않았다** — `finish`가 **닫힘 애니메이션이 끝나기 전에**
+            //   `onFinish`를 부르므로(아래 ⚠️), 그 안에서 다시 present하면 **닫히는 중에 겹쳐** 조용히 실패한다.
+            guard !continuous else { return }
             finish(picker)
         }
 

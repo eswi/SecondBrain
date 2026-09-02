@@ -598,7 +598,8 @@ struct CaptureSheet: View {
                     //    불리고, 그때 이 표시가 아직 false면 **받아쓰기·녹음이 지워진다**(머리주석 표).
                     cameraOpen = true
                     // ⛔ **커버로 감싸지 않는다 — 모달로 띄운다**(2026-08-24 · `SystemCamera` 머리주석).
-                    SystemCamera.present { img in
+                    // ★ **연달아 찍는다** (2026-09-03 사용자 결정) — 나가는 것은 카메라의 [취소]다.
+                    SystemCamera.present(continuous: true) { img in
                         // 촬영마다 **고유** 임시 경로 → 목록에 그대로 쌓인다(같은 경로에 덮으면 옛 썸네일이 남는다).
                         if let temp = PhotoStore.saveCaptured(img, location: location.last,
                                                               sessionId: UUID().uuidString) {
@@ -619,7 +620,8 @@ struct CaptureSheet: View {
             }
             // 앨범에서 온 파일은 **원본 EXIF를 품고 온다** — 위치가 있으면 그대로 살아 있다.
             .sheet(isPresented: $showAlbum) {
-                AlbumPicker { temp in draftPhotos.append(temp) }
+                // ★ **여러 장이 온다**(2026-09-03) — **고른 순서 그대로 쌓는다.**
+                AlbumPicker { temps in draftPhotos.append(contentsOf: temps) }
             }
             .sheet(isPresented: $showURLSheet) {
                 URLAddSheet { raw in

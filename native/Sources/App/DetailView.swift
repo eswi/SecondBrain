@@ -364,7 +364,9 @@ struct DetailView: View {
                 // ⛔ **커버로 감싸지 않는다 — 모달로 띄운다**(2026-08-24 · `SystemCamera` 머리주석).
                 // ⚠️ **위치를 안 넘긴다** — 수집 화면은 위치를 함께 박지만(§5 Stage 3) 상세에는
                 //    그 장치가 없다. **추가로 찍은 사진에는 EXIF 위치가 없다**(⏸ 후속 · §3-Y-9).
-                SystemCamera.present { img in
+                // ★ **연달아 찍는다** (2026-09-03) — 수집 화면과 같은 꼴이다.
+                //   ⚠️ **여기서는 장마다 바로 붙는다**(op) — 「한꺼번에」가 없다. 항목이 이미 있기 때문이다.
+                SystemCamera.present(continuous: true) { img in
                     if let temp = PhotoStore.saveCaptured(img, location: nil,
                                                           sessionId: UUID().uuidString) {
                         model.addPhoto(to: item.id, temp: temp)
@@ -390,7 +392,8 @@ struct DetailView: View {
         }
         .sheet(isPresented: $showAlbum) {
             // 앨범에서 온 파일은 **원본 EXIF를 품고 온다** — 위치가 있으면 그대로 살아 있다.
-            AlbumPicker { temp in model.addPhoto(to: item.id, temp: temp) }
+            // ★ **여러 장이 온다**(2026-09-03) — 고른 순서대로 붙인다(장마다 op 하나).
+            AlbumPicker { temps in for t in temps { model.addPhoto(to: item.id, temp: t) } }
         }
         #endif
         // **뷰어** — 네모를 누르면 전체 화면으로 연다(§0 22~26번).
