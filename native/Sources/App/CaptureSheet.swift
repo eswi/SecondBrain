@@ -598,8 +598,10 @@ struct CaptureSheet: View {
                     //    불리고, 그때 이 표시가 아직 false면 **받아쓰기·녹음이 지워진다**(머리주석 표).
                     cameraOpen = true
                     // ⛔ **커버로 감싸지 않는다 — 모달로 띄운다**(2026-08-24 · `SystemCamera` 머리주석).
-                    // ★ **연달아 찍는다** (2026-09-03 사용자 결정) — 나가는 것은 카메라의 [취소]다.
-                    SystemCamera.present(continuous: true) { img in
+                    // ⛔ **한 장만 찍는다** — 연달아 찍기는 **만들었다가 사용자가 되돌렸다**
+                    //   (2026-09-03: *"사진찍기는 연속으로 하지 말자. 생소하다."*).
+                    //   **여럿은 앨범이 맡는다** — 전말은 `SystemCamera` 머리주석.
+                    SystemCamera.present { img in
                         // 촬영마다 **고유** 임시 경로 → 목록에 그대로 쌓인다(같은 경로에 덮으면 옛 썸네일이 남는다).
                         if let temp = PhotoStore.saveCaptured(img, location: location.last,
                                                               sessionId: UUID().uuidString) {

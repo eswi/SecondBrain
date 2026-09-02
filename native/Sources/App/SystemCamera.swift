@@ -27,27 +27,25 @@ enum SystemCamera {
     /// 카메라를 띄운다. 찍으면 **원본 `UIImage`**를 넘긴다(리사이즈·압축·임시저장은 부르는 쪽이 한다).
     /// 찍지 않고 취소하면 `onImage`는 **오지 않는다.**
     ///
-    /// ## ★★ 연달아 찍는다 (`continuous` · 2026-09-03 사용자 결정)
-    /// 사용자: *"사진을 찍을 때에도 여러개 찍은 후 한꺼번에 저장 어떨까?"*
-    /// **`continuous`면 한 장 찍은 뒤 카메라를 다시 띄운다** — [취소]로 나갈 때까지 이어진다.
-    /// `onImage`가 **장마다** 오고, `onFinish`는 **정말 끝날 때 한 번만** 온다
-    /// (⛔ **장마다 부르지 않는다** — 부르면 「카메라가 덮고 있다」 표시가 내려가
-    /// 사이사이에 **수집 내용을 지우는 정리가 돈다**).
-    /// ⛔ **「한꺼번에 저장」은 원래 되고 있었다** — 찍은 것은 카드에 쌓이고
-    /// **[저장 후 편집하기]가 한 번에 붙인다**(`CaptureSheet.save`). **바뀐 것은 「연달아 찍는 것」이다.**
+    /// ## ⛔⛔ 연달아 찍기 — **만들었다가 되돌렸다** (2026-09-03 · 지우지 않고 적어 둔다)
+    /// **사용자가 제안했다:** *"사진을 찍을 때에도 여러개 찍은 후 한꺼번에 저장 어떨까?"*
+    /// **그리고 같은 날 사용자가 되돌렸다:** *"사진찍기는 연속으로 하지 말자. 생소하다.
+    /// 여러장 고르는 것은 앨범에서만 하고 사진찍기는 원래처럼 한장만 찍기."*
+    /// ⛔ **되살리지 말 것 — 이유가 「안 됐다」가 아니라 「생소하다」다.** 고쳐서 될 종류가 아니다.
     ///
-    /// ### ⛔⛔ 첫 시도가 틀렸다 — **「안 닫고 버티기」** (2026-09-03에 폰에서 깨졌다)
-    /// **옛 꼴:** 찍어도 `dismiss`를 안 했다. **picker가 스스로 촬영 화면으로 돌아올 것**이라 봤다.
-    /// **사용자 판정:** *"카메라로 한장 찍으면 바로 수집화면으로 나가버려. 연속으로 찍을 수 없는거지.
-    /// 그래서 혹시나 하고 빠르게 촬영 버튼 두번 눌렀더니 앱이 멈춰버려. 뭘 눌러도 반응이 없게 돼."*
-    /// ⛔ **둘이 났다:** ① 안 닫아도 **화면은 닫혔다**(우리가 아닌 쪽이 닫았다) ② **앱이 멈췄다.**
-    /// ✅ **지금 꼴: 닫힘이 「끝난 뒤」 다시 띄운다**(`dismiss`의 완료 자리). **겹치지 않는다.**
-    /// ⚠️ **사이에 닫힘·열림 애니메이션이 한 번씩 보인다** — 이 API로 겹치지 않게 하는 값이다.
+    /// **밟은 길 둘(둘 다 실패):** ① **안 닫고 버티기** — 안 닫아도 화면은 닫혔다(우리가 아닌 쪽이 닫았다) ·
+    /// ② **닫힘이 끝난 뒤 다시 띄우기** — 동작은 했지만 **장 사이에 닫힘·열림이 한 번씩 보였다.**
     ///
-    /// ### ⛔ 그리고 **셔터를 두 번 받지 않는다** (`done`)
-    /// 콜백이 두 번 오면 **`present`/`dismiss`가 겹쳐** 보이지 않는 화면이 얹힌 채로 남는다 —
-    /// **앱이 살아 있는데 아무것도 안 눌리는** 그 모습이다. **한 번만 받는다.**
+    /// ✅ **남은 것 하나 — 「여럿」은 앨범이 맡는다**(`AlbumPicker` · `selectionLimit = 0`).
+    /// ⛔ **「한꺼번에 저장」은 원래 되고 있었다** — 찍은 것이 카드에 쌓이고
+    /// **[저장 후 편집하기]가 한 번에 붙인다**(`CaptureSheet.save`). **그쪽은 아무것도 안 바꿨다.**
+    ///
+    /// ## ⛔ 그래도 **셔터를 두 번 받지 않는다** (`done` · 2026-09-03에 남겼다)
+    /// **연달아 찍기와 무관한 결함이었다** — 콜백이 두 번 오면 `present`/`dismiss`가 겹쳐
+    /// **보이지 않는 화면이 얹힌 채로** 남는다. 사용자: *"빠르게 촬영 버튼 두번 눌렀더니
+    /// 앱이 멈춰버려. 뭘 눌러도 반응이 없게 돼."*
     /// ★ **앨범의 「빠른 탭」과 같은 형태다**(`AlbumPicker.finished`) — **같은 날 두 자리에서 났다.**
+    /// ⛔ **연달아 찍기를 되돌릴 때 이 문을 함께 걷어내지 말 것.**
     ///
     /// - Parameter onFinish: **찍든 취소하든 · 아예 못 띄우든 반드시 한 번** 불린다.
     ///   ★ **왜 있나 (2026-08-30):** 이 picker는 **`.fullScreen` 모달**이라, 뜨는 순간 밑에 있는
@@ -57,14 +55,13 @@ enum SystemCamera {
     ///   이 콜백이 그 구간의 **끝**을 알린다.
     ///   ⛔ **못 띄운 경우(카메라 없음·최상위 VC 없음)에도 부른다** — 안 부르면 부르는 쪽 표시가
     ///   `true`로 남아 정리가 영영 안 돈다(임시 파일이 샌다).
-    static func present(continuous: Bool = false,
-                        onImage: @escaping (UIImage) -> Void,
+    static func present(onImage: @escaping (UIImage) -> Void,
                         onFinish: (() -> Void)? = nil) {
         guard isAvailable, let top = topMost() else { onFinish?(); return }
         let picker = UIImagePickerController()
         picker.sourceType = .camera
         // ⚠️ delegate는 **weak**다 — 붙잡지 않으면 바로 사라져 콜백이 안 온다.
-        let delegate = Delegate(onImage: onImage, onFinish: onFinish, continuous: continuous)
+        let delegate = Delegate(onImage: onImage, onFinish: onFinish)
         retained = delegate
         picker.delegate = delegate
         top.present(picker, animated: true)
@@ -88,12 +85,9 @@ enum SystemCamera {
                                   UINavigationControllerDelegate {
         private let onImage: (UIImage) -> Void
         private let onFinish: (() -> Void)?
-        /// **한 장 찍고도 안 닫는다** — 연달아 찍기(위 ★★ 블록).
-        private let continuous: Bool
-        init(onImage: @escaping (UIImage) -> Void, onFinish: (() -> Void)?, continuous: Bool) {
+        init(onImage: @escaping (UIImage) -> Void, onFinish: (() -> Void)?) {
             self.onImage = onImage
             self.onFinish = onFinish
-            self.continuous = continuous
         }
 
         /// **콜백을 한 번만 받는다** — 셔터를 두 번 누르면 `present`/`dismiss`가 겹쳐
@@ -102,34 +96,24 @@ enum SystemCamera {
 
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            guard !done else { return }
+            guard !done else { return }         // ★ 셔터를 두 번 받지 않는다(머리주석 ⛔ 블록)
             done = true
             if let img = info[.originalImage] as? UIImage { onImage(img) }
-            // ★ **연달아 찍기면 닫고 나서 다시 띄운다** — 「안 닫고 버티기」는 실패했다(머리주석).
-            close(picker, thenReopen: continuous)
+            finish(picker)
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             guard !done else { return }
             done = true
-            // ⛔ **취소는 언제나 정말 끝이다** — 연달아 찍기의 **출구**가 이 자리다.
-            close(picker, thenReopen: false)
+            finish(picker)
         }
 
-        private func close(_ picker: UIImagePickerController, thenReopen: Bool) {
+        private func finish(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
             SystemCamera.retained = nil
             // ⚠️ **닫기 애니메이션이 끝나기 전에 부른다** — 그래야 뒤이어 오는 시트의 `onAppear`보다
             //    먼저 도착해 「카메라가 덮고 있다」 표시가 내려간다(순서가 뒤바뀌면 정리가 헛돈다).
-            // ⛔ **다시 띄울 때는 부르지 않는다** — 내려가면 **사이사이에 정리가 돌아 사진·녹음이 사라진다.**
-            if !thenReopen { onFinish?() }
-            let onImage = self.onImage
-            let onFinish = self.onFinish
-            picker.dismiss(animated: true) {
-                guard thenReopen else { return }
-                // ★★ **닫힘이 「끝난 뒤」다** — 닫히는 중에 present하면 조용히 실패한다.
-                //   ⚠️ **`onFinish`를 그대로 넘긴다** — 출구는 [취소] 하나이고 그때 한 번만 불린다.
-                SystemCamera.present(continuous: true, onImage: onImage, onFinish: onFinish)
-            }
+            onFinish?()
         }
     }
 }
