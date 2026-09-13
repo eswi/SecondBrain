@@ -1731,8 +1731,16 @@ struct DetailView: View {
             saving["resurface"] = today
             resurface = today                  // 화면 draft도 같이 옮긴다(바로 보이게)
         }
-        if !saving.isEmpty { model.commitEdits(item, changes: saving) }
-        model.confirm(item)
+        // ⛔⛔ **2026-09-13에 여기서 물렸다 — 값이 조용히 사라졌다.**
+        //   옛 꼴은 **커밋 → 기억하기** 순서였는데, `commitEdits`는 **아직 미기억이면
+        //   `raw`·`type`만 남기고 버린다**(`edit-policy.md` §1-A 안전망).
+        //   그래서 위에서 넣은 `resurface`가 그 그물에 걸렸다.
+        //   ⛔ **화면에는 날짜가 보였다** — draft를 같이 옮겼고 기준선까지 옮겨서 **[저장]도 꺼져 있었다.**
+        //   **그래서 「저장된 것처럼」 보였고, `<`로 나가면 날짜가 없어 「살아있는 기억」에 가 있었다**
+        //   (사용자: *"기억하기 누르면 날짜는 들어오는데 … 나가면 저장이 안 되어 있어"*).
+        //   ✅ **순서를 여기서 외우지 않는다** — `InboxModel.remember(_:with:)`가 한 곳에서 묶는다
+        //   (확정 먼저 → 커밋). **고치기가 아니라 틀릴 자리를 없앤 것이다.**
+        model.remember(item, with: saving)
         baseline = baseline.applying(saving)   // 기준선을 옮겨 dirty를 비운다(안 옮기면 나갈 때 경고가 뜬다)
         isRemembered = true
     }
