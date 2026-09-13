@@ -42,28 +42,58 @@ struct RootView: View {
         }
     }
 
-    private var mainBody: some View {
+    /// **가로면 시스템 탭바를 숨기고 세로 띠를 형제로 세운다** (2026-09-13 사용자 결정).
+    /// 왜 형제인가·무엇을 골랐나 → `SideTabBar` 머리주석.
+    /// ⚠️ **세로는 건드리지 않았다** — 시스템 탭바 그대로다(모습·자리·여백 전부).
+    @ViewBuilder private var tabShell: some View {
+        #if os(iOS)
+        GeometryReader { geo in
+            // 가로·세로는 **실제 칸 모양**으로 가른다. ⛔ `horizontalSizeClass`로 가르지 말 것 —
+            // 기기마다 다르게 나온다(Max는 가로에서도 `.regular`인 경우가 있다).
+            let landscape = geo.size.width > geo.size.height
+            HStack(spacing: 0) {
+                tabs(landscape: landscape)
+                if landscape {
+                    SideTabBar(tab: $tab).frame(width: SideTabBar.thickness)
+                }
+            }
+        }
+        #else
+        tabs(landscape: false)
+        #endif
+    }
+
+    private func tabs(landscape: Bool) -> some View {
         TabView(selection: $tab) {
             InboxView(model: model)
                 .tag(AppTab.new)
-                .tabItem { Label("새로운 기억", systemImage: "tray.fill") }
+                .tabItem { Label(AppTab.new.title, systemImage: AppTab.new.icon) }
+                .modifier(SystemTabBarHidden(hidden: landscape))
 
             SearchView(model: model)
                 .tag(AppTab.search)
-                .tabItem { Label("검색", systemImage: "magnifyingglass") }
+                .tabItem { Label(AppTab.search.title, systemImage: AppTab.search.icon) }
+                .modifier(SystemTabBarHidden(hidden: landscape))
 
             LivingView(model: model)
                 .tag(AppTab.living)
-                .tabItem { Label("살아있는 기억", systemImage: "heart.fill") }
+                .tabItem { Label(AppTab.living.title, systemImage: AppTab.living.icon) }
+                .modifier(SystemTabBarHidden(hidden: landscape))
 
             ArchiveView(model: model)
                 .tag(AppTab.archive)
-                .tabItem { Label("보관된 기억", systemImage: "archivebox.fill") }
+                .tabItem { Label(AppTab.archive.title, systemImage: AppTab.archive.icon) }
+                .modifier(SystemTabBarHidden(hidden: landscape))
 
             SettingsView(model: model)
                 .tag(AppTab.settings)
-                .tabItem { Label("설정", systemImage: "gearshape.fill") }
+                .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.icon) }
+                .modifier(SystemTabBarHidden(hidden: landscape))
         }
+    }
+
+    private var mainBody: some View {
+        tabShell
         .tint(Palette.accent)
         .preferredColorScheme(.dark)
         // 당겨서 분류(pull-to-classify) 결과 토스트 — 어느 탭에 있든 **화면 중앙**에 뜬다.
@@ -298,4 +328,44 @@ private struct ClassifyToastView: View {
 }
 
 // String raw값 → @SceneStorage에 저장 가능(RawRepresentable). 재진입 시 탭 복원용.
-enum AppTab: String { case new, search, living, archive, settings }
+enum AppTab: String, CaseIterable {
+    case new, search, living, archive, settings
+
+    /// ⛔ **화면에 나오는 말이다 — 내가 짓지 않는다**(항시 규칙 6). 여기 있는 것은
+    /// **옮겨 적은 것**이지 새로 지은 것이 아니다(옛 자리 = `RootView`의 `.tabItem` 다섯).
+    /// ★ **한 곳으로 모은 이유:** 2026-09-13에 **가로용 세로 띠**가 생기면서 **같은 말을 쓰는 자리가 둘**이
+    /// 됐다. 나눠 두면 한쪽만 고쳐져 **「어디는 되고 어디는 안 되는」**이 된다(고칠 때 훑는 법 2).
+    var title: String {
+        switch self {
+        case .new:      return "새로운 기억"
+        case .search:   return "검색"
+        case .living:   return "살아있는 기억"
+        case .archive:  return "보관된 기억"
+        case .settings: return "설정"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .new:      return "tray.fill"
+        case .search:   return "magnifyingglass"
+        case .living:   return "heart.fill"
+        case .archive:  return "archivebox.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
+}
+
+
+/// **시스템 탭바를 숨길지** — 가로에서 `SideTabBar`가 대신 선다.
+/// ⚠️ **맥에는 이 자리(`.tabBar`)가 없다** — 그래서 갈라 두고 맥에서는 아무것도 안 한다.
+private struct SystemTabBarHidden: ViewModifier {
+    let hidden: Bool
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.toolbar(hidden ? .hidden : .automatic, for: .tabBar)
+        #else
+        content
+        #endif
+    }
+}
