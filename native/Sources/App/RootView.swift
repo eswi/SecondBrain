@@ -76,19 +76,24 @@ struct RootView: View {
             // 가로·세로는 **실제 칸 모양**으로 가른다. ⛔ `horizontalSizeClass`로 가르지 말 것 —
             // 기기마다 다르게 나온다(Max는 가로에서도 `.regular`인 경우가 있다).
             let landscape = geo.size.width > geo.size.height
-            HStack(spacing: 0) {
-                tabs(landscape: landscape)
-                if landscape {
-                    SideTabBar(tab: $tab).frame(width: SideTabBar.thickness)
+            if landscape {
+                // 띠는 **기기 아래쪽 가장자리**에 그대로 있다 — 돌리면 그것이 화면 오른쪽이다.
+                // ⚠️ **안전영역을 넘어 화면 끝까지** 간다(`AppTabBar` 머리주석).
+                HStack(spacing: 0) {
+                    tabs(landscape: true)
+                    AppTabBar(tab: $tab, axis: .vertical)
+                        .frame(width: AppTabBar.strip)
+                }
+                .ignoresSafeArea(edges: .trailing)
+            } else {
+                // ★ **형제로 세운다** — 내용이 띠 밑으로 갈 자리가 없다(사용자 지시).
+                VStack(spacing: 0) {
+                    tabs(landscape: false)
+                    AppTabBar(tab: $tab, axis: .horizontal)
+                        .frame(height: AppTabBar.content)
+                        .background(Palette.surface.ignoresSafeArea(edges: .bottom))
                 }
             }
-            // ★★ **섬이 없는 쪽의 안전영역은 순전한 여백이다 — 그쪽만 되찾는다** (2026-09-13).
-            //   사용자: *"가로 모드에서는 화면의 좌우 여백이 너무 커."*
-            //   **쟀다(시뮬 26.5 · 두 회전 다):** 카드 왼쪽 끝이 **양쪽 다 72pt** — 즉 iOS가
-            //   **좌우 안전영역을 대칭으로** 준다(≈56pt + 우리 여백 16pt).
-            //   ⛔ **대칭인 이유가 있다: 섬(Dynamic Island)이 돌리는 방향에 따라 좌·우 어느 쪽에도 온다.**
-            //   그래서 **양쪽을 다 없애면 한 방향에서 글자가 섬에 가린다.**
-            //   ✅ **한쪽은 늘 순전한 여백이다** — 섬이 없는 쪽. 그쪽만 없앤다.
         }
         #else
         tabs(landscape: false)
@@ -102,27 +107,27 @@ struct RootView: View {
             InboxView(model: model)
                 .tag(AppTab.new)
                 .tabItem { Label(AppTab.new.title, systemImage: AppTab.new.icon) }
-                .modifier(SystemTabBarHidden(hidden: landscape))
+                .modifier(SystemTabBarHidden(hidden: true))
 
             SearchView(model: model)
                 .tag(AppTab.search)
                 .tabItem { Label(AppTab.search.title, systemImage: AppTab.search.icon) }
-                .modifier(SystemTabBarHidden(hidden: landscape))
+                .modifier(SystemTabBarHidden(hidden: true))
 
             LivingView(model: model)
                 .tag(AppTab.living)
                 .tabItem { Label(AppTab.living.title, systemImage: AppTab.living.icon) }
-                .modifier(SystemTabBarHidden(hidden: landscape))
+                .modifier(SystemTabBarHidden(hidden: true))
 
             ArchiveView(model: model)
                 .tag(AppTab.archive)
                 .tabItem { Label(AppTab.archive.title, systemImage: AppTab.archive.icon) }
-                .modifier(SystemTabBarHidden(hidden: landscape))
+                .modifier(SystemTabBarHidden(hidden: true))
 
             SettingsView(model: model)
                 .tag(AppTab.settings)
                 .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.icon) }
-                .modifier(SystemTabBarHidden(hidden: landscape))
+                .modifier(SystemTabBarHidden(hidden: true))
         }
     }
 
