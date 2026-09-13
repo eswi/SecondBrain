@@ -529,6 +529,14 @@ final class InboxModel: ObservableObject {
     /// 조용히 떨어뜨린다(안전망). **성역은 애초에 `EditDiff`가 안 낸다**(`RawEditTests`).
     ///
     /// ⚠️ 임시 항목의 이 커밋은 **[기억하기]가 부른다**(상세에 [저장]이 없다 — §2 예외). `DetailView.remember()`.
+    ///
+    /// ## ⛔⛔ 덫 — **「기억하기와 함께 정해지는 값」을 여기로 보내면 사라진다** (2026-09-13에 물렸다)
+    /// 이 걸러내기는 **부르는 시점의 `confirmed`**를 본다. `[기억하기]`는 **커밋을 먼저** 하므로
+    /// 그 순간 항목은 **아직 미기억**이고, `raw`·`type`이 아닌 값은 **조용히 떨어진다.**
+    /// 주차의 「다시 보기 = 오늘」을 여기로 실었다가 정확히 그렇게 잃었다.
+    /// ✅ **답은 순서를 바꾸는 것이 아니었다** — 그런 값은 **draft에만 넣고 기준선을 안 옮긴다.**
+    /// 그러면 「저장하지 않은 수정이 있어요」가 뜨고 **사람이 [저장]을 누른다**
+    /// (2026-09-13 사용자 결정 · `DetailView.remember()`).
     func commitEdits(_ item: ResolvedItem, changes: [String: String]) {
         var changes = changes
         if !(current(item.id) ?? item).confirmed {
@@ -678,23 +686,6 @@ final class InboxModel: ObservableObject {
     func confirm(_ item: ResolvedItem) {
         guard !item.confirmed else { return }
         append(.confirm(id: item.id, hlc: tick()))
-    }
-
-    /// **기억하기 + 그 순간에만 열리는 값**을 한 곳에 묶는다 (2026-09-13 신설).
-    ///
-    /// ## ⛔⛔ 왜 묶었나 — 순서에 기대는 자리였다
-    /// `commitEdits`는 **아직 미기억이면 `raw`·`type`만 남기고 버린다**(`edit-policy.md` §1-A 안전망).
-    /// 그래서 **커밋을 먼저 하면** 「기억하기와 함께 정해지는 값」(예: 주차의 `resurface` 당일)이
-    /// **조용히 사라진다.** 2026-09-13에 실제로 그렇게 났다 —
-    /// 화면에는 날짜가 보이는데 나갔다 오면 없었다(`DetailView.remember()` 주석에 전말).
-    ///
-    /// ★ **부르는 쪽이 순서를 외우게 하지 않는다** — 여기서 **확정을 먼저** 하고 커밋한다.
-    /// `append`가 `load()`로 다시 병합하므로 다음 줄에서는 이미 기억한 항목이다.
-    /// ⚠️ **「수정 ≠ 기억하기」는 그대로다** — 둘은 여전히 별개 이벤트이고,
-    /// 확정은 OR-머지(단방향)라 순서와 무관하다(`ConfirmTests`·`EditDiffTests`).
-    func remember(_ item: ResolvedItem, with changes: [String: String]) {
-        confirm(item)
-        if !changes.isEmpty { commitEdits(item, changes: changes) }
     }
 
     /// 수정 이력 요약(경량, edit-policy §4-4의 최소형). 엔진 무변경 — 로드 때 보관한 이벤트를
