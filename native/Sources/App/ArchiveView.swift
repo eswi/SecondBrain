@@ -58,7 +58,8 @@ struct ArchiveView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
-            .hiddenNavBar()               // 제목은 위 `ScreenTitle`이 그린다 — 시스템 큰 제목과 겹치면 안 된다
+            .hiddenNavBar()
+            .landscapeEdge()               // 제목은 위 `ScreenTitle`이 그린다 — 시스템 큰 제목과 겹치면 안 된다
         }
     }
 

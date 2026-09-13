@@ -53,7 +53,8 @@ struct SearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
-            .hiddenNavBar()          // 제목은 위 `ScreenTitle`이 그린다
+            .hiddenNavBar()
+            .landscapeEdge()          // 제목은 위 `ScreenTitle`이 그린다
             .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
         }
     }

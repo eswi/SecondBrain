@@ -37,8 +37,27 @@ import SwiftUI
 struct SideTabBar: View {
     @Binding var tab: AppTab
 
-    /// 띠의 **두께**(가로 화면에서 가로로 차지하는 폭). **가장 긴 이름 60.3pt + 좌우 여백.**
-    static let thickness: CGFloat = 76
+    /// ## 시스템 탭바를 재서 맞췄다 (2026-09-13 사용자 지시)
+    ///
+    /// 사용자: *"시스템 탭바처럼 둥근 테두리 배경을 … 세로 모드에서 시스템 탭바가 가지던
+    /// **하단 여백 만큼의 여백**을, 가로 모드에서 새로 만든 탭바 **우측에도** 확보해줘."*
+    ///
+    /// **쟀다**(세로 스크린샷 픽셀 · `measure-ui.swift` @3x · iPhone 16 Pro 402x874pt):
+    /// | 무엇 | 값 |
+    /// |---|---|
+    /// | 시스템 탭바 **두께** | **62.0pt** (y 791.0 ~ 852.7) |
+    /// | **아래 여백** | **21.3pt** (874 − 852.7) |
+    /// | **좌우 여백** | **≈21pt** (x 23.3 ~ 378.7 · 화면 402) |
+    /// | 모양 | **캡슐** — 끝의 곡률이 반지름 ≈31(두께의 절반)과 맞았다 |
+    /// ★ **사방이 같은 21pt다** — 그래서 세로의 「아래 여백」을 가로의 「오른쪽 여백」으로 그대로 옮긴다.
+    ///
+    /// ⚠️ **두께는 62pt로 못 맞춘다** — 세로에서는 이름이 **띠의 길이 쪽**으로 눕는데
+    /// 여기서는 **두께 쪽**으로 놓인다. 가장 긴 「살아있는 기억」이 **60.3pt**(11pt 실측)라
+    /// **70pt**로 잡았다. ⛔ 62로 줄이면 그 이름이 작아진다(`minimumScaleFactor`).
+    static let bar: CGFloat = 70          // 띠(캡슐) 자체의 두께
+    static let margin: CGFloat = 21       // 시스템 탭바가 갖던 여백 — 실측 21.3pt
+    /// 바깥에서 잡아 주는 폭 = 띠 + 오른쪽 여백.
+    static let thickness: CGFloat = bar + margin
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,7 +65,11 @@ struct SideTabBar: View {
                 item(t)
             }
         }
-        .frame(maxHeight: .infinity)      // 다섯이 높이를 고르게 나눠 갖는다(세로 탭바와 같은 성질)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // 다섯이 높이를 고르게 나눠 갖는다
+        // ★ **시스템 탭바와 같은 재질·같은 모양** — `Capsule()`이 그 둥근 끝이다.
+        .background(.regularMaterial, in: Capsule())
+        .padding(.trailing, Self.margin)                    // ← 사용자가 지시한 그 여백
+        .padding(.vertical, Self.margin)                    // 시스템 탭바도 길이 쪽에 같은 여백을 둔다
     }
 
     private func item(_ t: AppTab) -> some View {

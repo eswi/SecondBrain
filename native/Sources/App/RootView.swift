@@ -403,3 +403,67 @@ private struct SystemTabBarHidden: ViewModifier {
         #endif
     }
 }
+
+
+#if os(iOS)
+/// **가로에서 왼쪽 여백을 좁힌다** — 시스템이 스스로 쓰는 자리에 맞춘다 (2026-09-13 사용자 지시).
+///
+/// 사용자: *"가로 모드에서도 좌측 상단의 '< 새로운 기억' 제목이 … 좌측 여백을 **벗어나서** 표시된 것을
+/// 참고하여, 모든 화면에서 좌측 여백을 이 스크린샷이 쓰는 영역을 고려하여 좁혀줘."*
+///
+/// **쟀다**(사용자 폰 스크린샷 · 가로 874x402pt · `measure-ui.swift` @3x):
+/// | 무엇 | 왼쪽 끝 |
+/// |---|---|
+/// | **시스템 「‹ 새로운 기억」 알약** | **≈39pt** |
+/// | 우리 카드·제목 | **≈78pt** (안전영역 62 + 우리 여백 16) |
+/// ★ **iOS 26은 자기 껍데기를 안전영역 안쪽에 그린다** — 세로의 떠 있는 탭바도 아래 **21pt**에 있다
+/// (안전영역 34pt보다 안쪽). **그래서 우리도 그 자리를 쓸 수 있다.**
+///
+/// ## ⛔⛔⛔ `.ignoresSafeArea`로는 못 한다 — **세 자리에서 다 헛걸었다** (2026-09-13)
+/// 그 모디파이어는 **그 칸을 넓힐 뿐, 안쪽 컨테이너가 자식에게 다시 넣는 것은 못 막는다.**
+/// | 건 자리 | 결과 |
+/// |---|---|
+/// | **① `GeometryReader` 바깥**(`tabShell`) | 칸은 넓어졌는데(`size 750 → 812`) **화면은 그대로** |
+/// | **② `TabView`의 자식**(화면 통째) | 그대로. **여백만 더해져 오히려 넓어졌다**(쟀다: 96pt) |
+/// | **③ `NavigationStack` 안쪽** | **역시 그대로** |
+/// ✅ **그래서 「무시」가 아니라 「밀기」로 간다 — 음수 여백.**
+/// 안전영역 값을 읽어 **`leading − 23`만큼 왼쪽으로 민다.** 그러면 제목이 **23 + 16 = 39pt**에 앉는다.
+///
+/// ⚠️ **세로에서는 안 민다** — 크기 등급으로 가른다(`verticalSizeClass == .compact` = 아이폰 가로).
+/// 세로의 좌우 안전영역은 0이라 어차피 밀 것도 없다.
+/// ⛔⛔ **상태를 쓰지 않는다 — 그것이 오늘 화면을 얼렸다**(전말 → `RootView.tabShell` 머리주석).
+/// 창에서 값을 **읽기만** 하고, 회전하면 `verticalSizeClass`가 바뀌어 `body`가 다시 돈다.
+///
+/// ⚠️ **섬(Dynamic Island) 쪽이면 글자가 가릴 수 있다** — 시스템도 같은 자리를 쓰지만
+/// **두 방향 다 확인해야 한다**(설치 이력의 볼 것에 적었다).
+private struct LandscapeEdge: ViewModifier {
+    @Environment(\.verticalSizeClass) private var vClass
+
+    /// 시스템 알약의 왼쪽 끝(39pt) − 화면들이 이미 갖고 있는 여백(16pt).
+    static let extra: CGFloat = 23
+
+    /// 지금 창의 왼쪽 안전영역. ⚠️ **SwiftUI의 의존값이 아니다** — 그래서 이것만으로는 회전에 안 따라온다.
+    /// **`vClass`가 같이 바뀌므로** `body`가 다시 돌고, 그때 이 값을 새로 읽는다.
+    private var leadingInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.keyWindow?.safeAreaInsets.left ?? 0
+    }
+
+    func body(content: Content) -> some View {
+        let shift = vClass == .compact ? max(0, leadingInset - Self.extra) : 0
+        return content.padding(.leading, -shift)
+    }
+}
+#endif
+
+extension View {
+    /// 가로에서 좌우 안전영역을 걷고 시스템과 같은 자리에 맞춘다 — `NavigationStack` **안쪽**에 건다.
+    @ViewBuilder func landscapeEdge() -> some View {
+        #if os(iOS)
+        modifier(LandscapeEdge())
+        #else
+        self
+        #endif
+    }
+}

@@ -144,7 +144,8 @@ struct SettingsView: View {
                 }
             }
             .background(Palette.bg.ignoresSafeArea())
-            .hiddenNavBar()               // 제목은 위 `ScreenTitle`이 그린다
+            .hiddenNavBar()
+            .landscapeEdge()               // 제목은 위 `ScreenTitle`이 그린다
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }

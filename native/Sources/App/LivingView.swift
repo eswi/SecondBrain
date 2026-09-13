@@ -17,6 +17,7 @@ struct LivingView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
             .hiddenNavBar()
+            .landscapeEdge()
             .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
         }
     }

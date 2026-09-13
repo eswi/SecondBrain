@@ -48,6 +48,7 @@ struct InboxView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
             .hiddenNavBar()
+            .landscapeEdge()
             .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
             .navigationDestination(for: PrincipleListRoute.self) { _ in PrincipleListView(model: model, path: $path) }
         }
@@ -224,7 +225,10 @@ struct InboxView: View {
             //   **같이 커지고 작아져야** 비율이 유지된다. `@ScaledMetric`이 그 일을 한다.
             if model.folderLink.canCapture {
                 Button { showCapture = true } label: {
-                    Image(systemName: "plus").font(.system(size: plusSize))
+                    // ⚠️ **`.semibold`다** — 사용자: *"boldface 서체처럼 **약간** 굵게"*.
+                    //   `.bold`는 한 단계 더 굵다. 굵기를 올릴 때는 **크기를 같이 올리지 말 것**
+                    //   — 굵어지면 같은 크기에서도 커 보인다(30pt는 재서 정한 값이다).
+                    Image(systemName: "plus").font(.system(size: plusSize, weight: .semibold))
                         .foregroundStyle(Palette.accent)
                         // ⚠️ **누를 자리를 44pt로 넓힌다**(권장 표적 크기) — 그림은 32 x 29라 모자란다.
                         //   ★ **`padding` → `contentShape` → 음수 `padding`** 순서라
