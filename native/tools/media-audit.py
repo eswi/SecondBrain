@@ -16,6 +16,18 @@
 
 ⛔ **「항목당 하나」는 이제 검산 대상이 아니다** — 여럿이 정상이다. 검산하는 것은 **이름의 대응**이다.
 
+## ★★ 포인터는 **쌓는 것이 아니라 해소하는 것**이다 (2026-09-13에 고쳤다)
+
+⛔ **옛 꼴(지우지 않고 적어 둔다): 본 포인터를 전부 쌓았다** — `set photo.<자료id>=` 처럼
+**빈 값으로 지운 것도 그대로 세고 있었다.** 그래서 **2026-09-03에 「사진 지우기」로 지운 여섯 장**이
+**「누락 6」**으로 나왔다(파일은 이미 지워졌고 포인터도 이미 비워졌는데).
+★ **도구가 그 기능보다 오래됐다** — 검산식은 맞았고 **읽는 법이 낡았다.**
+
+✅ **지금은 조각 전부를 합쳐 「지금 값」을 구한 뒤 그것으로 검산한다** — 앱과 같은 규칙으로:
+- **필드별 LWW · 엄격한 `>`** (같은 HLC는 안 덮는다) — Core `MergeEngine.merge`
+- **빈 값은 자료가 아니다** — Core `MediaPointer.pointers`가 `!v.isEmpty`로 거른다
+  (⚠️ **`MergeEngine`은 빈 값을 「지움」으로 접지 않고 `""`로 들고 있는다** — 거르는 쪽이 읽는 쪽이다)
+
 ## ⛔ URL은 이 셋의 대상이 **아니다** (2026-08-24 · 설계 §3-Z)
 
 **URL 자료는 파일이 없다** — 포인터 값이 자료 자신이다. 그래서 **누락·고아·겹침 셋이 성립하지 않는다**
@@ -51,37 +63,82 @@ FILELESS = ("url",)
 FIELD = re.compile(r"^(audio|photo|url)(?:\.([0-9a-f]+))?$")
 
 
-def pointers(folder):
-    """{종류: {파일명: [항목 id…]}} — 조각 파일 전부에서 포인터 값을 모은다."""
-    out = {k: defaultdict(list) for k in list(KINDS) + list(FILELESS)}
+ZERO = (0, 0, "")
+
+
+def hlc(s):
+    """`<밀리초>.<카운터>.<기기>` → 견줄 수 있는 값. Core `HLC.init?(serialized:)`와 같은 꼴."""
+    parts = s.split(".", 2)                 # ⚠️ 기기 이름에 `.`이 있을 수 있어 앞 둘만 가른다
+    if len(parts) != 3:
+        return ZERO
+    try:
+        return (int(parts[0]), int(parts[1]), parts[2])
+    except ValueError:
+        return ZERO
+
+
+def put(state, item, key, value, at):
+    """필드별 LWW — ⛔ **엄격한 `>`**(Core `MergeEngine`과 같다: 같은 HLC는 안 덮는다)."""
+    if not item:
+        return
+    cur = state[item].get(key)
+    if cur is None or at > cur[0]:
+        state[item][key] = (at, value)
+
+
+def resolve(folder):
+    """{항목: {필드: (HLC, 값)}} — 조각 전부를 합친 **지금 값.** 빈 값도 그대로 들고 있는다."""
+    state = defaultdict(dict)
     for fn in sorted(os.listdir(folder)):
         if not (fn.startswith("inbox") and fn.endswith(".md")):
             continue
-        item = None
+        # create 블록은 **`hlc:`를 읽은 뒤에야** 적용할 수 있다 — 그래서 모았다가 블록 끝에서 넣는다.
+        item, at, block = None, ZERO, []
         for line in open(os.path.join(folder, fn), encoding="utf-8", errors="replace"):
             s = line.strip()
-            if line.startswith("- ") and "|" in line:      # create 블록 머리
-                item = None
+            if line.startswith("- ") and "|" in line:      # create 블록 머리 — 앞 블록을 닫는다
+                for k, v in block:
+                    put(state, item, k, v, at)
+                item, at, block = None, ZERO, []
+                continue
+            if line.startswith("@"):                       # 변이 줄 — `set k=v …`
+                for k, v in block:
+                    put(state, item, k, v, at)
+                item, at, block = None, ZERO, []
+                parts = [p.strip() for p in line[1:].split("|")]
+                if len(parts) >= 3 and parts[2].startswith("set "):
+                    ophlc, mid = hlc(parts[0]), parts[1]
+                    for tok in parts[2][4:].split():
+                        k, _, v = tok.partition("=")
+                        if FIELD.match(k):
+                            put(state, mid, k, v, ophlc)   # ★ 빈 값도 넣는다 — 그것이 「지웠다」다
                 continue
             if s.startswith("id:"):
                 item = s[3:].strip()
                 continue
-            if line.startswith("@"):                       # 변이 줄 — `set k=v …`
-                parts = [p.strip() for p in line[1:].split("|")]
-                if len(parts) >= 3:
-                    mid, verb = parts[1], parts[2]
-                    if verb.startswith("set "):
-                        for tok in verb[4:].split():
-                            k, _, v = tok.partition("=")
-                            m = FIELD.match(k)
-                            if m and v:
-                                out[m.group(1)][v].append(mid)
+            if s.startswith("hlc:"):
+                at = hlc(s[4:].strip())
                 continue
             if item and (s.startswith("audio") or s.startswith("photo") or s.startswith("url")):
                 k, _, v = s.partition(":")
-                m = FIELD.match(k.strip())
-                if m and v.strip():
-                    out[m.group(1)][v.strip()].append(item)
+                if FIELD.match(k.strip()):
+                    block.append((k.strip(), v.strip()))
+                continue
+        for k, v in block:                                 # 파일 끝 — 마지막 블록을 닫는다
+            put(state, item, k, v, at)
+    return state
+
+
+def pointers(folder):
+    """{종류: {파일명: [항목 id…]}} — **지금 값**에서 살아 있는 포인터만 모은다."""
+    out = {k: defaultdict(list) for k in list(KINDS) + list(FILELESS)}
+    for item, fields in resolve(folder).items():
+        for k, (_, v) in fields.items():
+            if not v:                                      # ★ 빈 값 = 지웠다 — 자료가 아니다
+                continue
+            m = FIELD.match(k)
+            if m:
+                out[m.group(1)][v].append(item)
     return out
 
 
