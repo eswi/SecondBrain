@@ -55,7 +55,21 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
    xcrun devicectl device copy from --device <CoreDevice UUID> \
      --domain-type appDataContainer --domain-identifier kr.teri.secondbrain \
      --source "Library/Application Support/SecondBrain/<하위경로>" --destination <로컬>
+
+   # ⓓ ★★ 폰에서 **그 앱이 정말 돌고 있나** (화면을 안 본다)
+   xcrun devicectl device info processes --device <CoreDevice UUID>   # 500줄쯤 나온다
+   #   → 그 목록에 `SecondBrain`이 있나 본다. **없으면 프로세스가 없는 것이다.**
    ```
+   - ⛔⛔ **★ ⓓ가 없어서 열하루를 틀린 잣대로 판정했다** (2026-09-13에 드러났다).
+     **「앱 전환기에 카드가 남아 있다」를 「앱이 안 끝났다」로 읽어 왔다** — 09-02부터 그랬다.
+     ⛔ **카드는 스냅샷이라 프로세스가 죽어도 남는다** — **고쳤든 안 고쳤든 같은 값**이다
+     (계측 규칙 7 · 메모리 「판정엔 구분되는 값」의 형태: *안 고쳤다면 이 값이 달랐을까*).
+     ✅ **ⓓ로 재니 한 번에 갈렸다 — 대조군이 같은 빌드 안에 있었다:**
+     **떠 있던 앱을 [취소하기]로 내려놓은 직후 = `pid` 있음** ·
+     **깨운 앱을 [취소하기]로 끝낸 직후 = 없음.** **설계대로 갈린다.**
+     ⚠️ **대가:** 그 열하루 동안 **「언제부터 되고 있었나」를 잃었다** — 옛 판정들이
+     **가릴 수 없는 잣대**로 내려졌기 때문이다. **값은 맞았고 잣대가 못 갈랐다.**
+     ★ **거꾸로 쓰기:** **화면으로 판정하기 전에 「이 값이 프로세스 상태와 정말 묶여 있나」를 묻는다.**
    - ⚠️ **`pkill` 직후 `open`은 `-600`으로 실패한다**(앞 프로세스가 죽는 중) — **한 번 더 부르면 된다.**
    - ⚠️ **`open`으로 띄우면 디버거가 안 붙는다** — 성능 측정 규칙 1이 요구하는 조건이다.
    - ⛔ **식별자 둘을 섞어 쓰지 말 것.** `xcodebuild`는 **하드웨어 UDID**(`00008140-…` · 폰에 붙은 값이라
