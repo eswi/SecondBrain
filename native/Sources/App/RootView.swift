@@ -18,8 +18,6 @@ struct RootView: View {
     // 이 우발적 선택은 scene이 .active가 아닐 때 들어오므로 onChange에서 걸러 이 값엔 반영하지 않고,
     // 나가는 즉시(그리고 복귀 시 보강) 이 값으로 되돌린다. 시스템 제스처라 원천 차단은 불가.
     @State private var stableTab: AppTab = .new
-    /// 가로에서 **되찾은 안전영역 쪽**(섬이 없는 쪽). 세로면 `[]`. 아래 `computeFreeSide()` 참조.
-    @State private var freeSide: Edge.Set = []
 
 
     var body: some View {
@@ -44,6 +42,31 @@ struct RootView: View {
         }
     }
 
+    /// ## ⛔⛔ 가로 좌우 여백 줄이기 — **만들었다가 되돌렸다. 되살리려면 아래를 먼저 읽을 것** (2026-09-13)
+    ///
+    /// 사용자: *"가로 모드에서는 화면의 좌우 여백이 너무 커 … 우측 여백은 너무 커서 다 줄어야 해."*
+    ///
+    /// **쟀다(앱 로그):** iOS가 가로에서 **좌우 각각 62pt**를 준다 — **대칭이다.**
+    /// ⛔ **대칭인 이유:** 섬(Dynamic Island)이 **돌리는 방향에 따라 좌·우 어느 쪽에도 온다.**
+    /// 실제로 양쪽을 다 없애 보니 **「살아있는 기억」이 섬에 잘려 「살이 … 억」**이 됐다.
+    ///
+    /// **그래서 「섬이 없는 쪽만」 되찾게 만들었다**(`interfaceOrientation`으로 가려서
+    /// `@State freeSide` → `.ignoresSafeArea(edges:)`). **돌아갔다** — 한 방향에서
+    /// 오른쪽 여백이 사라지고 띠가 화면 끝에 붙는 것을 시뮬에서 확인했다.
+    ///
+    /// ⛔⛔ **그런데 폰에서 화면이 얼었다** (사용자: *"화면이 자꾸 죽어"*). **재현·확인했다:**
+    /// 시뮬에서 **연달아 여섯 번 돌리니 화면이 멎었다**(프로세스는 살아 있고 그림만 안 바뀐다).
+    /// **그 배선만 빼고 같은 시험을 하니 여덟 번 돌려도 안 언다.**
+    /// ★ **원인은 되울림이다** — `.onChange(of: geo.size)`가 상태를 바꾸고,
+    /// 그 상태가 **그 `GeometryReader`의 크기를 바꾼다.** 값이 같으면 멈추게 막아 뒀는데도
+    /// 회전 중에는 방향과 크기가 **엇갈려 들어와** 고리가 돈다.
+    ///
+    /// ▶ **다시 할 때의 길:** ⛔ **크기 변화에 상태를 물리지 말 것.** 방향은
+    /// `orientationDidChangeNotification`처럼 **레이아웃 밖의 신호**로 받는다.
+    /// ⚠️ **그리고 내용 쪽은 그것으로도 안 줄어든다** — 바깥 칸은 넓어지는데
+    /// (`size 750 → 812` · `insets L62 → L0`) **`TabView`·`NavigationStack`이 자식에게
+    /// 안전영역을 다시 넣는다.** 줄이려면 **화면 다섯 각각의 목록까지** 내려가야 한다.
+    ///
     /// **가로면 시스템 탭바를 숨기고 세로 띠를 형제로 세운다** (2026-09-13 사용자 결정).
     /// 왜 형제인가·무엇을 골랐나 → `SideTabBar` 머리주석.
     /// ⚠️ **세로는 건드리지 않았다** — 시스템 탭바 그대로다(모습·자리·여백 전부).
@@ -54,19 +77,11 @@ struct RootView: View {
             // 기기마다 다르게 나온다(Max는 가로에서도 `.regular`인 경우가 있다).
             let landscape = geo.size.width > geo.size.height
             HStack(spacing: 0) {
-                // ⛔⛔ **내용 쪽 여백은 이 방법으로 못 줄인다 — 해 보고 접었다** (2026-09-13).
-                //   바깥 칸은 실제로 넓어진다(**로그: `size 750 → 812` · `insets L62 → L0`**).
-                //   ⛔ **그런데 화면은 그대로다** — `TabView`·`NavigationStack`이 **자식에게
-                //   안전영역을 다시 넣기 때문**이다. 안쪽에 한 번 더 걸어도 안 바뀌었다(쟀다).
-                //   ▶ **줄이려면 화면 다섯 각각의 목록까지 내려가야 한다** — 그 값은 아직 안 치렀다.
-                //   ✅ **띠는 다르다** — `TabView` 바깥의 형제라 아래 `ignoresSafeArea`가 그대로 먹는다.
                 tabs(landscape: landscape)
                 if landscape {
                     SideTabBar(tab: $tab).frame(width: SideTabBar.thickness)
                 }
             }
-            .onAppear { syncFreeSide() }
-            .onChange(of: geo.size) { _, _ in syncFreeSide() }
             // ★★ **섬이 없는 쪽의 안전영역은 순전한 여백이다 — 그쪽만 되찾는다** (2026-09-13).
             //   사용자: *"가로 모드에서는 화면의 좌우 여백이 너무 커."*
             //   **쟀다(시뮬 26.5 · 두 회전 다):** 카드 왼쪽 끝이 **양쪽 다 72pt** — 즉 iOS가
@@ -75,52 +90,12 @@ struct RootView: View {
             //   그래서 **양쪽을 다 없애면 한 방향에서 글자가 섬에 가린다.**
             //   ✅ **한쪽은 늘 순전한 여백이다** — 섬이 없는 쪽. 그쪽만 없앤다.
         }
-        // ⛔⛔ **이 줄은 `GeometryReader` 「바깥」이라야 한다** (2026-09-13에 물렸다).
-        //   안쪽(자식)에 걸면 **아무 일도 안 난다** — `GeometryReader`가 **이미 안전영역 안에** 놓이므로
-        //   그 자식은 부모 칸 밖으로 못 나간다. **쟀다: 카드 왼쪽 끝이 72pt 그대로였다.**
-        //   ✅ 바깥에 걸면 `GeometryReader` 자신이 넓어지고, `geo.size`도 그만큼 커진다.
-        //   ⚠️ **`freeSide`는 가로가 아니면 `[]`다** — 그래서 세로는 안 건드린다.
-        .ignoresSafeArea(edges: freeSide)
         #else
         tabs(landscape: false)
         #endif
     }
 
-    /// **섬이 없는 쪽** — 그 쪽 안전영역은 되찾아도 안전하다.
-    ///
-    /// ⛔⛔ **계산 프로퍼티로 두면 안 된다 — 2026-09-13에 물렸다.**
-    /// `interfaceOrientation`은 **SwiftUI의 의존값이 아니다.** 계산 프로퍼티로 읽으면
-    /// **돌려도 `body`가 다시 안 돌아** 옛 값이 그대로 쓰인다(**쟀다: 카드 왼쪽 끝 72pt 그대로**).
-    /// ✅ **`GeometryReader`의 크기 변화에 물린다** — 회전하면 크기가 반드시 바뀌므로 그때 다시 센다.
-    /// ⚠️ **같은 값이면 안 넣는다** — 값이 바뀌면 칸 크기가 바뀌고 그것이 또 이 자리를 부른다(되울림).
-    ///
-    /// ⛔ **방향 이름이 헷갈리는 자리다 — 문서를 보고 적었다.**
-    /// `UIInterfaceOrientation.landscapeLeft` = *"기기를 세운 채 **전면 카메라가 오른쪽**"*
-    /// → **섬이 오른쪽**이므로 **왼쪽을 되찾는다.** `.landscapeRight`는 그 반대.
-    /// ⚠️ **못 잼:** 이 대응이 실기기에서 맞는지는 **폰에서 두 방향을 다 돌려 봐야 안다**
-    /// (시뮬은 한쪽 방향에서만 섬을 그렸다). **틀렸으면 눈에 바로 보인다** — 탭바가 섬에 가린다.
-    /// ✅ **틀려도 데이터에는 해가 없다** — 보이는 자리만 어긋난다.
-    private static func computeFreeSide() -> Edge.Set {
-        #if os(iOS)
-        // ⚠️ **`activationState == .foregroundActive`로 좁히면 못 찾는 때가 있다**(2026-09-13 실측:
-        //    늘 `[]`가 나왔다). 창이 있는 scene이면 방향을 안다 — 좁히지 않는다.
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let o = (scenes.first { $0.activationState == .foregroundActive } ?? scenes.first)?
-            .interfaceOrientation
-        switch o {
-        case .landscapeLeft:  return .leading     // 섬이 오른쪽 → 왼쪽이 순전한 여백
-        case .landscapeRight: return .trailing    // 섬이 왼쪽  → 오른쪽이 순전한 여백
-        default:              return []           // 모르면 아무것도 안 건드린다(안전한 쪽)
-        }
-        #else
-        return []
-        #endif
-    }
 
-    private func syncFreeSide() {
-        let now = Self.computeFreeSide()
-        if now != freeSide { freeSide = now }      // 같은 값이면 안 넣는다(되울림 차단)
-    }
 
     private func tabs(landscape: Bool) -> some View {
         TabView(selection: $tab) {
