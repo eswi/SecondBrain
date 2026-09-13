@@ -151,12 +151,23 @@ final class JustifiedTextView: UIView {
     private var maxLines = 0
     private var lastWidth: CGFloat = 0
     private var cached: [JustifiedLineBreaker.Line] = []
+    /// ⛔⛔ **「줄을 나눠 둔 폭」과 「그려 둔 폭」은 다른 값이다** (2026-09-13에 물렸다).
+    /// `lastWidth`는 **재는 길**(`sizeThatFits` → `height(forWidth:)`)에서도 갱신된다 —
+    /// 그래서 **배치보다 먼저 새 폭으로 바뀌어 있고**, `layoutSubviews`가 그 값으로 견주면
+    /// **「폭이 안 바뀌었다」로 읽어 다시 그리지 않는다.** 아래 `layoutSubviews` 주석에 전말.
+    private var drawnWidth: CGFloat = -1
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
         isOpaque = false
         isAccessibilityElement = true        // 글을 직접 그리므로 접근성은 우리가 알려야 한다
+        // ⛔⛔ **이 한 줄이 없으면 화면을 돌릴 때 글자가 찌그러진다** (2026-09-13 · 폰에서 왔다).
+        //   `UIView`의 기본 `contentMode`는 **`.scaleToFill`** — 크기가 바뀌면 **그려 둔 그림을
+        //   새 칸에 늘린다.** 보통 뷰는 그래도 되지만 **`draw(_:)`로 직접 그리는 뷰는 다시 그려야** 한다.
+        //   증상: 가로로 늘고 세로로 눌려 **두 줄이 겹쳐 보이고 글자가 뚱뚱해진다**(글자 크기가 변한 것이 아니다).
+        //   ✅ `.redraw`는 **크기가 바뀌면 `setNeedsDisplay()`를 대신 불러 준다.**
+        contentMode = .redraw
     }
     required init?(coder: NSCoder) { fatalError("스토리보드로 안 쓴다") }
 
@@ -203,14 +214,24 @@ final class JustifiedTextView: UIView {
         return CGSize(width: w, height: height(forWidth: w))
     }
 
+    /// ⛔⛔ **옛 꼴(지우지 않고 적어 둔다): `if bounds.width != lastWidth`** — **2026-09-13에 뒤집혔다.**
+    ///
+    /// **왜 안 먹었나:** `lastWidth`는 **재는 길**에서도 갱신된다
+    /// (`sizeThatFits` → `height(forWidth:)` → `lines(forWidth:)`). 화면을 돌리면 SwiftUI가
+    /// **배치보다 먼저 새 폭으로 재 보므로** `lastWidth`가 **이미 새 폭**이고,
+    /// 그 뒤 bounds가 그 폭이 되면 **`!=`가 거짓이라 다시 그리라고 안 한다.**
+    /// ⛔ **그러면 `.scaleToFill`이 옛 그림을 새 칸에 늘린다** — 그것이 찌그러짐이다.
+    /// ★ **캐시를 가르는 값으로 「다시 그릴지」를 정하고 있었다** — 두 물음이 다른데 값이 하나였다.
+    /// ✅ 지금은 **`drawnWidth`**(실제로 그린 폭)로 견준다. `contentMode = .redraw`가 한 겹 더 받친다.
     override func layoutSubviews() {
         super.layoutSubviews()
-        if bounds.width != lastWidth { cached = []; setNeedsDisplay(); invalidateIntrinsicContentSize() }
+        if bounds.width != drawnWidth { setNeedsDisplay(); invalidateIntrinsicContentSize() }
     }
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext(), bounds.width > 0 else { return }
         let w = bounds.width
+        drawnWidth = w                      // ★ 「이 폭으로 그려 뒀다」 — `layoutSubviews`가 이걸 본다
         let broken = lines(forWidth: w)
         ctx.textMatrix = .identity
         ctx.translateBy(x: 0, y: bounds.height)
