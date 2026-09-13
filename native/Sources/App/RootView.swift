@@ -83,6 +83,9 @@ struct RootView: View {
                     tabs(landscape: true)
                     AppTabBar(tab: $tab, axis: .vertical)
                         .frame(width: AppTabBar.strip)
+                        // ⚠️ **위아래도 끝까지** — 안 그러면 아래 홈 인디케이터 자리만큼
+                        //   아이콘이 위로 쏠린다(배경은 뻗는데 내용은 안 뻗는 그 형태).
+                        .ignoresSafeArea(edges: .vertical)
                 }
                 .ignoresSafeArea(edges: .trailing)
             } else {
@@ -90,9 +93,10 @@ struct RootView: View {
                 VStack(spacing: 0) {
                     tabs(landscape: false)
                     AppTabBar(tab: $tab, axis: .horizontal)
-                        .frame(height: AppTabBar.content)
-                        .background(Palette.surface.ignoresSafeArea(edges: .bottom))
+                        .frame(height: AppTabBar.strip)
                 }
+                // 띠가 **화면 맨 아래까지** 차지한다 — 그래야 그 안에서 가운데가 진짜 가운데다.
+                .ignoresSafeArea(edges: .bottom)
             }
         }
         #else

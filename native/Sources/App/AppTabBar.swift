@@ -38,9 +38,13 @@ struct AppTabBar: View {
     @Binding var tab: AppTab
     let axis: Axis
 
-    /// 내용이 차지하는 두께(안전영역 제외) — 세로에서 쓴다. 실측 59pt.
-    static let content: CGFloat = 59
-    /// 띠 전체(안전영역 포함) — **가로에서 이 폭을 쓴다.** 실측 93.3pt.
+    /// **띠 전체**(안전영역 포함) — 실측 93.3pt. **두 방향 다 이 값을 쓴다.**
+    ///
+    /// ⛔⛔ **옛 꼴(지우지 않는다): 세로는 `content = 59`만 잡고 배경만 안전영역까지 뻗었다.**
+    /// 그러면 **아이콘은 59pt 안에서 가운데**인데 **눈에 보이는 띠는 93pt**라
+    /// **위로 쏠려 보인다**(사용자: *"세로 기준으로는 너무 위로 붙어 있어"* ·
+    /// *"가로 모드에서도 한쪽으로 쏠린 느낌"*).
+    /// ✅ **띠가 물리적 영역 전체를 차지하게 하고 그 안에서 가운데**에 둔다.
     static let strip: CGFloat = 93
 
     var body: some View {
@@ -52,6 +56,9 @@ struct AppTabBar: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // ★ **배경은 띠가 제 것으로 갖는다** — 밖에서 따로 깔면 **배경만 안전영역까지 뻗고
+        //   아이콘은 안 뻗어** 한쪽으로 쏠린다(2026-09-13 사용자: *"너무 위로 붙어 있어"*).
+        .background(Palette.surface)
         .background(alignment: axis == .horizontal ? .top : .leading) {
             // 안쪽 가장자리의 가는 선 — 참고 스크린샷의 그 경계.
             Palette.border.frame(
