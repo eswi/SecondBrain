@@ -59,6 +59,12 @@ public enum ClassSpecCatalog {
     /// - **주차** = 마감(due) 안 씀(§7 "주차는 사진·위치·본문으로 충분" — Stage C).
     /// - **정보·아이디어·원칙**(`noTime`) = 마감·다시보기 **둘 다 안 씀** — 참고 지식·발상·상시 원칙은
     ///   시점이 본질이 아니다(원칙은 ambient 상시라 날짜·마감이 근본적으로 안 맞음).
+    /// **주차 위치의 `type` 값.** ⚠️ 한글 "주차"가 아니다.
+    /// ★ 앱이 이 분류를 이름으로 가려야 하는 자리가 생겨서 상수로 올렸다(2026-09-13) —
+    /// 「주차를 처음 기억할 때 다시 보기를 오늘로」(`DetailView.remember()`).
+    /// ⛔ 문자열을 양쪽에 따로 적지 않는다 — 한쪽만 고쳐지면 조용히 안 먹는다.
+    public static let parkingKey = "parking"
+
     public static let all: [ClassSpec] = {
         let mirror: Set<Detail> = [.due, .resurface, .photo, .location]
         let noTime: Set<Detail> = [.photo, .location]   // 마감·다시보기 안 씀(정보·아이디어·원칙)
@@ -71,7 +77,7 @@ public enum ClassSpecCatalog {
             ClassSpec(key: "info",        uses: noTime),
             ClassSpec(key: "idea",        uses: noTime),
             ClassSpec(key: "principle",   uses: noTime),
-            ClassSpec(key: "parking",     uses: mirror.subtracting([.due])),
+            ClassSpec(key: parkingKey,    uses: mirror.subtracting([.due])),
             // 되풀이(반복) — 8번째 분류(recurrence-design.md §3-A).
             // **마감(due) = 회차 앵커(회차 시각)**, **미리 알림(resurface) = 게시 시작(lead)** — 일반 항목과 동일 역할.
             // 완료 시 마감을 다음 회차로, 미리 알림도 같은 간격 전진(lead 보존). 마감만 있으면 마감 시각부터 보임(게이트 시각 인지).

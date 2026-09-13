@@ -1704,8 +1704,33 @@ struct DetailView: View {
         }
     }
 
+    /// ★ **주차 위치를 처음 기억할 때 「다시 보기」를 오늘로 채운다** (2026-09-13 사용자 결정).
+    ///
+    /// 사용자: *"내가 생활해보니 주차위치를 기억하는 때는 처음에 항상 「다시 보기」 날짜가
+    /// 바로 그 날, 즉 오늘 날짜야. 그러니 **기억하는 시점에** 「다시 보기」 날짜를
+    /// 당일 날짜로 자동 설정해줘. 지금은 날짜 설정이 「없음」으로 되어 있어."*
+    ///
+    /// **채우는 조건 셋** — 하나라도 어긋나면 안 건드린다:
+    /// ① 지금 고른 분류가 **주차 위치**(`parking`) ② 화면의 「다시 보기」가 **비어 있다**
+    /// ③ **저장된 값도 비어 있다**(사람이 넣었다 지운 것을 되살리지 않는다).
+    /// ⛔ **덮어쓰지 않는다** — 이미 날짜가 있으면 그대로 둔다.
+    ///
+    /// ⚠️ **`changes`를 안 거치고 따로 넣는다** — 미기억일 때 `changes`는 **원문·분류만** 남기기
+    /// 때문이다(`edit-policy.md` §1-A: 임시는 식별 층만 연다). **여기는 편집이 아니라
+    /// 「기억하기」라는 결정 그 자체**라 그 칸이 이 순간 열린다.
+    /// ⛔ **「수정 ≠ 기억하기」를 뒤집지 않는다** — 편집만으로는 여전히 아무 날짜도 안 생긴다.
+    ///
+    /// ✅ **분류가 그 칸을 쓴다는 것은 Core가 보증한다** —
+    /// `ClassSpec(key: "parking", uses: mirror.subtracting([.due]))`이므로 `resurface`를 쓴다.
+    /// ⛔ 안 쓰는 분류에 날짜를 넣으면 **분류 게이트**(§7 (c) · `ClassGateTests`)와 어긋난다.
     private func remember() {
-        let saving = changes
+        var saving = changes
+        if normalizedType == ClassSpecCatalog.parkingKey,
+           (resurface ?? "").isEmpty, (baseline.resurface ?? "").isEmpty {
+            let today = ItemSchedule.dayString(Date())
+            saving["resurface"] = today
+            resurface = today                  // 화면 draft도 같이 옮긴다(바로 보이게)
+        }
         if !saving.isEmpty { model.commitEdits(item, changes: saving) }
         model.confirm(item)
         baseline = baseline.applying(saving)   // 기준선을 옮겨 dirty를 비운다(안 옮기면 나갈 때 경고가 뜬다)

@@ -71,6 +71,12 @@ final class ClassGateTests: XCTestCase {
     }
 
     /// 6. 주차는 다시 보기는 쓴다 → 그 날짜가 살아야 한다("시간 안 쓰는 분류면 통째로 nil"이 아님).
+    /// ★★ **이 시험에 기대는 결정이 하나 더 생겼다** (2026-09-13).
+    /// **「주차 위치를 처음 기억할 때 「다시 보기」를 오늘로 채운다」**(`DetailView.remember()` ·
+    /// 사용자: *"주차위치를 기억하는 때는 처음에 항상 다시 보기 날짜가 바로 그 날"*).
+    /// **사실:** 주차는 `resurface`를 쓰므로(아래 단정) 그 칸에 날짜를 넣어도 게이트와 안 어긋난다.
+    /// ⛔ **이 시험이 깨진다면** 구현이 틀린 것이 아니라 **누군가 주차의 `uses`를 바꾼 것**이다 —
+    /// 그때는 **그 자동 채움부터 걷어내야 한다**(안 쓰는 칸의 날짜는 시점이 아니다 · §7 (c)).
     func testGate_parking_resurfaceRealDate_kept() {
         XCTAssertTrue(ClassSpecCatalog.uses("parking", .resurface))
         XCTAssertEqual(ItemSchedule.publishDay(item("P2", type: "parking", resurface: "2026-07-20")), "2026-07-20")
