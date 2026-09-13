@@ -311,3 +311,44 @@ struct ConfirmDialog: View {
         }
     }
 }
+
+/// **화면 제목 — 탭 다섯이 같은 서식을 쓴다** (2026-09-13 사용자 지시).
+///
+/// 사용자: *"모든 탭 화면에서 제목 서식이 다 달라. 모두 '새로운 기억' 화면의 화면 제목 형식에 맞춰서,
+/// 제목 영역의 높이, 제목 글자의 크기 및 alignment를 통일해줘. 가로·세로 모두."*
+///
+/// ## 무엇이 갈려 있었나 (2026-09-13 실측)
+/// | 화면 | 그때 | |
+/// |---|---|---|
+/// | 새로운 기억 · 살아있는 기억 | **직접 그린 머리줄** — `.largeTitle.bold()` · 좌우 16 · 위 6 · 아래 4 | ← **기준** |
+/// | 검색 · 보관된 기억 · 설정 | **시스템 `.navigationTitle`** — 좌우 20 · 높이 더 큼 · **스크롤하면 접힌다** | |
+/// ⛔ **같은 「큰 제목」이라도 시스템 것은 자리·높이·접힘이 다르다** — 그래서 다섯이 달라 보였다.
+///
+/// ## 어떻게 맞췄나
+/// **기준 쪽(새로운 기억)으로 모았다.** 나머지 셋은 `.navigationTitle`을 걷고 `hiddenNavBar()` +
+/// 이 부품을 쓴다. ✅ **`.navigationTitle`을 걷어도 상세의 `<` 글자는 안 바뀐다** —
+/// 그 글자는 `DetailRoute.backTitle`에서 오지 `navigationTitle`에서 오지 않는다(2026-09-02 구조).
+///
+/// ⚠️ **글자는 한 자도 안 바꿨다**(항시 규칙 6) — 다섯 이름 모두 옛 자리에서 그대로 옮겼다.
+struct ScreenTitle<Accessory: View>: View {
+    private let text: String
+    private let accessory: Accessory
+
+    init(_ text: String, @ViewBuilder accessory: () -> Accessory) {
+        self.text = text
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(text).font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
+            Spacer()
+            accessory
+        }
+        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
+    }
+}
+
+extension ScreenTitle where Accessory == EmptyView {
+    init(_ text: String) { self.init(text) { EmptyView() } }
+}

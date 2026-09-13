@@ -30,6 +30,8 @@ struct InboxView: View {
     /// 자동 분류 일시 중지 안내(2026-08-18). `ClassifyPause` 참조.
     @State private var showClassifyPaused = false
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
+    /// 제목 옆 `+`의 크기. **글자 크기 설정을 따라간다**(`.largeTitle` 기준으로 같이 자란다).
+    @ScaledMetric(relativeTo: .largeTitle) private var plusSize: CGFloat = 30
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -199,9 +201,7 @@ struct InboxView: View {
     // MARK: 헤더 (제목 + 폴더 아이콘, 한 줄)
 
     private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("새로운 기억").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
-            Spacer()
+        ScreenTitle("새로운 기억") {
             // 폴더 관리는 설정으로 이관 — 여기는 수집 진입. 폴더 없으면 온보딩 프롬프트가 처리.
             // ⚠️ **"비었다"에서도 이 단추는 있어야 한다** — 그 화면이 이것을 가리켜 말한다(§0-A-1).
             //
@@ -210,30 +210,29 @@ struct InboxView: View {
             //   ⛔ **하는 일은 한 글자도 안 바뀌었다** — 여전히 수집 시트를 연다.
             // ⏸ **그런데 빈 화면 문구가 아직 「아래 마이크를 눌러…」다**(이 파일의 `emptyText`) —
             //    **화면에 나오는 말이라 사용자가 정한다**(항시 규칙 6). **물어야 한다.**
-            // ★ **크기는 재서 정했다** (2026-09-13 사용자: *"제목에 비해 너무 작다 · 맞는 크기를 찾아서"*).
-            //   **맞춘 기준 = 제목 글자의 실제 잉크 높이**(`.largeTitle` 34pt의 한글 글자).
-            //   | 무엇 | 값 | 어떻게 쟀나 |
+            //
+            // ★★ **크기 — 재서 정했고, 그 뒤 사용자가 2pt 더 올렸다** (2026-09-13).
+            //   **맞춘 기준 = 제목 글자의 실제 잉크 높이**(`.largeTitle` 34pt의 한글 글자) = **27.7pt**
+            //   (세로 스크린샷 픽셀 실측 · `measure-ui.swift` @3x).
+            //   | `plus` 크기 | 잉크 높이 | 제목 대비 |
             //   |---|---|---|
-            //   | 제목 「새로운 기억」 글자 높이 | **27.7pt** | 세로 화면 스크린샷 픽셀(`measure-ui.swift` · @3x) |
-            //   | `plus` @20pt(**옛 `.title3`**) | 22 x **20** | `measure-text.swift symbol` |
-            //   | `plus` @22pt(`.title2`) | 23 x **21** | 〃 |
-            //   | **`plus` @28pt(`.title`) ← 골랐다** | 30 x **27** | 〃 |
-            //   | `plus` @34pt(`.largeTitle`) | 36 x **33** | 〃 |
-            //   ✅ **28pt의 잉크 높이 27이 제목 글자 27.7과 거의 같다** — 옛 값은 **20 / 27.7 = 72%**였다.
+            //   | 20pt (옛 `.title3`) | 20 | 72% — *"제목에 비해 너무 작다"* |
+            //   | 28pt (`.title`) | 27 | 97% — 잰 값으로 고른 것 |
+            //   | **30pt ← 지금** | **29** | **105%** — 사용자: *"2pt만 더 키워줘"* |
+            //   | 34pt (`.largeTitle`) | 33 | 119% — 제목을 누른다 |
             //   ⛔ **고정 pt로 박지 않았다** — 제목이 `.largeTitle`(글자 크기 설정을 따른다)이라
-            //   **같이 커지고 작아져야** 비율이 유지된다. 그래서 **`.title`**(글자 크기 단계)로 준다.
-            //   ⛔ **`.largeTitle`로 올리지 말 것** — 33pt는 제목 글자보다 커서 `+`가 제목을 누른다.
+            //   **같이 커지고 작아져야** 비율이 유지된다. `@ScaledMetric`이 그 일을 한다.
             if model.folderLink.canCapture {
                 Button { showCapture = true } label: {
-                    Image(systemName: "plus").font(.title).foregroundStyle(Palette.accent)
-                        // ⚠️ **누를 자리를 44pt로 넓힌다**(권장 표적 크기) — 그림은 30 x 27이라 모자란다.
+                    Image(systemName: "plus").font(.system(size: plusSize))
+                        .foregroundStyle(Palette.accent)
+                        // ⚠️ **누를 자리를 44pt로 넓힌다**(권장 표적 크기) — 그림은 32 x 29라 모자란다.
                         //   ★ **`padding` → `contentShape` → 음수 `padding`** 순서라
-                        //   **누를 자리만 넓어지고 자리 크기는 그대로**다(제목과의 기준선·간격이 안 밀린다).
+                        //   **누를 자리만 넓어지고 자리 크기는 그대로**다(제목과의 기준선이 안 밀린다).
                         .padding(8).contentShape(Rectangle()).padding(-8)
                 }
             }
         }
-        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
     }
 
     // MARK: 스와이프 / 컨텍스트 액션

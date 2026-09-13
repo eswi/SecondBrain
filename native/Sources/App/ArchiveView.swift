@@ -27,6 +27,7 @@ struct ArchiveView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                ScreenTitle("보관된 기억")     // 제목 서식은 다섯 화면이 함께 쓴다(`ScreenTitle`)
                 Picker("보기", selection: $option) {
                     ForEach(ViewOption.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -57,7 +58,7 @@ struct ArchiveView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
-            .navigationTitle("보관된 기억")
+            .hiddenNavBar()               // 제목은 위 `ScreenTitle`이 그린다 — 시스템 큰 제목과 겹치면 안 된다
         }
     }
 

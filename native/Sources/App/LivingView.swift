@@ -21,13 +21,7 @@ struct LivingView: View {
         }
     }
 
-    private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("살아있는 기억").font(.largeTitle.bold()).foregroundStyle(Palette.textPrimary)
-            Spacer()
-        }
-        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
-    }
+    private var headerRow: some View { ScreenTitle("살아있는 기억") }
 
     private var content: some View {
         let items = model.livingMemories

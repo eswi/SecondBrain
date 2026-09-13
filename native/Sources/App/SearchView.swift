@@ -44,6 +44,8 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                ScreenTitle("검색")      // 제목 서식은 다섯 화면이 함께 쓴다(`ScreenTitle`)
+                searchField
                 if searching {   // 검색창 아래 필터 UI(살아있는 기억 재사용) — 실재 분류만
                     FilterChipsBar(filter: $filter, presentTypes: Array(Set(hits.map { norm($0.type) })))
                 }
@@ -51,12 +53,47 @@ struct SearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
-            .navigationTitle("검색")
+            .hiddenNavBar()          // 제목은 위 `ScreenTitle`이 그린다
             .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
         }
-        // **문구 둘은 사용자가 골랐다**(2026-08-28) — ID로도 찾게 되면서 「원문…」이 사실과 어긋났다.
-        // 자리표시자 「기억 검색」 · 빈 화면 안내 「기억 찾기」.
-        .searchable(text: $query, prompt: "기억 검색")
+    }
+
+    /// ## ⛔ 검색창을 직접 그린다 — 제목 서식을 맞추려면 피할 수 없었다 (2026-09-13)
+    ///
+    /// **옛 꼴(지우지 않고 적어 둔다):** `.searchable(text: $query, prompt: "기억 검색")` —
+    /// 시스템이 **내비게이션 바 안에** 검색창을 넣어 줬다.
+    /// ⛔ **그런데 제목을 통일하려면 그 바를 숨겨야 하고, 숨기면 검색창도 같이 사라진다.**
+    /// 셋 다 재 봤고 셋 다 안 맞았다:
+    /// ① 바를 남기면 **제목 서식이 다른 넷과 갈린다**(사용자가 고치라고 한 그것) ·
+    /// ② 제목만 `inline`으로 줄이면 **얇은 바가 위에 남아 높이가 다르다** ·
+    /// ③ 검색창을 바에 두고 제목을 아래 두면 **검색창이 제목보다 위**에 온다.
+    /// → **검색창을 우리가 그린다.**
+    ///
+    /// ⚠️ **자리표시자 「기억 검색」은 사용자가 고른 말이다**(2026-08-28) — **그대로 옮겨 왔다**(항시 규칙 6).
+    /// ⚠️ **`.searchable`이 주던 것 중 안 따라온 것:** 아래로 당겨 숨기기 · 취소 단추 · 시스템 애니메이션.
+    /// **지우기(x)는 직접 달았다** — 그것이 없으면 지우려고 글자를 다 지워야 한다.
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Palette.textSecondary)
+            TextField("기억 검색", text: $query)
+                .autocorrectionDisabled()
+                .foregroundStyle(Palette.textPrimary)
+                // ⛔ **둘은 iOS 전용이다** — 안 가르면 **맥만 깨진다**(빌드 함정 8 · 2026-09-13에 그대로 밟았다).
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                #endif
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("지우기")
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 16).padding(.bottom, 6)
     }
 
     @ViewBuilder private var resultsArea: some View {

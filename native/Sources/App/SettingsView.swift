@@ -30,7 +30,9 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            VStack(spacing: 0) {
+                ScreenTitle("설정")            // 제목 서식은 다섯 화면이 함께 쓴다(`ScreenTitle`)
+                ZStack {
                 Palette.bg.ignoresSafeArea()
                 List {
                     Section {
@@ -139,8 +141,10 @@ struct SettingsView: View {
                 .groupedListStyle()
                 .scrollContentBackground(.hidden)
                 .background(Palette.bg)
+                }
             }
-            .navigationTitle("설정")
+            .background(Palette.bg.ignoresSafeArea())
+            .hiddenNavBar()               // 제목은 위 `ScreenTitle`이 그린다
         }
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setFolder(url) }
