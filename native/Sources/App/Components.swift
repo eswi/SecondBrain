@@ -251,7 +251,7 @@ func scheduleTimeChip(_ it: ResolvedItem, now: Date = Date()) -> String? {
 
 // MARK: - 표준 확인·안내 대화상자 (앱 공용 형식 — confirm-dialog-style)
 // 배경 딤 + 가운데 카드 + 큰 제목(표준 alert보다 2단계) + 하단 버튼 행.
-// 사용처: 기억하기 재확인 · 원칙 자동결정 안내 · 삭제 확인(상세·리스트 공통).
+// 사용처: 원칙 자동결정 안내 · 삭제 확인(상세·리스트 공통). (기억하기 재확인은 2026-09-14에 없앴다 — 원 터치.)
 
 struct StandardDialog<Buttons: View>: View {
     let title: String

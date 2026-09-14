@@ -87,7 +87,6 @@ struct DetailView: View {
     /// 화면을 닫지 않고 기억하기 처리하므로(stale한 item 대신) 로컬로 상태를 든다.
     /// (엔진의 `confirmed`에 대응 — 개념·이름만 "기억하기"로 바뀜.)
     @State private var isRemembered: Bool
-    @State private var showRememberConfirm = false
     /// 미기억 항목을 원칙으로 지정하고 저장할 때 "기억하기 자동 결정" 안내(원칙=살아있는 기억).
     @State private var showPrincipleAutoRemember = false
     /// [삭제하기] 재확인(공용 대화상자). 확인 시 삭제 + 화면 닫기.
@@ -330,7 +329,6 @@ struct DetailView: View {
             }
         }
         #endif
-        .overlay { if showRememberConfirm { rememberDialog } }
         .overlay { if showPrincipleAutoRemember { principleAutoRememberDialog } }
         .overlay { if showDeleteConfirm { deleteDialog } }
         .overlay { if showDiscardConfirm { discardDialog } }
@@ -429,7 +427,6 @@ struct DetailView: View {
                 .frame(minWidth: 520, idealWidth: 980, minHeight: 420, idealHeight: 760)
         }
         #endif
-        .animation(.easeInOut(duration: 0.15), value: showRememberConfirm)
         .animation(.easeInOut(duration: 0.15), value: showPrincipleAutoRemember)
         .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)
         .animation(.easeInOut(duration: 0.15), value: showDiscardConfirm)
@@ -794,7 +791,10 @@ struct DetailView: View {
     /// **[취소]가 없는 이유:** 임시에는 커밋할 [저장]이 없어 「수정을 버린다」가 독립 행동으로 성립하지 않는다.
     /// 나가려면 `<`를 누르고, 고친 것이 있으면 `backTapped()`의 확인 대화상자가 재확인한다.
     ///
-    /// 삭제·기억하기 **둘 다 공용 재확인 대화상자를 거친다** — 둘 다 무게가 큰 결정이라 그대로 둔다.
+    /// **[삭제하기]만 공용 재확인 대화상자를 거친다.** [기억하기]는 **원 터치**다 (2026-09-14 사용자 결정:
+    /// *"'기억하기' 버튼을 누르면 정말 기억할거냐고 확인하는데.. 확인 과정을 없애버리자. '기억 하기'는 항상 원 터치로."*).
+    /// *(2026-09-14 이전: 둘 다 재확인을 거쳤다 — 「정말로 기억하시겠습니까?」. 목록의 스와이프·컨텍스트 [기억하기]는
+    /// 원래부터 원 터치였으니(`InboxView`) 이제 세 입구가 같다.)* 삭제는 되돌릴 수 있어도 무게가 크므로 그대로 둔다.
     private var decideRow: some View {
         HStack(spacing: 10) {
             Button(role: .destructive) { showDeleteConfirm = true } label: {
@@ -802,7 +802,7 @@ struct DetailView: View {
             }
             .buttonStyle(.bordered).tint(Palette.overdue)
 
-            Button { showRememberConfirm = true } label: {
+            Button { rememberNow() } label: {
                 Label("기억하기", systemImage: "checkmark.seal.fill")
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
@@ -811,7 +811,7 @@ struct DetailView: View {
             .buttonStyle(.borderedProminent).tint(Palette.today)
             .disabled(rawEmpty)   // 본문 전부 지운 상태면 기억할 것이 없다(내용 없는 기억 방지 — bottomBar와 같은 규약)
         }
-        // 재확인 대화상자는 화면 전체 오버레이(rememberDialog·deleteDialog)로 띄운다.
+        // 삭제 재확인 대화상자는 화면 전체 오버레이(deleteDialog)로 띄운다. 기억하기는 대화상자가 없다.
     }
 
     // MARK: 분류 (override) — 「임시」 배지는 2026-08-18에 뺐다([기억하기] 버튼이 같은 말을 한다)
@@ -1571,14 +1571,6 @@ struct DetailView: View {
         .simultaneousGesture(TapGesture().onEnded { rawFocused = false })
     }
 
-    /// 기억하기 재확인 — 공용 대화상자. [취소하기] / [기억하기].
-    private var rememberDialog: some View {
-        ConfirmDialog(title: "정말로 기억하시겠습니까?",
-                      cancelTitle: "취소하기", confirmTitle: "기억하기",
-                      onCancel: { showRememberConfirm = false },
-                      onConfirm: { showRememberConfirm = false; rememberAfterDialog() })
-    }
-
     /// 원칙 지정 시 기억하기 자동 결정 안내 — 공용 대화상자, 안내형 단일 버튼.
     private var principleAutoRememberDialog: some View {
         StandardDialog(title: "'기억하기'로 자동 결정됩니다") {
@@ -1718,15 +1710,11 @@ struct DetailView: View {
     /// ⛔ **두 단계로 나누지 말 것** — 랩에서 재보니 배너가 뜨는 경우 **「올라갔다 다시 내려온다」**로
     /// 더 나빴다(설계 §3-H-1의 세 줄).
     ///
-    /// **0.15초 늦추는 이유:** 재확인 대화상자는 **`black.opacity(0.4)` 스크림**을 깔고 **0.15초**에 걷힌다
-    /// (`StandardDialog` · 이 파일의 `.animation(…0.15…)`). 같은 프레임에 시작하면
-    /// **움직임의 앞부분이 막 아래에서 일어나** 「어디서 왔는지」가 약해진다.
-    /// ⛔ **스크림 값을 줄이지 않는다** — **대화상자 여섯이 같은 값을 쓴다**(§0 31번 · §3-I-3).
-    private func rememberAfterDialog() {
-        guard !reduceMotion else { remember(); return }   // 동작 줄이기 — 지연도 애니메이션도 없다
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeInOut(duration: 0.35)) { remember() }
-        }
+    /// *(2026-09-14 이전에는 재확인 대화상자의 스크림이 0.15초에 걷힌 뒤 시작하도록 **0.15초 늦췄다** —
+    /// 대화상자가 없어졌으니 지연도 없다. 움직임 0.35초는 그대로다.)*
+    private func rememberNow() {
+        guard !reduceMotion else { remember(); return }   // 동작 줄이기 — 애니메이션 없이
+        withAnimation(.easeInOut(duration: 0.35)) { remember() }
     }
 
     /// ★ **주차 위치를 기억할 때 「다시 보기」를 오늘로 넣어 둔다** (2026-09-13 사용자 결정).

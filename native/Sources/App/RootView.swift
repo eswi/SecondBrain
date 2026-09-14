@@ -70,34 +70,37 @@ struct RootView: View {
     /// **가로면 시스템 탭바를 숨기고 세로 띠를 형제로 세운다** (2026-09-13 사용자 결정).
     /// 왜 형제인가·무엇을 골랐나 → `SideTabBar` 머리주석.
     /// ⚠️ **세로는 건드리지 않았다** — 시스템 탭바 그대로다(모습·자리·여백 전부).
+    ///
+    /// ## ⛔⛔ 가로·세로를 `if`로 갈라 **두 트리**를 만들지 말 것 (2026-09-14 · 사용자가 폰에서 잡았다)
+    /// 옛 꼴은 `if landscape { HStack { tabs; 띠 } } else { VStack { tabs; 띠 } }`였다. **모습은 맞았는데**
+    /// 회전하면 SwiftUI가 한 갈래를 **버리고 다른 갈래를 새로 만든다** — `TabView` 아래 전부가 새 정체성이 되어
+    /// **`InboxView`의 `@State showCapture`가 꺼지며 수집 시트가 닫히고, `CaptureSheet`의 `@State text`가 사라진다.**
+    /// 사용자: *"수집 화면에서 입력을 하다가 화면으로 가로 모드로 바꾸면 전 화면으로 이동해버려. 내용은 물론 사라지지."*
+    /// ✅ **`AnyLayout`으로 바꿨다** — 자식 둘(탭 화면·띠)은 **그대로 두고 배치만** HStack↔VStack으로 바뀐다.
+    ///    그것이 `AnyLayout`이 있는 이유다(정체성 보존). 위 되울림 경고와도 부딪히지 않는다 — 상태를 새로 물리지 않았다.
+    /// ⚠️ **모습은 옛 꼴과 같아야 한다** — 순서(내용 → 띠) · 폭/높이 93 · 안전영역 처리(가로: 띠만 위아래 끝까지 + 전체 오른쪽 끝까지 ·
+    ///    세로: 전체 아래 끝까지) 전부 값으로만 옮겼다. 폰에서 사용자가 판정한다.
     @ViewBuilder private var tabShell: some View {
         #if os(iOS)
         GeometryReader { geo in
             // 가로·세로는 **실제 칸 모양**으로 가른다. ⛔ `horizontalSizeClass`로 가르지 말 것 —
             // 기기마다 다르게 나온다(Max는 가로에서도 `.regular`인 경우가 있다).
             let landscape = geo.size.width > geo.size.height
-            if landscape {
-                // 띠는 **기기 아래쪽 가장자리**에 그대로 있다 — 돌리면 그것이 화면 오른쪽이다.
-                // ⚠️ **안전영역을 넘어 화면 끝까지** 간다(`AppTabBar` 머리주석).
-                HStack(spacing: 0) {
-                    tabs(landscape: true)
-                    AppTabBar(tab: $tab, axis: .vertical)
-                        .frame(width: AppTabBar.strip)
-                        // ⚠️ **위아래도 끝까지** — 안 그러면 아래 홈 인디케이터 자리만큼
-                        //   아이콘이 위로 쏠린다(배경은 뻗는데 내용은 안 뻗는 그 형태).
-                        .ignoresSafeArea(edges: .vertical)
-                }
-                .ignoresSafeArea(edges: .trailing)
-            } else {
-                // ★ **형제로 세운다** — 내용이 띠 밑으로 갈 자리가 없다(사용자 지시).
-                VStack(spacing: 0) {
-                    tabs(landscape: false)
-                    AppTabBar(tab: $tab, axis: .horizontal)
-                        .frame(height: AppTabBar.strip)
-                }
-                // 띠가 **화면 맨 아래까지** 차지한다 — 그래야 그 안에서 가운데가 진짜 가운데다.
-                .ignoresSafeArea(edges: .bottom)
+            // 가로 = 옆으로(내용 | 띠) · 세로 = 아래로(내용 / 띠). **자식은 같은 둘**이다.
+            let layout = landscape ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+            layout {
+                tabs(landscape: landscape)
+                // 가로: 띠는 **기기 아래쪽 가장자리**에 그대로 있다 — 돌리면 그것이 화면 오른쪽이다.
+                //   ⚠️ **위아래도 끝까지** — 안 그러면 아래 홈 인디케이터 자리만큼 아이콘이 위로 쏠린다
+                //   (배경은 뻗는데 내용은 안 뻗는 그 형태).
+                // 세로: ★ **형제로 세운다** — 내용이 띠 밑으로 갈 자리가 없다(사용자 지시).
+                AppTabBar(tab: $tab, axis: landscape ? .vertical : .horizontal)
+                    .frame(width: landscape ? AppTabBar.strip : nil, height: landscape ? nil : AppTabBar.strip)
+                    .ignoresSafeArea(edges: landscape ? .vertical : [])
             }
+            // 가로: **안전영역을 넘어 화면 오른쪽 끝까지**(`AppTabBar` 머리주석).
+            // 세로: 띠가 **화면 맨 아래까지** 차지한다 — 그래야 그 안에서 가운데가 진짜 가운데다.
+            .ignoresSafeArea(edges: landscape ? .trailing : .bottom)
         }
         #else
         tabs(landscape: false)
