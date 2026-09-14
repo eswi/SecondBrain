@@ -1261,14 +1261,15 @@ struct DetailView: View {
     /// (2026-09-14 사용자: *"회색으로 바뀐 기억을 '상세 화면'으로 보면 어딘가에 표시 좀 해줘. 유효기간이 지났다는 의미로."*).
     /// **저장값을 본다**(다른 배너와 같은 이유 — draft가 아니라 사실). 판정은 목록과 같은 `ItemSchedule.isExpired`.
     /// 색은 **무채색**(회색 위계) — 재촉이 아니라 통보이고, coral·amber는 늦음·꺼둠이 쓴다.
-    /// ⚠️ **문구는 임시다**(항시 규칙 6 · 사용자가 고른다) — `classification-v2-design.md` §2 미결 3.
+    /// **문구 「정보의 유효 기간 지남」은 사용자가 정했다**(2026-09-14). **날짜는 안 적는다** — 사용자:
+    /// *"바로 그 화면에 유효기간 날짜가 보이니까"*(아래 「시간 설정」의 「유효 기간」 줄).
     @ViewBuilder
     private var expiredBanner: some View {
         let fresh = model.current(item.id) ?? item
-        if let v = ItemSchedule.validUntilValue(fresh), ItemSchedule.isExpired(fresh, now: Date()) {
+        if ItemSchedule.isExpired(fresh, now: Date()) {
             HStack(spacing: 8) {
                 Image(systemName: "hourglass.bottomhalf.filled").foregroundStyle(Palette.textTertiary)
-                Text("유효 기간이 지났어요 — \(korDateTime(v))까지")
+                Text("정보의 유효 기간 지남")
                     .font(.callout.weight(.semibold)).foregroundStyle(Palette.textSecondary)
                 Spacer()
             }

@@ -81,7 +81,7 @@ enum TypeCatalog {
     /// **2026-09-14 재편(사용자 결정 · `docs/native/classification-v2-design.md`):** 약속·일정을 **뺐고**
     /// 지식·추억을 **더했다.** 옛 `promise`/`event` 값이 남은 항목은 **미분류 폴백**(회색 물음표)으로 보인다 —
     /// 데이터는 안 지웠다(삭제된 셋은 09-14에 op으로 미분류로 돌렸다).
-    /// ⚠️ 지식·추억의 색·심볼은 **임시 후보**다 — 사용자가 고르면 바꾼다(추억은 약속이 쓰던 분홍을 이어받았다).
+    /// 지식(주황·책)·추억(분홍·하트)의 색·심볼은 **사용자가 골랐다**(2026-09-14 · 첫 제안 채택). 추억은 약속이 쓰던 분홍을 이어받았다.
     static let allKnown: [TypeMeta] = [
         TypeMeta(key: "info-action", label: "할 일",    color: Color(hex: 0xFB7185), symbol: "checkmark.circle.fill"),
         TypeMeta(key: "info",        label: "정보",     color: Color(hex: 0x60A5FA), symbol: "doc.text.fill"),
