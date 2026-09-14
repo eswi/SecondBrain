@@ -77,19 +77,24 @@ enum TypeCatalog {
     }()
 
     /// 알려진 전 종류('버림' 개념 없음 — discard는 삭제 취급, 종류로 노출 안 함).
+    ///
+    /// **2026-09-14 재편(사용자 결정 · `docs/native/classification-v2-design.md`):** 약속·일정을 **뺐고**
+    /// 지식·추억을 **더했다.** 옛 `promise`/`event` 값이 남은 항목은 **미분류 폴백**(회색 물음표)으로 보인다 —
+    /// 데이터는 안 지웠다(삭제된 셋은 09-14에 op으로 미분류로 돌렸다).
+    /// ⚠️ 지식·추억의 색·심볼은 **임시 후보**다 — 사용자가 고르면 바꾼다(추억은 약속이 쓰던 분홍을 이어받았다).
     static let allKnown: [TypeMeta] = [
-        TypeMeta(key: "promise",     label: "약속",     color: Color(hex: 0xF472B6), symbol: "person.2.fill"),
-        TypeMeta(key: "event",       label: "일정",     color: Color(hex: 0x38BDF8), symbol: "calendar"),
         TypeMeta(key: "info-action", label: "할 일",    color: Color(hex: 0xFB7185), symbol: "checkmark.circle.fill"),
         TypeMeta(key: "info",        label: "정보",     color: Color(hex: 0x60A5FA), symbol: "doc.text.fill"),
+        TypeMeta(key: "knowledge",   label: "지식",     color: Color(hex: 0xFB923C), symbol: "book.fill"),
         TypeMeta(key: "idea",        label: "아이디어", color: Color(hex: 0xA78BFA), symbol: "lightbulb.fill"),
         TypeMeta(key: "principle",   label: "원칙",     color: Color(hex: 0x22D3EE), symbol: "star.fill"),
+        TypeMeta(key: "moment",      label: "추억",     color: Color(hex: 0xF472B6), symbol: "heart.fill"),
         TypeMeta(key: "recurrence",  label: "되풀이",   color: Color(hex: 0xFBBF24), symbol: "arrow.triangle.2.circlepath"),
         TypeMeta(key: nil,           label: "미분류",   color: Color(hex: 0x746F82), symbol: "questionmark.circle"),
     ]
 
     static let assignable: [TypeMeta] = allKnown.filter { $0.key != nil }
-    static let primaryFilters: [String] = ["promise", "event", "info-action", "info"]
+    static let primaryFilters: [String] = ["info-action", "info", "knowledge", "moment"]
     static let overflowFilters: [TypeFilter] = [.type("idea"), .type(nil)]
 }
 

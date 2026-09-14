@@ -196,6 +196,7 @@ struct DetailView: View {
     /// 그것이 이 배열의 존재 이유다(설계 §3-G-4 · §0의 29번).
     /// ⚠️ **원문(`rawSection`)은 이 배열 밖이다** — 바깥 `VStack`에 그대로 있다(제스처 그룹이 다르다).
     private enum BodySection: String, Identifiable, CaseIterable {
+        case expiredBanner   // 유효 기간 지난 정보(2026-09-14) — 배너 다섯과 같은 자리·같은 조건(기억한 뒤)
         case pausedBanner, missedBanner, overdueHiddenBanner, anchorBanner, leadClampedBanner
         case metaType, media, question, time, recurrence, history, decide
         var id: String { rawValue }
@@ -210,7 +211,7 @@ struct DetailView: View {
     private var bodyOrder: [BodySection] {
         var out: [BodySection] = []
         if isRemembered {
-            out += [.pausedBanner, .missedBanner, .overdueHiddenBanner, .anchorBanner, .leadClampedBanner]
+            out += [.expiredBanner, .pausedBanner, .missedBanner, .overdueHiddenBanner, .anchorBanner, .leadClampedBanner]
         }
         out.append(.metaType)
         // ★ **보조 자료 카드의 자리**(설계 §0 3번 · §3-F-2 · §3-K-1) — 사용자: *"카드의 위치는 항상 성역
@@ -271,6 +272,7 @@ struct DetailView: View {
                     // **고정 `id`를 가진 배열이라야 「같은 것이 옮겨간다」로 보고 미끄러진다**(B안 · 연속 사다리).
                     ForEach(bodyOrder) { s in
                         switch s {
+                        case .expiredBanner:      expiredBanner  // 유효 기간 지난 정보 — 목록의 회색이 「왜 회색인가」를 여기서 말한다
                         case .pausedBanner:       pausedBanner   // 되풀이 꺼둠이면 상단에 바로(잊으면 약을 안 챙긴다 — "지금 도느냐")
                         case .missedBanner:       missedBanner   // N일 놓침 주의(§4)
                         case .overdueHiddenBanner: overdueHiddenBanner   // 늦었는데 숨겨진 것(D) — 언제 돌아오는지
@@ -1255,6 +1257,26 @@ struct DetailView: View {
     ///
     /// **저장값을 본다**(2026-08-08). 기준을 돌려보면: 꺼두기 토글만 켜고 저장 없이 닫으면
     /// **알림은 안 멈춘다** → 지금 떠 있던 배너가 거짓이다. 배너가 약속하는 것("알림·되살아나기 멈춤")은
+    /// **유효 기간이 지난 정보** — 목록에서 회색이 된 기억을 상세에서 열면 **왜 회색인지** 말한다
+    /// (2026-09-14 사용자: *"회색으로 바뀐 기억을 '상세 화면'으로 보면 어딘가에 표시 좀 해줘. 유효기간이 지났다는 의미로."*).
+    /// **저장값을 본다**(다른 배너와 같은 이유 — draft가 아니라 사실). 판정은 목록과 같은 `ItemSchedule.isExpired`.
+    /// 색은 **무채색**(회색 위계) — 재촉이 아니라 통보이고, coral·amber는 늦음·꺼둠이 쓴다.
+    /// ⚠️ **문구는 임시다**(항시 규칙 6 · 사용자가 고른다) — `classification-v2-design.md` §2 미결 3.
+    @ViewBuilder
+    private var expiredBanner: some View {
+        let fresh = model.current(item.id) ?? item
+        if let v = ItemSchedule.validUntilValue(fresh), ItemSchedule.isExpired(fresh, now: Date()) {
+            HStack(spacing: 8) {
+                Image(systemName: "hourglass.bottomhalf.filled").foregroundStyle(Palette.textTertiary)
+                Text("유효 기간이 지났어요 — \(korDateTime(v))까지")
+                    .font(.callout.weight(.semibold)).foregroundStyle(Palette.textSecondary)
+                Spacer()
+            }
+            .padding(12)
+            .background(Palette.surface2, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
     /// **저장된 사실**이지 토글의 위치가 아니다. 토글 자체가 움직이므로 반응이 없지도 않다.
     @ViewBuilder
     private var pausedBanner: some View {

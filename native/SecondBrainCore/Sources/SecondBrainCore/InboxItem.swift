@@ -9,7 +9,7 @@ public struct InboxItem: Equatable, Sendable {
     public var source: String      // voice / web / image / mail / doc / chat / meeting
     public var raw: String         // 수집된 원문 그대로
 
-    public var type: String?       // event/promise/info-action/info/idea/principle/discard (§2)
+    public var type: String?       // info-action/info/knowledge/idea/principle/moment/parking/recurrence (§2 · 2026-09-14 재편) · 옛 event/promise는 읽기만
     public var due: String?        // "YYYY-MM-DD" | "none" | nil
     public var resurface: String?  // "YYYY-MM-DD" | "none" | nil  (레거시 "weekly"는 읽기만 호환 = 날짜 없음)
     public var status: String?     // open / done / ...

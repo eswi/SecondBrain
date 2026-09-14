@@ -8,6 +8,9 @@ import XCTest
 /// ★ **이것은 「결정을 지키는 시험」이다**(`CLAUDE.md` 「시험을 쓰는 법」).
 /// ⚠️ **깨진다면 분류 게이트를 누가 넓히거나 좁힌 것**일 수 있다 —
 /// `memory-philosophy.md` §7 (c)를 먼저 본다(게이트는 `ItemSchedule.publishDay` 한 곳이다).
+///
+/// **2026-09-14 재편**(`classification-v2-design.md`): 약속·일정이 빠졌고(→ 미등록 key 폴백), 지식·추억이 들어왔고,
+/// **정보는 「유효 기간」을 보이되 시점으로 안 쓴다** — 그 결정을 지키는 시험이 아래 「정보」 절이다.
 final class ClassGateTests: XCTestCase {
 
     private var utc: Calendar {
@@ -25,12 +28,16 @@ final class ClassGateTests: XCTestCase {
 
     // MARK: 시간을 안 쓰는 분류 (noTime = 정보·아이디어·원칙)
 
-    /// 1. 아이디어는 마감을 안 쓴다 → 옛 실날짜가 남아 있어도 시점 없음.
+    /// 1. 아이디어는 마감을 안 쓴다 → 옛 실날짜가 남아 있어도 시점 없음. (지식·추억도 같은 꼴 — 2026-09-14)
     func testGate_idea_dueRealDate_isNoTime() {
         XCTAssertNil(ItemSchedule.publishDay(item("I", type: "idea", due: "2026-07-20")))
         XCTAssertNil(ItemSchedule.publishDay(item("I2", type: "idea", resurface: "2026-07-20")))
         XCTAssertNil(ItemSchedule.publishDay(item("I3", type: "info", due: "2026-07-20")))
         XCTAssertNil(ItemSchedule.publishDay(item("I4", type: "principle", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("K", type: "knowledge", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("K2", type: "knowledge", resurface: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("M", type: "moment", due: "2026-07-20")))
+        XCTAssertNil(ItemSchedule.publishDay(item("M2", type: "moment", resurface: "2026-07-20")))
     }
 
     /// 2. 할일은 마감을 쓴다 → 그대로 그 날짜(회귀 가드).
@@ -39,8 +46,6 @@ final class ClassGateTests: XCTestCase {
         // resurface 우선순위도 그대로
         XCTAssertEqual(ItemSchedule.publishDay(item("A2", type: "info-action",
                                                       due: "2026-07-30", resurface: "2026-07-18")), "2026-07-18")
-        XCTAssertEqual(ItemSchedule.publishDay(item("A3", type: "promise", due: "2026-07-20")), "2026-07-20")
-        XCTAssertEqual(ItemSchedule.publishDay(item("A4", type: "event", due: "2026-07-20")), "2026-07-20")
     }
 
     // MARK: 정의 없는 분류 = 전부 씀 (폴백은 ClassSpecCatalog.uses 한 곳)
@@ -55,11 +60,69 @@ final class ClassGateTests: XCTestCase {
     }
 
     /// 4. 미등록 key(`discard`·오타·미래의 새 값)도 전부 씀 — 표에 없다고 날짜를 지우지 않는다.
+    /// **옛 약속·일정(`promise`·`event`)도 이제 이 갈래다**(2026-09-14 재편) — 표에서 뺐지만 남은 값의 날짜는 산다.
     func testFallback_unregisteredKey_usesEverything() {
         XCTAssertTrue(ClassSpecCatalog.uses("discard", .due))
         XCTAssertTrue(ClassSpecCatalog.uses("주차", .due))       // key는 "parking" — 한글 값은 미등록
         XCTAssertEqual(ItemSchedule.publishDay(item("D", type: "discard", due: "2026-07-20")), "2026-07-20")
         XCTAssertEqual(ItemSchedule.publishDay(item("D2", type: "주차", due: "2026-07-20")), "2026-07-20")
+        XCTAssertNil(ClassSpecCatalog.spec("promise"), "약속은 표에서 빠졌다(2026-09-14)")
+        XCTAssertNil(ClassSpecCatalog.spec("event"), "일정은 표에서 빠졌다(2026-09-14)")
+        XCTAssertEqual(ItemSchedule.publishDay(item("A3", type: "promise", due: "2026-07-20")), "2026-07-20")
+        XCTAssertEqual(ItemSchedule.publishDay(item("A4", type: "event", due: "2026-07-20")), "2026-07-20")
+    }
+
+    // MARK: ★ 정보 — 「유효 기간」은 보이되 시점이 아니다 (2026-09-14 · classification-v2-design.md §1-3)
+
+    /// ★ **결정을 지키는 시험.**
+    /// ① **결정:** 정보의 다시 보기 칸은 「유효 기간」이다 — 지나면 **회색**이 될 뿐, 「지금 챙길 것」에 뜨지도
+    ///    알림이 울리지도 않고 살아있는 기억에 그대로 있다(사용자 2026-09-14 · 설계 §1-3).
+    /// ② **사실:** `uses`(보임)는 true, `schedules`(시점)는 false — 판정 함수 전부가 `schedules`를 본다.
+    /// ③ **깨지면:** 구현이 틀린 것이 아니라 **누군가 정보의 `schedules`를 채웠거나 판정 함수가 `uses`로 되돌아간 것**이다.
+    ///    그때는 설계 §1-3을 다시 본다 — 정보를 재촉 대상으로 만들려는 결정인지.
+    func testInfo_validUntil_isVisibleButNotASchedule() {
+        XCTAssertTrue(ClassSpecCatalog.uses("info", .resurface), "보인다(상세 「유효 기간」 줄 · 캡션)")
+        XCTAssertFalse(ClassSpecCatalog.schedules("info", .resurface), "시점이 아니다")
+        XCTAssertFalse(ClassSpecCatalog.uses("info", .due), "마감은 여전히 안 쓴다")
+        XCTAssertEqual(ClassSpecCatalog.spec("info")?.title(for: .resurface), "유효 기간")
+        XCTAssertEqual(ClassSpecCatalog.validUntil("info"), .resurface)
+        XCTAssertNil(ClassSpecCatalog.validUntil("info-action"), "유효 기간 개념은 정보만")
+
+        let cal = utc
+        let now = cal.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 10))!
+        let past = item("V", type: "info", resurface: "2026-09-20")      // 열흘 전에 지났다
+        XCTAssertNil(ItemSchedule.publishDay(past), "게시 시작일이 없다")
+        XCTAssertFalse(ItemSchedule.isPublished(past, now: now, calendar: cal), "「지금 챙길 것」에 안 뜬다")
+        XCTAssertNil(ItemSchedule.overdueHidden(past, now: now, calendar: cal), "「늦음」도 아니다")
+        XCTAssertEqual(ItemSchedule.gatedResurface(past), "2026-09-20", "그래도 캡션에는 보인다(표시 게이트 = uses)")
+        // 소비자 상속 — 알림 계획에서 빠지고, 섹션은 시점 없는 쪽(recent)에 남는다(유실 아님).
+        XCTAssertTrue(NotificationPlanner.plan(items: [past], now: now, calendar: cal).isEmpty)
+        let s = InboxSectionizer.split([past], now: now, calendar: cal)
+        XCTAssertTrue(s.upcoming.isEmpty)
+        XCTAssertEqual(s.recent.map { $0.id }, ["V"])
+    }
+
+    /// 유효 기간 판정 — 날짜만이면 **그날은 유효, 다음 날 자정부터 지남**(「9/20까지」의 뜻). 시각이 있으면 그 시각부터.
+    /// 다른 분류(할일)의 다시 보기는 유효 기간이 아니므로 절대 「지남」이 아니다.
+    func testInfo_isExpired_dateOnlyEndsAtDayEnd_timeAware() {
+        let cal = utc
+        let info = item("V", type: "info", resurface: "2026-09-20")
+        let on = cal.date(from: DateComponents(year: 2026, month: 9, day: 20, hour: 23, minute: 59))!
+        let after = cal.date(from: DateComponents(year: 2026, month: 9, day: 21, hour: 0, minute: 0))!
+        XCTAssertFalse(ItemSchedule.isExpired(info, now: on, calendar: cal), "그날 밤까지는 유효")
+        XCTAssertTrue(ItemSchedule.isExpired(info, now: after, calendar: cal), "다음 날 자정부터 지남")
+
+        let timed = item("T", type: "info", resurface: "2026-09-20T14:00")
+        let before = cal.date(from: DateComponents(year: 2026, month: 9, day: 20, hour: 13, minute: 59))!
+        let past = cal.date(from: DateComponents(year: 2026, month: 9, day: 20, hour: 14, minute: 1))!
+        XCTAssertFalse(ItemSchedule.isExpired(timed, now: before, calendar: cal))
+        XCTAssertTrue(ItemSchedule.isExpired(timed, now: past, calendar: cal))
+
+        XCTAssertFalse(ItemSchedule.isExpired(item("A", type: "info-action", resurface: "2020-01-01"), now: after, calendar: cal),
+                       "할일의 지난 다시 보기는 유효 기간이 아니다")
+        XCTAssertFalse(ItemSchedule.isExpired(item("N", type: "info", resurface: "none"), now: after, calendar: cal),
+                       "값이 없으면 지난 것이 아니다")
+        XCTAssertNil(ItemSchedule.validUntilValue(item("U", resurface: "2020-01-01")), "미분류엔 유효 기간 개념이 없다")
     }
 
     // MARK: 칸별 판단 (주차 = 마감만 안 씀)

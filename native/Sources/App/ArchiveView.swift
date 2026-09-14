@@ -70,12 +70,13 @@ struct ArchiveView: View {
     }
 
     private func row(_ item: ResolvedItem) -> some View {
-        HStack(spacing: 10) {
-            TypeGlyph(type: item.type)
+        let expired = isExpiredNow(item)   // 유효 기간 지난 정보 = 아이콘·텍스트 회색(2026-09-14) — 보관함도 같은 판정
+        return HStack(spacing: 10) {
+            TypeGlyph(type: item.type, dimmed: expired)
             VStack(alignment: .leading, spacing: 3) {
                 // 좌우 맞춤(2026-08-21) — 보관함도 원문이 보이는 곳이다.
                 JustifiedText(text: item.raw ?? "", style: .callout,
-                              weight: .regular, color: Palette.textSecondary, maxLines: 2)
+                              weight: .regular, color: expired ? Palette.textTertiary : Palette.textSecondary, maxLines: 2)
                 // 캡션 색 = 이 화면 원문과 같은 textSecondary(밝게). 크기(.caption2)로 비중은 유지, 색만 올린다.
                 Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textSecondary).lineLimit(1)
             }

@@ -65,11 +65,12 @@ struct TypeMenuButton: View {
             }
         } label: {
             let m = ClassRegistry.meta(item.type)       // 유연층-인지 조회(주차=car). 기본층-전용이면 미분류로 폴백됨
+            let tint = isExpiredNow(item) ? Palette.textTertiary : m.color   // 유효 기간 지난 정보 = 아이콘도 회색(2026-09-14)
             Image(systemName: m.symbol)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(m.color)
+                .foregroundStyle(tint)
                 .frame(width: 30, height: 30)
-                .background(m.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -77,18 +78,25 @@ struct TypeMenuButton: View {
     }
 }
 
-/// 비대화형 종류 글리프(보관함 등에서).
+/// 비대화형 종류 글리프(보관함 등에서). `dimmed` = 유효 기간이 지난 정보(아이콘도 회색 · 2026-09-14).
 struct TypeGlyph: View {
     let type: String?
+    var dimmed: Bool = false
     var body: some View {
         let m = ClassRegistry.meta(type)                // 유연층-인지 조회(주차 포함) — TypeMenuButton과 통일
+        let tint = dimmed ? Palette.textTertiary : m.color
         Image(systemName: m.symbol)
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(m.color)
+            .foregroundStyle(tint)
             .frame(width: 28, height: 28)
-            .background(m.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 }
+
+/// **유효 기간이 지났나**(정보 · 2026-09-14 사용자 결정: *"이 시간이 지나면 아이콘도 텍스트도 회색"*).
+/// 목록 셋(살아있는 기억·검색·보관함)과 상세 배너가 **같은 판정**을 본다 — 판정은 Core `ItemSchedule.isExpired` 한 곳.
+/// 자리는 안 바뀐다(살아있는 기억 그대로) — 색만 바뀐다.
+func isExpiredNow(_ it: ResolvedItem, now: Date = Date()) -> Bool { ItemSchedule.isExpired(it, now: now) }
 
 // MARK: - 기억 ID
 

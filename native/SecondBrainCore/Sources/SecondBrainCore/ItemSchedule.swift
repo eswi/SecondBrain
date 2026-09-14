@@ -11,17 +11,23 @@ import Foundation
 ///
 /// §7 (c)(Stage D3-B): 두 함수 모두에 **분류 게이트**가 있다 — 그 분류가 안 쓰는 칸의 날짜는 시점이 아니다.
 /// 게이트를 여기 한 곳에 두면 소비자(`NotificationPlanner`·`InboxSectionizer`)가 자동으로 상속한다.
+///
+/// **★ 게이트가 둘로 갈렸다 (2026-09-14 · `classification-v2-design.md` §1-3).**
+/// - **시점 판정**(게시·알림·D-day·늦음)은 `ClassSpecCatalog.schedules` — 「이 칸을 시점으로 쓰나」.
+/// - **표시**(캡션의 날짜 노출 · 상세 「시간 설정」)는 `ClassSpecCatalog.uses` — 「이 칸을 보이나」.
+/// 둘이 다른 답을 주는 분류는 **정보 하나**다: 「유효 기간」은 보이되 시점이 아니다 — 지나도 「지금 챙길 것」에
+/// 안 뜨고 알림이 없고, 대신 **회색**이 된다(`isExpired`). 다른 모든 분류는 두 함수가 같은 답을 준다.
 public enum ItemSchedule {
     /// **게시 시작일**("YYYY-MM-DD") 또는 nil. 미리 알림(resurface) 우선, 없으면 마감(due).
     ///
     /// **칸별로 따로 판단한다** — "시간 안 쓰는 분류면 통째로 nil"이 아니다.
     /// 주차는 다시 보기는 쓰고 마감만 안 쓰므로, resurface 날짜는 살고 due 날짜만 막힌다.
-    /// 정의 없는 분류(미분류·discard·미등록)는 `ClassSpecCatalog.uses`가 '전부 씀'으로 폴백 →
-    /// 분류가 없어서 날짜가 조용히 사라지는 일은 없다(화면의 "시간 설정"과 같은 함수·같은 폴백).
+    /// 정의 없는 분류(미분류·discard·미등록)는 `ClassSpecCatalog.schedules`가 '전부 씀'으로 폴백 →
+    /// 분류가 없어서 날짜가 조용히 사라지는 일은 없다(화면의 "시간 설정"과 같은 폴백).
     public static func publishDay(_ it: ResolvedItem) -> String? {
-        if ClassSpecCatalog.uses(it.type, .resurface),
+        if ClassSpecCatalog.schedules(it.type, .resurface),
            let r = it.resurface, parseDay(r) != nil { return r }
-        if ClassSpecCatalog.uses(it.type, .due),
+        if ClassSpecCatalog.schedules(it.type, .due),
            let d = it.due, parseDay(d) != nil { return d }
         return nil
     }
@@ -30,7 +36,7 @@ public enum ItemSchedule {
     /// D-day 배지와 카드 색조의 유일한 기준. 마감이 없으면(미리 알림만 있어도) 배지를 띄우지 않는다.
     /// 게이트는 그대로 — 그 분류가 마감을 안 쓰면(주차·정보·아이디어·원칙) nil.
     public static func deadlineDay(_ it: ResolvedItem) -> String? {
-        if ClassSpecCatalog.uses(it.type, .due),
+        if ClassSpecCatalog.schedules(it.type, .due),
            let d = it.due, parseDay(d) != nil { return d }
         return nil
     }
@@ -50,7 +56,7 @@ public enum ItemSchedule {
         // 화면에선 확정 여부로 갈린다 — **확정이면 '살아있는 기억' 탭, 미확정이면 '새 기억들' 섹션**
         // (`InboxModel.partition`이 `recent`를 그 둘로 쪼갠다). 어느 쪽이든 항목은 남는다.
         if Recurrence.isDormant(it) { return false }
-        if ClassSpecCatalog.uses(it.type, .resurface),
+        if ClassSpecCatalog.schedules(it.type, .resurface),
            let r = it.resurface, let rd = parseDay(r, calendar: calendar) {
             // **시각 인지 게이트(2026-08-03, #3).** 그 시점이 **오면(지났으면) 게시**한다.
             // - 시각 있는 미리 알림: 그 시각부터 게시. **지난 시각은 계속 보임**(아침 약을 오후에 열어도 목록에 남음 —
@@ -58,7 +64,7 @@ public enum ItemSchedule {
             // - date-only: `parseDay`가 자정을 주므로 `자정 ≤ now` = **오늘 자정부터**(기존 동작 불변).
             return rd <= now
         }
-        if ClassSpecCatalog.uses(it.type, .due),
+        if ClassSpecCatalog.schedules(it.type, .due),
            let d = it.due, let dd = parseDay(d, calendar: calendar) {
             // 되풀이는 마감(회차 앵커)도 **시각 인지** — 미리 알림 없이 마감만 있으면 **마감 시각부터** 게시(#3).
             // 일반 항목은 기존대로: 마감만 있으면 먼 미래여도 게시(마감=기한이라 미리 챙기게).
@@ -67,12 +73,40 @@ public enum ItemSchedule {
         return false
     }
 
-    /// 분류 게이트 통과 + 실제 날짜인 **미리 알림(resurface)만**. 아니면 nil. `deadlineDay`(마감)의 짝.
-    /// 캡션·목록이 "이 분류가 쓰는 칸의 날짜"만 노출하도록 — 화면(상세 "시간 설정")과 같은 게이트를 탄다.
+    /// **표시** 게이트 통과 + 실제 날짜인 **미리 알림(resurface)만**. 아니면 nil. `deadlineDay`(마감)의 짝.
+    /// 캡션·목록이 "이 분류가 **보이는** 칸의 날짜"만 노출하도록 — 상세 "시간 설정"과 같은 게이트(`uses`)를 탄다.
+    /// ⚠️ 여기만 `uses`다 — 정보의 「유효 기간」은 시점이 아니어도 **보여야** 한다(캡션에 날짜가 나온다).
     public static func gatedResurface(_ it: ResolvedItem) -> String? {
         if ClassSpecCatalog.uses(it.type, .resurface),
            let r = it.resurface, parseDay(r) != nil { return r }
         return nil
+    }
+
+    // MARK: 유효 기간 (정보 · 2026-09-14)
+
+    /// 이 항목의 **유효 기간 값**(원문 문자열) — 분류가 유효 기간 칸을 갖고 그 칸에 실제 날짜가 있을 때만. 아니면 nil.
+    public static func validUntilValue(_ it: ResolvedItem) -> String? {
+        guard let d = ClassSpecCatalog.validUntil(it.type) else { return nil }
+        let v: String?
+        switch d {
+        case .due:       v = it.due
+        case .resurface: v = it.resurface
+        default:         v = nil
+        }
+        guard let v, parseDay(v) != nil else { return nil }
+        return v
+    }
+
+    /// **유효 기간이 지났나.** 사용자 결정(2026-09-14): *"이 시간이 지나면 아이콘도 텍스트도 회색."*
+    /// - 시각이 있으면 **그 시각이 지나면**(`now > 시각`) 지난 것.
+    /// - 날짜만이면 **그날은 아직 유효**하고 **다음 날 자정부터** 지난 것 — 「유효 기간 9/20」은 9/20까지 쓴다는 뜻이다.
+    ///   (게시 게이트의 date-only가 「그날 자정부터」인 것과 **방향이 반대**다 — 하나는 시작, 하나는 끝.)
+    /// 유효 기간 칸이 없는 분류·값이 없거나 깨진 값 → false(지난 것이 아니다 — 모르면 지키는 쪽).
+    public static func isExpired(_ it: ResolvedItem, now: Date, calendar: Calendar = .current) -> Bool {
+        guard let v = validUntilValue(it), let d = parseDay(v, calendar: calendar) else { return false }
+        if timeOfDay(v) != nil { return now > d }
+        guard let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: d)) else { return false }
+        return now >= nextDay
     }
 
     /// "YYYY-MM-DD" 또는 "YYYY-MM-DD'T'HH:mm"("...  HH:mm"도 관대 수용) → Date. 형식 안 맞으면 nil.
@@ -285,7 +319,7 @@ public enum ItemSchedule {
     public static func overdueHidden(_ it: ResolvedItem, now: Date,
                                      calendar: Calendar = .current) -> OverdueHidden? {
         if Recurrence.isDormant(it) { return nil }                                   // 1
-        guard ClassSpecCatalog.uses(it.type, .due),                                  // 2
+        guard ClassSpecCatalog.schedules(it.type, .due),                             // 2
               let ds = it.due, let dd = parseDay(ds, calendar: calendar) else { return nil }
         guard dd <= now else { return nil }                                          // 3
         guard !isPublished(it, now: now, calendar: calendar) else { return nil }     // 4

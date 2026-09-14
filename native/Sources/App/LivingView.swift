@@ -46,8 +46,9 @@ struct LivingView: View {
                             if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
                                 Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }.tint(.green)
                             }
-                            // 미루기는 미리 알림을 쓰는 분류에서만(정보·아이디어는 뺀다 — §7(a)). 완료는 남는다.
-                            if ClassSpecCatalog.uses(item.type, .resurface) {
+                            // 미루기는 미리 알림을 **시점으로** 쓰는 분류에서만(지식·아이디어·추억은 뺀다 — §7(c)).
+                            // **정보도 뺀다**(2026-09-14) — 「유효 기간」은 보이지만 시점이 아니라 미룰 것이 없다. 완료는 남는다.
+                            if ClassSpecCatalog.schedules(item.type, .resurface) {
                                 Button { model.defer7(item) } label: { Label("미루기", systemImage: "clock") }.tint(.orange)
                             }
                         }
@@ -55,7 +56,7 @@ struct LivingView: View {
                             if !cycleAlreadyDone(item) {   // 이번 회차를 이미 닫았으면 안 그린다(dead action 방지)
                                 Button { model.markDone(item) } label: { Label(item.type == "recurrence" ? "했어요" : "완료", systemImage: "checkmark") }
                             }
-                            if ClassSpecCatalog.uses(item.type, .resurface) {
+                            if ClassSpecCatalog.schedules(item.type, .resurface) {
                                 Button { model.defer7(item) } label: { Label("미루기 (시점 붙임)", systemImage: "clock") }
                             }
                             Button(role: .destructive) { model.pendingDelete = item } label: { Label("삭제", systemImage: "trash") }

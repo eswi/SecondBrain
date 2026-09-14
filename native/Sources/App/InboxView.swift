@@ -613,8 +613,10 @@ struct MemoryRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
                         // 원문 2줄까지(넘치면 …) · 좌우 맞춤(2026-08-21 사용자 요구)
+                        // 유효 기간이 지난 정보는 **텍스트도 회색**(2026-09-14) — 글리프(`TypeMenuButton`)와 같은 판정.
                         JustifiedText(text: item.raw ?? "(내용 없음)", style: .callout,
-                                      weight: .regular, color: Palette.textPrimary, maxLines: 2)
+                                      weight: .regular, color: isExpiredNow(item) ? Palette.textTertiary : Palette.textPrimary,
+                                      maxLines: 2)
                         Spacer(minLength: 4)
                         // 상태 칩(§4 + D) — 완료 후 살아있는 기억으로 와도 "완료"/"N일 놓침"이 보이고,
                         // **늦었는데 숨겨진 것**은 여기서 「8/14에 다시 · 7일 늦음」(amber)으로 드러난다.
