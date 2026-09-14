@@ -18,6 +18,7 @@ enum Palette {
 
     // D-day 버킷 색
     static let overdue = Color(hex: 0xFB7185)       // 지남(coral)
+    static let expired = Color(hex: 0xFB7185).opacity(0.5)   // 유효 기간 지남 배너 — 「지남」 빨강을 절반 밝기로(2026-09-14 사용자: "빨간색 · 50% 명도")
     static let today   = Color(hex: 0xFBBF24)       // 오늘(amber)
     static let neutral = Color(hex: 0x746F82)       // 미래(무채색)
 
