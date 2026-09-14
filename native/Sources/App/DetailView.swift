@@ -1260,8 +1260,8 @@ struct DetailView: View {
     /// **유효 기간이 지난 정보** — 목록에서 회색이 된 기억을 상세에서 열면 **왜 회색인지** 말한다
     /// (2026-09-14 사용자: *"회색으로 바뀐 기억을 '상세 화면'으로 보면 어딘가에 표시 좀 해줘. 유효기간이 지났다는 의미로."*).
     /// **저장값을 본다**(다른 배너와 같은 이유 — draft가 아니라 사실). 판정은 목록과 같은 `ItemSchedule.isExpired`.
-    /// **색은 빨강을 절반 밝기로**(2026-09-14 사용자: *"배너는 빨간색으로 표시해주세요. 대략 50% 정도의 명도로"*) —
-    /// 「지남」(coral · `Palette.overdue`)과 같은 계열이되 **반만** 밝다: 재촉(늦음)보다 약하고 무채색보다는 세다.
+    /// **색은 빨강** — 「지남」(coral · `Palette.overdue`)과 같은 계열. **글자·아이콘 75% · 바탕은 50%×0.12**
+    /// (2026-09-14 사용자 · 두 번에 걸쳐 정했다: *"빨간색 · 대략 50% 명도"* → 폰에서 보고 *"글자 명도 75%로. 바탕색은 그대로"*).
     /// *(첫 빌드 `b6562e0`는 무채색이었다 — 폰 판정 ⓒ에서 사용자가 색을 정했다.)*
     /// **문구 「정보의 유효 기간 지남」은 사용자가 정했다**(2026-09-14). **날짜는 안 적는다** — 사용자:
     /// *"바로 그 화면에 유효기간 날짜가 보이니까"*(아래 「시간 설정」의 「유효 기간」 줄).
@@ -1270,9 +1270,9 @@ struct DetailView: View {
         let fresh = model.current(item.id) ?? item
         if ItemSchedule.isExpired(fresh, now: Date()) {
             HStack(spacing: 8) {
-                Image(systemName: "hourglass.bottomhalf.filled").foregroundStyle(Palette.expired)
+                Image(systemName: "hourglass.bottomhalf.filled").foregroundStyle(Palette.expiredText)
                 Text("정보의 유효 기간 지남")
-                    .font(.callout.weight(.semibold)).foregroundStyle(Palette.expired)
+                    .font(.callout.weight(.semibold)).foregroundStyle(Palette.expiredText)
                 Spacer()
             }
             .padding(12)
