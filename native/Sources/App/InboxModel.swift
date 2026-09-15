@@ -38,6 +38,15 @@ final class InboxModel: ObservableObject {
     /// ⛔ **소비하는 쪽이 먼저 nil로 내린다** — 두 신호(자기 시트 · 액션 버튼 시트)가 다 와도 **한 번만** 민다.
     @Published var openDetailId: String?
 
+    /// **쓰다 만 기억(수집 초안)** — 기기 로컬 파일에서 읽는다(`CaptureDrafts`). 최근 것이 앞.
+    /// 화면 둘이 본다: 「새로운 기억」 맨 아래 절 · 수집 화면의 [쓰다 만 기억 불러오기](이번 초안은 뺀다).
+    /// ⚠️ **데이터가 아니다** — 파일에 안 나가고 병합과 무관하다(`pendingDelete`·`openDetailId`와 같은 성격).
+    @Published private(set) var captureDrafts: [CaptureDraft] = []
+    func reloadDrafts() { captureDrafts = CaptureDrafts.list() }
+    /// 초안을 적는다 — **빈 초안이면 지운다**(`CaptureDraftStore.write`가 그렇게 한다).
+    func saveDraft(_ d: CaptureDraft) { CaptureDrafts.write(d); reloadDrafts() }
+    func deleteDraft(id: String) { CaptureDrafts.delete(id: id); reloadDrafts() }
+
 
     /// 자동 분류 진행 상태(설정의 수동 버튼에서 그 자리 인라인 표시).
     enum ClassifyPhase: Equatable { case idle, running, done(Int), failed(String) }
@@ -84,6 +93,7 @@ final class InboxModel: ObservableObject {
         let id = DeviceStore.deviceId
         self.deviceId = id
         self.clock = HLCClock(deviceId: id, last: DeviceStore.loadLastHLC(id))
+        reloadDrafts()   // 쓰다 만 기억 — 로컬 파일이라 폴더 연결과 무관하게 바로 읽는다
     }
 
     // MARK: 파생 뷰

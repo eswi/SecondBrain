@@ -29,6 +29,10 @@ struct InboxView: View {
     @State private var reverseNewOrder = false
     /// 자동 분류 일시 중지 안내(2026-08-18). `ClassifyPause` 참조.
     @State private var showClassifyPaused = false
+    /// **쓰다 만 기억을 불러온 채로 수집 화면을 연다** — 맨 아래 절의 줄을 눌렀을 때(2026-09-15). 시트가 닫히면 비운다.
+    @State private var pendingDraft: CaptureDraft?
+    /// 쓰다 만 기억 줄의 스와이프 삭제 되묻기(사용자 결정 4 · 2026-09-15). ⚠️ **문구는 임시다**(항시 규칙 6).
+    @State private var pendingDraftDelete: CaptureDraft?
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
     /// 제목 옆 `+`의 크기. **글자 크기 설정을 따라간다**(`.largeTitle` 기준으로 같이 자란다).
     @ScaledMetric(relativeTo: .largeTitle) private var plusSize: CGFloat = 30
@@ -65,9 +69,19 @@ struct InboxView: View {
         //    **화면은 안 넘어가고 내비 바에 `‹` 자국만 남았다**(사용자: *"< 아이콘이 좌측 상단에 2개"*).
         // ★ **왜 지연으로는 못 막나:** `load()`가 **몇 번 도는지가 자료 수에 걸려 있다** —
         //    값을 늘려도 근거가 없다. ⛔ **다시 `Task.sleep`으로 돌아가지 말 것.**
-        .sheet(isPresented: $showCapture, onDismiss: { openPendingDetail() }) {
-            CaptureSheet(model: model)
+        .sheet(isPresented: $showCapture, onDismiss: { pendingDraft = nil; openPendingDetail() }) {
+            CaptureSheet(model: model, initialDraft: pendingDraft)   // 줄을 눌러 왔으면 그 초안을 채워 연다
         }
+        .overlay {
+            if let d = pendingDraftDelete {
+                ConfirmDialog(title: "쓰다 만 기억을 지울까요?", cancelTitle: "취소", confirmTitle: "지우기",
+                              confirmTint: Palette.overdue,
+                              onCancel: { pendingDraftDelete = nil },
+                              onConfirm: { pendingDraftDelete = nil; model.deleteDraft(id: d.id) })
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: pendingDraftDelete?.id)
         // **액션 버튼·단축어로 열린 수집 시트는 `RootView`가 띄운다** — 그것이 닫힐 때도 같은 신호를 소비한다.
         // ⛔ **입구마다 배선을 갈라 두지 않으려는 것이다**(한쪽이 조용히 빠진다).
         // ⚠️ **두 신호가 다 와도 한 번만 민다** — `openPendingDetail`이 **먼저 nil로 내린다.**
@@ -185,6 +199,28 @@ struct InboxView: View {
                 sectionTitle("새 기억들", count: tab.newMemories.count,
                              trailing: tab.newMemories.count > 1 ? AnyView(reverseOrderToggle) : nil)
                     .listRowInsets(EdgeInsets())
+            }
+
+            // ★ **쓰다 만 기억** — 수집 화면에서 적다가 의도와 다르게 끊긴 초안(2026-09-15 사용자 결정 ·
+            //   정본 = `docs/native/capture-draft-design.md`). **「새 기억들」 맨 아래**에 둔다(사용자가 자리를 정했다).
+            //   ⚠️ **기억이 아니다** — 줄을 누르면 상세가 아니라 **수집 화면이 그 초안을 채워** 열린다.
+            //   없으면 절 자체가 없다. 제목 「쓰다 만 기억」은 사용자가 정했다(후보 ⓑ).
+            if !model.captureDrafts.isEmpty {
+                Section {
+                    ForEach(model.captureDrafts) { d in
+                        Button { pendingDraft = d; showCapture = true } label: { DraftRow(draft: d) }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                            .listRowBackground(Palette.bg).listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) { pendingDraftDelete = d } label: { Label("삭제", systemImage: "trash") }
+                                    .tint(Palette.overdue)
+                            }
+                    }
+                } header: {
+                    sectionTitle("쓰다 만 기억", count: model.captureDrafts.count, symbol: "pencil.line")
+                        .listRowInsets(EdgeInsets())
+                }
             }
         }
         .listStyle(.plain)
@@ -646,6 +682,42 @@ struct MemoryRow: View {
         .background(Palette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+    }
+}
+
+/// **쓰다 만 기억 한 줄** — `MemoryRow`와 같은 카드 꼴이되 **글리프는 연필·회색**(기억이 아니라 초안이다).
+/// 캡션 = 사진·링크 개수 · 마지막으로 고친 시각.
+struct DraftRow: View {
+    let draft: CaptureDraft
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil.line")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.textSecondary)
+                .frame(width: 30, height: 30)
+                .background(Palette.textSecondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 4) {
+                let body = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                Text(body.isEmpty ? "(글 없음)" : body)
+                    .font(.callout).foregroundStyle(body.isEmpty ? Palette.textTertiary : Palette.textPrimary)
+                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                Text(caption).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+        .contentShape(Rectangle())
+    }
+    private var caption: String {
+        var parts: [String] = []
+        if !draft.photos.isEmpty { parts.append("사진 \(draft.photos.count)") }
+        if !draft.urls.isEmpty { parts.append("링크 \(draft.urls.count)") }
+        let f = DateFormatter(); f.dateFormat = "M/d HH:mm"
+        parts.append(f.string(from: Date(timeIntervalSince1970: TimeInterval(draft.updatedAt) / 1000)))
+        return parts.joined(separator: " · ")
     }
 }
 

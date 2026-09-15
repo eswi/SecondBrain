@@ -45,6 +45,36 @@ struct CaptureSheet: View {
     /// **어떻게 들어왔나** — 나가는 뜻이 갈린다(`CaptureOrigin` · 2026-08-31 사용자 결정).
     /// 기본값은 `.inApp`이다(앱 안의 `+`). `RootView`가 띄우는 것만 `.hotkey`다.
     var origin: CaptureOrigin = .inApp
+    /// **쓰다 만 기억을 불러온 채로 연다** — 「새로운 기억」 맨 아래 절의 줄을 눌렀을 때(2026-09-15).
+    /// nil이면 새 초안이다. ⚠️ 시트가 열린 뒤 [쓰다 만 기억 불러오기]로 바꿔 탈 수도 있다(`loadDraft`).
+    var initialDraft: CaptureDraft? = nil
+
+    init(model: InboxModel, origin: CaptureOrigin = .inApp, initialDraft: CaptureDraft? = nil) {
+        self.model = model
+        self.origin = origin
+        self.initialDraft = initialDraft
+        _draftId = State(initialValue: initialDraft?.id ?? UUID().uuidString)
+        _text = State(initialValue: initialDraft?.text ?? "")
+        #if os(iOS)
+        _draftPhotos = State(initialValue: initialDraft.map { CaptureDrafts.photoURLs($0) } ?? [])
+        _draftURLs = State(initialValue: initialDraft?.urls ?? [])
+        #endif
+    }
+
+    // MARK: 쓰다 만 기억 — 초안 (2026-09-15 사용자 결정 · 정본 = `docs/native/capture-draft-design.md`)
+    //
+    // **적고 있는 것을 디스크에 적어 둔다.** 글이 바뀌면 짧게 묶어(0.5초), 사진·URL이 바뀌면 그때 —
+    // `persistDraft()`. **지우는 것은 의도한 종료 둘**([저장]·[취소하기]·`<`)이다. 앱이 죽으면 남는다.
+    // ⛔ **들어올 때 그대로 띄우지 않는다** — 급한 수집을 막는다(사용자). 되살리는 길은 둘:
+    //    이 화면의 [쓰다 만 기억 불러오기](`loadDraftButton`) · 「새로운 기억」 맨 아래 절(`InboxView`).
+    /// 이번 초안의 id — 불러오면 그 초안의 id로 바뀐다.
+    @State private var draftId: String
+    /// 글이 바뀔 때의 짧은 묶음(debounce). 새 변화가 오면 앞 것을 취소한다.
+    @State private var persistTask: Task<Void, Never>?
+    /// **끝났다**([저장]·나가기) — 그 뒤에 도는 묶음이 초안을 되살리지 못하게.
+    @State private var draftClosed = false
+    /// 불러오기를 되묻는 중이면 무엇을 불러올지 들고 있다(`pendingLeave`와 같은 성격).
+    @State private var pendingLoad: CaptureDraft?
     @Environment(\.dismiss) private var dismiss
     /// **나가는 뜻 둘** — `<`(되돌아간다)와 [취소하기](이 수집을 그만둔다).
     /// ⛔ **앱 안에서는 가는 곳이 같지만 핫키로 들어왔을 때 갈린다**(`CaptureOrigin`의 표).
@@ -52,7 +82,7 @@ struct CaptureSheet: View {
     /// 되묻는 중이면 **어느 뜻으로 나가려던 것인지**를 들고 있다(nil = 안 묻는 중).
     /// `model.pendingDelete`와 같은 성격이다 — 팝업의 「예」가 무엇을 할지 여기서 기억한다.
     @State private var pendingLeave: LeaveKind?
-    @State private var text = ""
+    @State private var text: String
     @State private var saved = false   // [저장]으로 확정됐는지 — 임시 음성·사진 정리 판단용
     #if os(iOS)
     @StateObject private var speech = SpeechCapture()
@@ -67,10 +97,11 @@ struct CaptureSheet: View {
     // ⛔ **아직 항목이 없다** — 그래서 자료를 **임시로 여기 들고 있다가 [저장] 때 붙인다.**
     //    붙이는 모양은 **op**이다(사용자 결정 2026-08-30 · `CaptureMediaCard` 머리주석).
     // ⚠️ **순서가 뜻이 있다** — 첫째가 카드 네모의 얼굴이 된다.
-    /// 임시 사진 파일들(저장 시 확정 / 취소 시 삭제).
-    @State private var draftPhotos: [URL] = []
+    /// 임시 사진 파일들(저장 시 확정 / 취소 시 삭제). ★ **초안이 적히면 초안 폴더로 옮겨진다**(`persistDraft`) —
+    /// `temporaryDirectory`는 iOS가 비울 수 있어서. `PhotoStore.finalizeAdded`·`deleteTemp`는 어느 URL이든 받는다.
+    @State private var draftPhotos: [URL]
     /// 정규화를 통과한 URL 문자열들 — **파일이 없다.** 값이 자료 자신이다.
-    @State private var draftURLs: [String] = []
+    @State private var draftURLs: [String]
     /// `+` 시트와 그 뒤에 열 것 — ⚠️ **시트가 닫힌 뒤에 연다**(겹쳐 띄우면 둘째가 무시된다).
     @State private var showAddSheet = false
     /// **뷰어가 떠 있나** — 사진 네모를 누르면 열린다(2026-09-03).
@@ -161,6 +192,7 @@ struct CaptureSheet: View {
                 //    **텍스트 → 마이크 → 버튼 둘 → 자료 카드.**
                 //    ⛔ **`#if` 밖에 둔다** — 맥에도 저장 단추가 있어야 한다(옛 [저장]은 툴바에 있었다).
                 decideRow
+                loadDraftButton   // 쓰다 만 기억이 있을 때만 보인다(2026-09-15)
                 #if os(iOS)
                 // ★ **「보조 자료」 카드** — 옛 「사진 찍기」 줄이 있던 자리다(2026-08-30).
                 //   ⛔ **옛 꼴(지우지 않고 적어 둔다):** `photoControl` — [사진 찍기]/[다시 찍기] 버튼 +
@@ -262,12 +294,31 @@ struct CaptureSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: pendingLeave)
+        // **불러오기 되묻기** — 지금 적은 것이 있을 때만(사용자 결정 3-ⓑ · 2026-09-15).
+        // ⚠️ **문구는 임시다**(항시 규칙 6) — 설계 문서 §4 미결.
+        .overlay {
+            if let d = pendingLoad {
+                ConfirmDialog(title: "지금 쓰던 것을 버리고 불러올까요?",
+                              cancelTitle: "계속 쓰기", confirmTitle: "불러오기",
+                              onCancel: { pendingLoad = nil },
+                              onConfirm: { pendingLoad = nil; loadDraft(d) })
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: pendingLoad?.id)
+        // **초안을 적는다** — 글은 짧게 묶고(0.5초), 자료는 바로.
+        .onChange(of: text) { _, _ in schedulePersist() }
+        #if os(iOS)
+        .onChange(of: draftPhotos) { _, _ in persistDraft() }
+        .onChange(of: draftURLs) { _, _ in persistDraft() }
+        #endif
         #if os(iOS)
         .onAppear {
             // ⛔ **카메라가 닫힐 때도 여기 온다**(머리주석 표) — 그때 다시 start()하면 받아쓰기가 지워진다.
             guard !didStart else { return }
             didStart = true
-            speech.start()                                    // 열리면 바로 STT(+ 원본 음성 녹음)
+            // 불러온 글이 있으면 **앞글로 두고** 듣는다 — `start()`는 첫 낱말에 그 글을 덮는다(`SpeechCapture.start(seed:)`).
+            if text.isEmpty { speech.start() } else { speech.start(seed: text) }   // 열리면 바로 STT(+ 원본 음성 녹음)
             // ★ **「끌 수 있다」를 몸으로 알린다** — 짧게 흔든다(2026-08-31 사용자 결정 · `micHintWiggle`).
             //   ⚠️ **녹음이 시작된 뒤다** — 사용자: *"아마 그 때는 녹음이 시작되어 있을 거야.
             //   그러니 녹음되는 중에 그렇게 동작해 달라는 의미야."*
@@ -312,6 +363,7 @@ struct CaptureSheet: View {
         let newId = model.capture(text: text, source: "text")
         #endif
         saved = true
+        closeDraft()   // 의도한 종료 ① — 초안을 지운다(사진은 위에서 이미 확정 폴더로 옮겨졌다)
         // 저장한 그 기억의 **상세 화면**으로 이어 간다(머리주석) — 미는 것은 `InboxView`이고,
         // **이 시트가 실제로 닫힌 뒤**(`onDismiss`)에 민다.
         // ⚠️ `model`은 이 시트보다 오래 살므로 dismiss 뒤에도 신호가 남는다.
@@ -410,6 +462,7 @@ struct CaptureSheet: View {
     ///
     /// ⛔ `onDisappear`에만 맡기지 않는다 — 그 콜백은 카메라가 덮을 때도 오기 때문이다(머리주석 표).
     private func leaveNow(_ kind: LeaveKind) {
+        closeDraft()   // 의도한 종료 ② — [취소하기]·`<`는 「이 수집을 그만둔다」이므로 초안도 지운다
         #if os(iOS)
         discardTemps()
         // ★★ **「앱 밖으로」는 여기서 안 한다 — `RootView`가 한다**(2026-08-31에 옮겼다).
@@ -429,6 +482,99 @@ struct CaptureSheet: View {
         if origin == .hotkey && !willExitApp { CaptureLauncher.shared.showCapture = false }
         #endif
         dismiss()
+    }
+
+    // MARK: 쓰다 만 기억 — 적기·불러오기·닫기
+
+    /// **[쓰다 만 기억 불러오기]** — 문구는 사용자가 정했다(2026-09-15 · 후보 ⓒ). **이번 초안이 아닌 것**이 있을 때만 보인다.
+    /// 누르면 **가장 최근 것**을 부른다(여럿이면 나머지는 「새로운 기억」 맨 아래 절에서 고른다).
+    @ViewBuilder private var loadDraftButton: some View {
+        if let latest = otherDrafts.first {
+            Button {
+                if hasSomethingToLose { pendingLoad = latest } else { loadDraft(latest) }
+            } label: {
+                Label(otherDrafts.count > 1 ? "쓰다 만 기억 불러오기 (\(otherDrafts.count))" : "쓰다 만 기억 불러오기",
+                      systemImage: "arrow.uturn.backward.circle")
+                    .font(.callout)
+            }
+            .buttonStyle(.plain).tint(Palette.accent).foregroundStyle(Palette.accent)
+        }
+    }
+
+    /// 이번 초안을 뺀 나머지(최근 것이 앞 — `InboxModel.captureDrafts`의 순서).
+    private var otherDrafts: [CaptureDraft] { model.captureDrafts.filter { $0.id != draftId } }
+
+    /// 지금 화면의 값으로 초안 하나를 만든다. 사진은 **초안 폴더 안 파일 이름**으로.
+    private func currentDraft() -> CaptureDraft {
+        let now = CaptureDrafts.nowMillis()
+        let created = model.captureDrafts.first { $0.id == draftId }?.createdAt ?? now
+        #if os(iOS)
+        let photos = draftPhotos.map { $0.lastPathComponent }
+        let urls = draftURLs
+        #else
+        let photos: [String] = []
+        let urls: [String] = []
+        #endif
+        return CaptureDraft(id: draftId, text: text, photos: photos, urls: urls, createdAt: created, updatedAt: now)
+    }
+
+    /// 글 변화는 0.5초 묶어서 적는다 — 한 글자마다 파일을 쓰지 않게.
+    private func schedulePersist() {
+        persistTask?.cancel()
+        persistTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            persistDraft()
+        }
+    }
+
+    /// **지금 것을 디스크에** — 빈 초안이면 지운다(`CaptureDraftStore.write`). 끝난 뒤에는 아무것도 안 한다.
+    private func persistDraft() {
+        guard !draftClosed else { return }
+        #if os(iOS)
+        movePhotosIntoDraftFolder()
+        #endif
+        model.saveDraft(currentDraft())
+    }
+
+    #if os(iOS)
+    /// `temporaryDirectory`에 있는 임시 사진을 **초안 폴더로 옮긴다**(iOS가 임시 폴더를 비울 수 있어서).
+    /// 이미 폴더 안에 있는 것은 그대로. 옮긴 뒤 `draftPhotos`의 URL도 새 자리로 바꾼다.
+    private func movePhotosIntoDraftFolder() {
+        guard let folder = CaptureDrafts.folder(id: draftId) else { return }
+        let fm = FileManager.default
+        var changed = false
+        var moved: [URL] = []
+        for u in draftPhotos {
+            if u.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL { moved.append(u); continue }
+            let dest = folder.appendingPathComponent(u.lastPathComponent)
+            if (try? fm.moveItem(at: u, to: dest)) != nil { moved.append(dest); changed = true } else { moved.append(u) }
+        }
+        if changed { draftPhotos = moved }   // onChange가 한 번 더 오지만 그때는 옮길 것이 없어 조용하다
+    }
+    #endif
+
+    /// **다른 초안으로 갈아탄다** — 지금 것은 버린다(사용자가 되물음에서 [불러오기]를 골랐거나 잃을 것이 없다).
+    private func loadDraft(_ d: CaptureDraft) {
+        persistTask?.cancel()
+        #if os(iOS)
+        if speech.isRecording { speech.stop() }   // 듣는 중이면 멈춘다 — 이어 들으려면 단추를 다시 누른다(seed = 불러온 글)
+        discardTemps()                             // 지금 초안의 임시 사진·녹음
+        #endif
+        model.deleteDraft(id: draftId)             // 지금 초안 파일(빈 것이었으면 없다)
+        draftId = d.id
+        text = d.text
+        #if os(iOS)
+        draftPhotos = CaptureDrafts.photoURLs(d)
+        draftURLs = d.urls
+        #endif
+    }
+
+    /// **의도한 종료** — 초안을 지우고, 늦게 도는 묶음이 되살리지 못하게 닫는다. [저장]·[취소하기]·`<`가 부른다.
+    private func closeDraft() {
+        persistTask?.cancel()
+        draftClosed = true
+        model.deleteDraft(id: draftId)
     }
 
     #if os(iOS)

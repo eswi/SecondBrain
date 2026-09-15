@@ -69,6 +69,11 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
     /// 새 수집 시작 — 누적을 비우고 처음부터. (수집 시트 열릴 때)
     func start() { begin(seed: "", reset: true) }
 
+    /// **새 수집인데 앞글이 있다** — 쓰다 만 기억을 불러온 채로 열 때(2026-09-15). 새 오디오 파일을 준비하고
+    /// `seed`를 앞글로 둔다. ⛔ `start()`로 열면 `transcript`가 `""`로 시작해 **첫 낱말이 인식되는 순간
+    /// 불러온 글을 덮는다**(`CaptureSheet`가 `transcript`를 편집칸에 그대로 흘리기 때문).
+    func start(seed: String) { begin(seed: seed, reset: true) }
+
     /// 재개 — 앞 내용을 유지하고 이어 듣는다. seed로 현재 편집칸 텍스트를 받아 수동 교정분도 보존.
     func resume(seed: String) { begin(seed: seed, reset: false) }
 
@@ -83,10 +88,11 @@ final class SpeechCapture: ObservableObject, @unchecked Sendable {
     private func begin(seed: String, reset: Bool) {
         let seededCommit = seed.trimmingCharacters(in: .whitespacesAndNewlines)
         DispatchQueue.main.async {
-            self.committedText = reset ? "" : seededCommit
+            // seed가 있으면 새 수집(reset)이어도 앞글로 둔다(`start(seed:)`). `start()`는 seed가 ""라 옛 동작 그대로다.
+            self.committedText = seededCommit
             self.partial = ""
-            // 새 수집(reset)은 이을 것이 없다. 재개는 **앞 내용이 있을 때만** 빈 줄 둘을 예약한다.
-            self.pendingBreak = reset ? false : !seededCommit.isEmpty
+            // 앞 내용이 있을 때만 빈 줄 둘을 예약한다 — 새 수집(seed 없음)은 이을 것이 없다.
+            self.pendingBreak = !seededCommit.isEmpty
             self.transcript = self.committedText
             self.autoStopSeconds = SpeechSettings.autoStopSeconds
             if reset {
