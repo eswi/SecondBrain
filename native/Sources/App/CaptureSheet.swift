@@ -495,7 +495,9 @@ struct CaptureSheet: View {
             } label: {
                 Label(otherDrafts.count > 1 ? "쓰다 만 기억 불러오기 (\(otherDrafts.count))" : "쓰다 만 기억 불러오기",
                       systemImage: "arrow.uturn.backward.circle")
-                    .font(.callout)
+                    // callout(16) + 2 = 18 — 사용자(2026-09-15): *"글자를 2pt 정도만 키워줘."* 글자 크기 설정을 따라 자란다.
+                    // ⚠️ Dynamic Type을 따르려면 `Font.custom(_:size:relativeTo:)`가 필요하다 — 시스템 글꼴 이름을 박게 되어 안 썼다. 고정 18pt.
+                    .font(.system(size: 18))
             }
             .buttonStyle(.plain).tint(Palette.accent).foregroundStyle(Palette.accent)
         }
@@ -534,7 +536,9 @@ struct CaptureSheet: View {
         #if os(iOS)
         movePhotosIntoDraftFolder()
         #endif
-        model.saveDraft(currentDraft())
+        let d = currentDraft()
+        model.saveDraft(d)
+        CaptureDrafts.log("persist \(d.id.prefix(8)) text=\(d.text.count)자 photos=\(d.photos) urls=\(d.urls.count) blank=\(d.isBlank)")
     }
 
     #if os(iOS)
@@ -548,7 +552,14 @@ struct CaptureSheet: View {
         for u in draftPhotos {
             if u.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL { moved.append(u); continue }
             let dest = folder.appendingPathComponent(u.lastPathComponent)
-            if (try? fm.moveItem(at: u, to: dest)) != nil { moved.append(dest); changed = true } else { moved.append(u) }
+            do {
+                try fm.moveItem(at: u, to: dest)
+                moved.append(dest); changed = true
+                CaptureDrafts.log("move ok \(u.lastPathComponent) → \(dest.path)")
+            } catch {
+                moved.append(u)
+                CaptureDrafts.log("move FAIL \(u.path) → \(dest.path): \(error.localizedDescription)")
+            }
         }
         if changed { draftPhotos = moved }   // onChange가 한 번 더 오지만 그때는 옮길 것이 없어 조용하다
     }

@@ -19,7 +19,14 @@ extension View {
 struct InboxView: View {
     @ObservedObject var model: InboxModel
     @State private var showPicker = false
-    @State private var showCapture = false
+    /// **수집 화면을 띄우는 요청** — `+`(초안 없음) 또는 「쓰다 만 기억」 줄(그 초안). **`sheet(item:)`로 띄운다.**
+    /// ⛔⛔ **옛 꼴(2026-09-15에 물렸다): `@State showCapture: Bool` + `sheet(isPresented:)` + 별도 `pendingDraft`.**
+    ///    줄을 눌러 `pendingDraft = d; showCapture = true`를 같은 자리에서 바꿨는데 **첫 표시 때 시트가 직전 상태
+    ///    (`pendingDraft == nil`)로 만들어졌다** — `@State`는 첫 생성 값만 지키므로 그 뒤 재평가로는 안 채워진다.
+    ///    사용자: *"누르면 수집 화면으로 들어가지만 입력했던 글자는 없어. 그런데 < 버튼으로 나온뒤 다시 들어가면 나타나."*
+    ///    `sheet(item:)`은 **그 값을 내용 클로저에 직접 넘겨** 이 어긋남이 없다. ⛔ **`isPresented`로 되돌리지 말 것.**
+    @State private var captureRequest: CaptureRequest?
+    struct CaptureRequest: Identifiable { let id = UUID(); var draft: CaptureDraft? = nil }
     /// 액션 버튼·단축어로 열린 수집 시트는 `RootView`가 띄운다 — **그것이 닫히는 것을 알아야**
     /// 저장한 기억의 상세로 이어 갈 수 있다(아래 `openPendingDetail`).
     @ObservedObject private var launcher = CaptureLauncher.shared
@@ -29,8 +36,6 @@ struct InboxView: View {
     @State private var reverseNewOrder = false
     /// 자동 분류 일시 중지 안내(2026-08-18). `ClassifyPause` 참조.
     @State private var showClassifyPaused = false
-    /// **쓰다 만 기억을 불러온 채로 수집 화면을 연다** — 맨 아래 절의 줄을 눌렀을 때(2026-09-15). 시트가 닫히면 비운다.
-    @State private var pendingDraft: CaptureDraft?
     /// 쓰다 만 기억 줄의 스와이프 삭제 되묻기(사용자 결정 4 · 2026-09-15). ⚠️ **문구는 임시다**(항시 규칙 6).
     @State private var pendingDraftDelete: CaptureDraft?
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
@@ -69,8 +74,8 @@ struct InboxView: View {
         //    **화면은 안 넘어가고 내비 바에 `‹` 자국만 남았다**(사용자: *"< 아이콘이 좌측 상단에 2개"*).
         // ★ **왜 지연으로는 못 막나:** `load()`가 **몇 번 도는지가 자료 수에 걸려 있다** —
         //    값을 늘려도 근거가 없다. ⛔ **다시 `Task.sleep`으로 돌아가지 말 것.**
-        .sheet(isPresented: $showCapture, onDismiss: { pendingDraft = nil; openPendingDetail() }) {
-            CaptureSheet(model: model, initialDraft: pendingDraft)   // 줄을 눌러 왔으면 그 초안을 채워 연다
+        .sheet(item: $captureRequest, onDismiss: { openPendingDetail() }) { req in
+            CaptureSheet(model: model, initialDraft: req.draft)   // 줄을 눌러 왔으면 그 초안을 채워 연다(값으로 받는다)
         }
         .overlay {
             if let d = pendingDraftDelete {
@@ -208,7 +213,7 @@ struct InboxView: View {
             if !model.captureDrafts.isEmpty {
                 Section {
                     ForEach(model.captureDrafts) { d in
-                        Button { pendingDraft = d; showCapture = true } label: { DraftRow(draft: d) }
+                        Button { captureRequest = CaptureRequest(draft: d) } label: { DraftRow(draft: d) }
                             .buttonStyle(.plain)
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
@@ -260,7 +265,7 @@ struct InboxView: View {
             //   ⛔ **고정 pt로 박지 않았다** — 제목이 `.largeTitle`(글자 크기 설정을 따른다)이라
             //   **같이 커지고 작아져야** 비율이 유지된다. `@ScaledMetric`이 그 일을 한다.
             if model.folderLink.canCapture {
-                Button { showCapture = true } label: {
+                Button { captureRequest = CaptureRequest() } label: {
                     // ⚠️ **`.semibold`다** — 사용자: *"boldface 서체처럼 **약간** 굵게"*.
                     //   `.bold`는 한 단계 더 굵다. 굵기를 올릴 때는 **크기를 같이 올리지 말 것**
                     //   — 굵어지면 같은 크기에서도 커 보인다(30pt는 재서 정한 값이다).
