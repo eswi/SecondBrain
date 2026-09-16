@@ -64,11 +64,32 @@
 - **적기·옮기기는 됐다.** 되살릴 때 **JSON엔 사진 1 · 폴더는 있고 비었다** → 13초 사이에 **파일만** 사라졌다.
 - **JSON을 지우는 길**(`closeDraft` → 폴더째)은 **안 돌았다**(JSON이 남았다). **파일만 지우는 길은 `discardTemps` 하나**다 —
   `persistDraft`가 사진을 초안 폴더로 옮기며 `draftPhotos`의 URL도 그 자리로 바꾸는데, `discardTemps`는 그 URL을 **그대로 임시 파일로 알고** 지운다.
-- **부른 자리는 `onDisappear`로 추정한다** — 강제 종료 때 화면이 해체되며 온다. ⚠️ **로그에 그 줄이 없어서 추정이다** →
-  `discardTemps`에 `discard <id> temps=<n> kept=<n> closed=<bool>` 한 줄을 넣었다. **다음 재현에서 갈린다.**
+- **부른 자리는 `onDisappear`** — 강제 종료 때 화면이 해체되며 온다. *(01:3x에는 로그에 그 줄이 없어 **추정**이었다 →
+  `discardTemps`에 `discard <id> temps=<n> kept=<n> closed=<bool>` 한 줄을 넣었다.)* ✅ **01:5x에 확인됐다** — 아래.
 - ✅ **고침(`bdc3d21`):** `discardTemps`는 **초안 폴더 밖**(임시)만 지운다. 폴더 안은 `closeDraft`가 폴더째 지운다.
   견주기는 `CaptureDraftStore.folderURL`(만들지 않는다) — `folder`로 견주면 [취소하기] 순서(`closeDraft` → `discardTemps`)에서 **빈 폴더가 되살아난다.** 시험 하나(`testFolderURL_sameLocation_doesNotCreate`).
 - ⏸ **판정 대기** — `docs/install-log.md` `bdc3d21` 줄(볼 것 둘: 사진 재현 · [취소하기] 뒤 초안 없음).
 - ⚠️ **같은 날 별개 보고:** 수집 창에서 **사진을 찍으려 하자 앱이 죽었다**(한 번 · 재현 안 됨). 폰 크래시 로그(`systemCrashLogs` 321개)에
   **09-17의 `SecondBrain-*.ips`는 없다.** 01:16:19 Jetsam 스냅샷에 SecondBrain은 `suspended`로만 있고(죽인 대상은 다른 둘) 그때 기기 free 8352쪽(≈130MB)이었다.
   **못 가름** — 크래시 리포트가 안 남는 종류의 죽음(메모리 압박 중 카메라 뜨기 등)일 수 있다는 것까지가 근거다. **값을 만들지 않는다.**
+
+### 5-1. 확인 — `bdc3d21` 판정 ⓐⓑ 통과 · `discard` 줄이 추정을 닫았다 (2026-09-17 01:5x)
+
+사용자 재현 다섯 번(01:42~01:46) · 전부 같은 꼴이었다. 한 번을 그대로 옮긴다:
+
+```
+01:42:14.757 move ok sb-photo-B21B47C8-….jpg → …/capture-drafts/AD22F62C-…/…
+01:42:14.758 persist AD22F62C text=15자 photos=["sb-photo-B21B47C8-….jpg"] …
+01:42:18.917 discard AD22F62C temps=0 kept=1 closed=false     ← ★ 강제 종료 순간 — closeDraft 없이 discardTemps가 돌았다 = onDisappear
+01:42:25.070 restore AD22F62C photos=1 found=1                ← 재시작 뒤 되살림 · 사진이 있다
+01:42:28.983 discard AD22F62C temps=0 kept=1 closed=true      ← [취소하기]: closeDraft(폴더째) → discardTemps
+01:42:29.601 discard AD22F62C temps=0 kept=0 closed=true      ← 시트가 실제로 닫히며 onDisappear가 한 번 더
+```
+
+- **`closed=false`인 `discard`가 마지막 `persist` 4초 뒤에 찍히고 6초 뒤 `restore`가 온다** — 그 사이에 사용자가 앱을 밀어 올렸다.
+  **강제 종료 때 `onDisappear`가 온다는 것이 데이터로 확인됐다.** 옛 코드였다면 이 줄에서 사진이 지워졌을 자리다(`kept=1`이 그 사진이다).
+- ⓑ **[취소하기] 뒤 초안 없음** — `closed=true` 두 줄(취소 → 닫힘) 뒤 그 id의 persist·restore가 다시 없다.
+- ⚠️ **관찰 하나(해 없음):** 줄을 눌러 여는 순간 **다른 id**의 `discard … temps=0 kept=0 closed=false`가 한 줄 앞서 찍힌다
+  (`7752F16E`·`0E41A444`·`D393080C`·`7A602C23`). `initialDraft`가 없을 때 `UUID()`로 짓는 새 id의 시트 정체성이 잠깐 만들어지고
+  해체되는 것으로 보인다(**추정**). 지우는 것이 없어(temps=0) 그대로 둔다 — 시트 정체성을 만질 때 다시 본다.
+- ✅ **「쓰다 만 기억」 판정 전부 닫혔다** — `5374b0e` ⓐⓓⓕ · `ba4faa2` ⓐⓑ · `bdc3d21` ⓐⓑ. 남은 것은 **§4 문구 둘**(사용자가 고른다)과 §4 끝의 못 잼 하나.
