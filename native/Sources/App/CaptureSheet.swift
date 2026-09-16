@@ -33,6 +33,7 @@ import UIKit
 /// |---|---|---|
 /// | 카메라가 **열릴 때** | `onDisappear` | `speech.cancelAndDiscard()`가 돌아 **녹음한 원본 음성이 지워졌다** · 먼저 붙인 사진도 |
 /// | 카메라가 **닫힐 때** | `onAppear` | `speech.start()`가 다시 돌아 `transcript`가 `""`로 리셋 → **받아쓰기한 글이 사라졌다** |
+/// | **강제 종료**(앱 전환기에서 밀어 올림 · 2026-09-17) | `onDisappear`(**추정**) | `discardTemps()`가 **초안 폴더로 옮겨진 사진까지** 지웠다 → 「쓰다 만 기억」에 글은 남고 **사진만 사라졌다** |
 ///
 /// 사용자 신고(2026-08-30): *"음성을 녹음한 후 사진을 추가하면 … 저장되어 있던 내용들이 사라짐.
 /// 그래서 기록을 다시 해야 함."* **텍스트만이 아니라 음성 파일까지 잃고 있었다.**
@@ -707,9 +708,23 @@ struct CaptureSheet: View {
     /// 미저장 종료 → 임시 음성·사진 삭제. **[취소]와 `onDisappear` 둘이 부른다.**
     /// ⚠️ 목록을 비워 **두 번 지우려 들지 않게** 한다.
     /// ⛔ **URL은 지울 것이 없다** — 파일을 만들지 않는다(값이 자료 자신이다).
+    ///
+    /// ## ⛔⛔ 초안 폴더로 옮겨진 사진은 여기서 지우지 않는다 (2026-09-17에 물렸다)
+    /// `persistDraft`가 임시 사진을 **초안 폴더로 옮기면** `draftPhotos`의 URL도 그 자리로 바뀐다.
+    /// 그 뒤 이 함수가 돌면 **초안의 사진을 「임시 파일」로 알고 지웠다** — JSON은 남고 파일만 사라져
+    /// 되살릴 때 `restore … photos=1 found=0`이 났다(폰 `draft.log` 2026-09-17 01:26 · 사용자 재현).
+    /// **부른 자리는 `onDisappear`** — 강제 종료 때 화면이 해체되며 온다(**추정** · 아래 `discard` 로그가 다음 재현에서 가른다).
+    /// ✅ **초안 폴더 안의 것은 초안의 것이다** — 지우는 때는 `closeDraft`(폴더째)뿐이다. 여기는 **폴더 밖**(임시)만 지운다.
+    /// ⚠️ 견주기는 `folderURL`(만들지 않는다) — `folder`로 견주면 [취소하기] 순서(`closeDraft` → 여기)에서 빈 폴더가 되살아난다.
     private func discardTemps() {
         speech.cancelAndDiscard()
-        for p in draftPhotos { PhotoStore.deleteTemp(p) }
+        let folder = CaptureDrafts.folderURL(id: draftId)?.standardizedFileURL
+        var temps = 0, kept = 0
+        for p in draftPhotos {
+            if let folder, p.deletingLastPathComponent().standardizedFileURL == folder { kept += 1; continue }
+            PhotoStore.deleteTemp(p); temps += 1
+        }
+        CaptureDrafts.log("discard \(draftId.prefix(8)) temps=\(temps) kept=\(kept) closed=\(draftClosed)")
         draftPhotos = []
         draftURLs = []
     }

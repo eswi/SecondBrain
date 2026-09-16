@@ -39,9 +39,14 @@ public enum CaptureDraftStore {
     public static func file(id: String, in dir: URL) -> URL { dir.appendingPathComponent("\(id).json") }
     /// 초안의 사진이 사는 폴더 `<dir>/<id>/`. **없으면 만든다.**
     public static func folder(id: String, in dir: URL) -> URL {
-        let f = dir.appendingPathComponent(id, isDirectory: true)
+        let f = folderURL(id: id, in: dir)
         try? FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
         return f
+    }
+    /// 같은 자리 — **만들지 않는다.** 「이 파일이 초안 폴더 안에 있나」를 견줄 때 쓴다(2026-09-17).
+    /// ⚠️ `folder(id:in:)`로 견주면 **지운 초안의 빈 폴더가 다시 생긴다**(`closeDraft` 뒤 `discardTemps`가 부르는 순서).
+    public static func folderURL(id: String, in dir: URL) -> URL {
+        dir.appendingPathComponent(id, isDirectory: true)
     }
 
     /// 전부 — **최근에 고친 것이 앞**(`updatedAt` 내림차순). 깨진 파일·다른 파일은 건너뛴다.

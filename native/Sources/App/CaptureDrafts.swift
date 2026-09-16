@@ -21,6 +21,8 @@ enum CaptureDrafts {
     static func delete(id: String) { if let dir = dir() { CaptureDraftStore.delete(id: id, in: dir) } }
     /// 이 초안의 사진 폴더(없으면 만든다). 없는 디렉터리면 nil.
     static func folder(id: String) -> URL? { dir().map { CaptureDraftStore.folder(id: id, in: $0) } }
+    /// 같은 자리, **만들지 않는다** — 견주기용(`CaptureSheet.discardTemps`).
+    static func folderURL(id: String) -> URL? { dir().map { CaptureDraftStore.folderURL(id: id, in: $0) } }
     /// 초안에 적힌 파일 이름 → **지금 있는** 파일 URL만. 없는 것은 로그에 남긴다(`draft.log`).
     static func photoURLs(_ d: CaptureDraft) -> [URL] {
         guard let f = folder(id: d.id) else { log("restore \(d.id.prefix(8)) — 폴더 없음"); return [] }

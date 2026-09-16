@@ -54,3 +54,19 @@ final class CaptureDraftTests: XCTestCase {
         XCTAssertEqual(CaptureDraftStore.list(in: dir).map(\.id), ["OK"])
     }
 }
+
+// MARK: - 2026-09-17 · folderURL은 만들지 않는다
+extension CaptureDraftTests {
+    /// `folderURL`은 **같은 자리를 가리키되 만들지 않는다.** `CaptureSheet.discardTemps`가 「이 사진이 초안 폴더 안인가」를
+    /// 견줄 때 쓴다 — `folder`로 견주면 지운 초안의 빈 폴더가 되살아난다([취소하기] 순서: `closeDraft` → `discardTemps`).
+    func testFolderURL_sameLocation_doesNotCreate() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sb-draft-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let id = "ABC"
+        let u = CaptureDraftStore.folderURL(id: id, in: dir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: u.path), "folderURL은 만들지 않는다")
+        let f = CaptureDraftStore.folder(id: id, in: dir)
+        XCTAssertEqual(u.standardizedFileURL, f.standardizedFileURL, "같은 자리다")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f.path), "folder는 만든다")
+    }
+}
