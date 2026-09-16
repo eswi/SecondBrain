@@ -134,6 +134,10 @@ struct DetailView: View {
     /// **떼려고 확인을 묻고 있는 URL 자료의 id.** nil이면 안 묻고 있다(§3-Z-10).
     /// ⚠️ **팝오버가 아니라 여기서 묻는다** — 이 앱의 확인 대화상자는 다 상세가 갖는다.
     @State private var deletingURLAsset: String??
+    /// 해시태그 입력 칸의 글(2026-09-17). `editingTagId`가 있으면 **그 칩을 고치는 중**이다 — 엔터가 붙이기가 아니라 고치기가 된다.
+    @State private var tagInput = ""
+    @State private var editingTagId: String?
+    @FocusState private var tagFocused: Bool
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -198,6 +202,7 @@ struct DetailView: View {
         case expiredBanner   // 유효 기간 지난 정보(2026-09-14) — 배너 다섯과 같은 자리·같은 조건(기억한 뒤)
         case pausedBanner, missedBanner, overdueHiddenBanner, anchorBanner, leadClampedBanner
         case metaType, media, question, time, recurrence, history, decide
+        case tags   // 해시태그(2026-09-17) — 분류·질문 다음 · 자료 앞 · 확정·미확정 둘 다(식별 층 · 설계 §3)
         var id: String { rawValue }
     }
 
@@ -224,6 +229,7 @@ struct DetailView: View {
         //   **미확정: … → 재확인 질문 → [삭제하기]·[기억하기] → 보조 자료(맨 끝).**
         //   ⚠️ 그래서 **확정되는 순간 카드가 위로 올라간다** — 그 움직임에 애니메이션을 거는 것이 커밋 ②-2다.
         if let q = item.fields["question"], !q.isEmpty { out.append(.question) }
+        out.append(.tags)   // 해시태그 — 분류의 세분이라 분류 옆(설계 `hashtag-design.md` §3)
         if isRemembered {
             out.append(.media)
             out += [.time, .recurrence, .history]
@@ -279,6 +285,7 @@ struct DetailView: View {
                         case .leadClampedBanner:  leadClampedBanner   // 회차 전진이 미리 알림을 당겼으면 말한다((c)) — 할 일 없는 통지라 맨 아래
                         case .metaType:           metaTypeRow    // 성역 2/3 + 분류 1/3 나란히(2차 압축 1-C) — 임시에도 보인다(식별)
                         case .media:              mediaSection
+                        case .tags:               tagsSection          // 해시태그(2026-09-17)
                         // 재확인 질문은 임시에도 보인다 — 자동 분류가 "이게 무엇인가"를 되물은 것이라 **식별 층**이다.
                         case .question:
                             if let q = item.fields["question"], !q.isEmpty { questionSection(q) }
@@ -1009,6 +1016,102 @@ struct DetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14).card()
+    }
+
+    // MARK: 해시태그 (2026-09-17 사용자 결정 · 정본 = `docs/native/hashtag-design.md`)
+    //
+    // **칩 `#태그`** · **×로 지우기** · **칩을 누르면 그 칩을 고치는 칸이 된다** · 아래 **입력 칸**(엔터 = 붙이기) ·
+    // 그 아래 **이 분류에서 이미 쓴 해시태그**(§7-1 · 누르면 붙는다).
+    // ★ **붙이기·지우기·고치기는 그 자리에서 op이다** — [저장]을 거치지 않는다(설계 §3 · `InboxModel.addTag` 주석의 덫).
+    // ⚠️ **문구 둘은 임시다**(항시 규칙 6 · 설계 §4): 자리표시자 「해시태그 추가」 · 나열 제목 「이 분류에서 쓴 해시태그」.
+    // ⚠️ **최신 항목에서 읽는다**(`model.current`) — op 직후 화면이 바로 따라오게(자료 카드와 같다).
+    private var tagsSection: some View {
+        let cur = model.current(item.id) ?? item
+        let tags = cur.hashtags
+        let used = model.usedTags(type: cur.type, excluding: Set(tags.map(\.text)))
+        return VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("해시태그")
+            if !tags.isEmpty {
+                WrapLayout(hSpacing: 6, vSpacing: 6) {
+                    ForEach(tags, id: \.id) { t in
+                        tagChip(t, editing: editingTagId == t.id)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                TextField(editingTagId == nil ? "해시태그 추가" : "해시태그 고치기", text: $tagInput)
+                    .font(.callout)
+                    .textFieldStyle(.plain)
+                    .focused($tagFocused)
+                    .submitLabel(.done)
+                    .onSubmit { submitTag() }
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .autocorrectionDisabled()
+                if editingTagId != nil {
+                    Button("취소") { editingTagId = nil; tagInput = ""; tagFocused = false }
+                        .font(.caption).tint(Palette.textSecondary)
+                }
+                Button(editingTagId == nil ? "붙이기" : "고치기") { submitTag() }
+                    .font(.caption.weight(.semibold)).tint(Palette.accent)
+                    .disabled(HashTag.normalize(tagInput) == nil)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Palette.surface2, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            if !used.isEmpty {
+                Text("이 분류에서 쓴 해시태그").font(.caption2).foregroundStyle(Palette.textTertiary)
+                WrapLayout(hSpacing: 6, vSpacing: 6) {
+                    ForEach(used, id: \.self) { t in
+                        Button { model.addTag(to: item.id, text: t) } label: {
+                            Text(HashTag.display(t)).font(.caption)
+                                .foregroundStyle(Palette.textSecondary)
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(Capsule().stroke(Palette.border))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14).card()
+    }
+
+    /// 칩 하나 — 본체를 누르면 고치기, ×를 누르면 지우기(되묻지 않는다 · 설계 §3).
+    private func tagChip(_ t: HashTag.Tag, editing: Bool) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                editingTagId = t.id; tagInput = t.text; tagFocused = true
+            } label: {
+                Text(t.display).font(.callout.weight(.medium))
+                    .foregroundStyle(editing ? Palette.bg : Palette.accent)
+            }
+            .buttonStyle(.plain)
+            Button {
+                if editingTagId == t.id { editingTagId = nil; tagInput = "" }
+                model.removeTag(from: item.id, id: t.id)
+            } label: {
+                Image(systemName: "xmark").font(.caption2.weight(.bold))
+                    .foregroundStyle(editing ? Palette.bg : Palette.textTertiary)
+                    .frame(width: 22, height: 22)   // 표적을 글자보다 넉넉히
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 10).padding(.trailing, 2).padding(.vertical, 4)
+        .background(Capsule().fill(editing ? Palette.accent : Palette.accent.opacity(0.14)))
+    }
+
+    /// 엔터·[붙이기]·[고치기] — 고치는 중이면 그 칩에 새 값, 아니면 새 칩. 칸을 비운다.
+    private func submitTag() {
+        guard HashTag.normalize(tagInput) != nil else { return }
+        if let id = editingTagId {
+            model.renameTag(in: item.id, id: id, text: tagInput)
+            editingTagId = nil
+        } else {
+            model.addTag(to: item.id, text: tagInput)
+        }
+        tagInput = ""
     }
 
     // MARK: 시간 설정 (Due · Resurface — 임의 날짜 + 지우기/none, §4-2·§4-3)

@@ -130,7 +130,40 @@ func itemCaption(_ it: ResolvedItem, showCaptureTime: Bool = true, now: Date = D
     // 상세 "시간 설정"·"지금 챙길 것"과 같은 게이트를 타 — 보이는 곳마다 어긋나지 않게.
     if let due = ItemSchedule.deadlineDay(it) { parts.append("~\(displaySchedule(due, now: now))") }
     if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(displaySchedule(rs, now: now))") }
+    // **해시태그 — 있을 때만 맨 뒤에**(2026-09-17 사용자: *"목록 줄의 캡션에도 태그 보이게 해보자. 있을 경우에만"*).
+    // 한 함수라 캡션이 쓰이는 넷(새로운 기억·살아있는 기억·검색·보관함)이 같이 따라온다.
+    let tags = it.hashtags
+    if !tags.isEmpty { parts.append(tags.map(\.display).joined(separator: " ")) }
     return parts.joined(separator: " · ")
+}
+
+// MARK: - 줄바꿈 나열 (해시태그 칩 · 2026-09-17)
+
+/// 자식들을 **왼쪽부터 채우고 넘치면 다음 줄**로. 칩 나열용. iOS 16+ `Layout`.
+struct WrapLayout: Layout {
+    var hSpacing: CGFloat = 6
+    var vSpacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxW = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0, w: CGFloat = 0
+        for s in subviews {
+            let sz = s.sizeThatFits(.unspecified)
+            if x > 0, x + sz.width > maxW { x = 0; y += rowH + vSpacing; rowH = 0 }
+            x += sz.width + hSpacing; rowH = max(rowH, sz.height); w = max(w, x - hSpacing)
+        }
+        return CGSize(width: maxW == .infinity ? w : maxW, height: y + rowH)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
+        for s in subviews {
+            let sz = s.sizeThatFits(.unspecified)
+            if x > 0, x + sz.width > bounds.width { x = 0; y += rowH + vSpacing; rowH = 0 }
+            s.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y), proposal: ProposedViewSize(sz))
+            x += sz.width + hSpacing; rowH = max(rowH, sz.height)
+        }
+    }
 }
 
 /// 스케줄 날짜(마감/미리 알림) 표시 — **올해면 연도 생략**("08-05"), **다른 해면 연도 표시**("2027-08-05").

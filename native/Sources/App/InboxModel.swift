@@ -763,6 +763,47 @@ final class InboxModel: ObservableObject {
         #endif
     }
 
+    // MARK: 해시태그 (2026-09-17 사용자 결정 · 정본 = `docs/native/hashtag-design.md`)
+
+    /// **해시태그를 붙인다** — `tag.<id>` = 글(다듬은 것). **그 자리에서 op**이다(설계 §3 · `addURL`과 같은 길).
+    /// ⛔ **`commitEdits`로 보내지 말 것** — 미확정 항목에서 `raw`·`type` 밖의 값을 조용히 버린다(2026-09-13의 덫).
+    /// 같은 글(대소문자까지 같음)이 이미 있으면 아무것도 안 한다(결정 4 · 중복 없음).
+    func addTag(to itemId: String, text rawText: String) {
+        guard let text = HashTag.normalize(rawText) else { return }
+        let cur = current(itemId)
+        if let cur, HashTag.contains(text, in: cur.fields) { return }
+        append(.edit(id: itemId, hlc: tick(), [HashTag.key(HashTag.newId()): text]))
+    }
+
+    /// **해시태그를 지운다** — 빈 값(자료 포인터와 같은 규칙). 되묻지 않는다(설계 §3).
+    func removeTag(from itemId: String, id: String) {
+        append(.edit(id: itemId, hlc: tick(), [HashTag.key(id): ""]))
+    }
+
+    /// **해시태그를 고친다** — 같은 id에 새 값. 비게 다듬어지면 지우기와 같다.
+    func renameTag(in itemId: String, id: String, text rawText: String) {
+        guard let text = HashTag.normalize(rawText) else { removeTag(from: itemId, id: id); return }
+        if let cur = current(itemId), cur.hashtags.contains(where: { $0.id != id && $0.text == text }) {
+            removeTag(from: itemId, id: id)   // 다른 칩과 같은 글이 되면 이 칩은 없어진다(중복 없음)
+            return
+        }
+        append(.edit(id: itemId, hlc: tick(), [HashTag.key(id): text]))
+    }
+
+    /// **그 분류에서 이미 쓴 해시태그**(`memory-philosophy.md` §7-1 — *"이미 쓰인 태그를 나열해 골라 쓰게"*).
+    /// 살아있는 기억(완료·삭제 제외) 중 **같은 분류**의 태그를 모아 **많이 쓴 순 → 글 순**으로. `excluding`은 이 기억에 이미 붙은 글.
+    /// 미분류(nil)도 하나의 분류로 본다(그릇은 전부 — 결정 2).
+    func usedTags(type: String?, excluding: Set<String>) -> [String] {
+        var count: [String: Int] = [:]
+        for it in liveNonDone where norm(it.type) == norm(type) {
+            for t in it.hashtags where !excluding.contains(t.text) { count[t.text, default: 0] += 1 }
+        }
+        return count.keys.sorted { a, b in
+            let ca = count[a] ?? 0, cb = count[b] ?? 0
+            return ca != cb ? ca > cb : a.localizedStandardCompare(b) == .orderedAscending
+        }
+    }
+
     /// ★ **「미리보기 다시 받기」** — 그 URL의 캡쳐를 **버리고 다시 뽑는다**
     /// (2026-08-26 사용자 결정 · 자리는 **URL 네모 길게 누르기** · 문구도 사용자가 골랐다).
     ///
