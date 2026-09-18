@@ -138,6 +138,9 @@ struct DetailView: View {
     @State private var tagInput = ""
     @State private var editingTagId: String?
     @FocusState private var tagFocused: Bool
+    /// 「이 분류에서 쓴 해시태그」 칩 글자 — **14pt**(2026-09-18 사용자: *"2pt 정도 키워줘"* · 옛 `.caption` 12pt).
+    /// `.caption` 기준으로 **글자 크기 설정을 따라간다**(고정 크기로 두면 Dynamic Type에서 혼자 안 자란다).
+    @ScaledMetric(relativeTo: .caption) private var usedTagSize: CGFloat = 14
 
     /// ★★ **이 앱에서 「동작 줄이기」를 보는 첫 자리다** (2026-08-23 · 설계 §0 32번 · §3-I-6).
     ///
@@ -1024,6 +1027,8 @@ struct DetailView: View {
     // 그 아래 **이 분류에서 이미 쓴 해시태그**(§7-1 · 누르면 붙는다).
     // ★ **붙이기·지우기·고치기는 그 자리에서 op이다** — [저장]을 거치지 않는다(설계 §3 · `InboxModel.addTag` 주석의 덫).
     // ⚠️ **문구 둘은 임시다**(항시 규칙 6 · 설계 §4): 자리표시자 「해시태그 추가」 · 나열 제목 「이 분류에서 쓴 해시태그」.
+    // ★ **2026-09-18 사용자 「고칠 것」(설계 §7 · 말 그대로 있다):** 나열 칩 **+2pt·원문 색** · 제목 +2pt ·
+    //   자리표시자 **밝게** · [붙이기] **밝게 + 흐린 바탕**(버튼으로 보이게). **문구는 안 바뀌었다.**
     // ⚠️ **최신 항목에서 읽는다**(`model.current`) — op 직후 화면이 바로 따라오게(자료 카드와 같다).
     private var tagsSection: some View {
         let cur = model.current(item.id) ?? item
@@ -1039,7 +1044,10 @@ struct DetailView: View {
                 }
             }
             HStack(spacing: 8) {
-                TextField(editingTagId == nil ? "해시태그 추가" : "해시태그 고치기", text: $tagInput)
+                // `prompt:`로 자리표시자 색을 준다 — 시스템 기본은 이 바탕에서 너무 어두웠다(2026-09-18 사용자: *"지금보다는 밝게"*).
+                TextField(text: $tagInput,
+                          prompt: Text(editingTagId == nil ? "해시태그 추가" : "해시태그 고치기")
+                                    .foregroundStyle(Palette.textSecondary)) { EmptyView() }
                     .font(.callout)
                     .textFieldStyle(.plain)
                     .focused($tagFocused)
@@ -1051,21 +1059,33 @@ struct DetailView: View {
                     .autocorrectionDisabled()
                 if editingTagId != nil {
                     Button("취소") { editingTagId = nil; tagInput = ""; tagFocused = false }
-                        .font(.caption).tint(Palette.textSecondary)
+                        .font(.subheadline).tint(Palette.textSecondary)
+                        .buttonStyle(.plain)
                 }
-                Button(editingTagId == nil ? "붙이기" : "고치기") { submitTag() }
-                    .font(.caption.weight(.semibold)).tint(Palette.accent)
-                    .disabled(HashTag.normalize(tagInput) == nil)
+                // [붙이기]·[고치기] — **버튼으로 보이게**(2026-09-18 사용자: *"버튼 느낌이 나도록 배경색을 흐리게라도"*).
+                // 글자는 원문 색 · 바탕은 강조색을 옅게(활성 45% · 비활성 18%). 옛 꼴은 `.caption` 글자만 있고 바탕이 없었다.
+                let canSubmit = HashTag.normalize(tagInput) != nil
+                Button { submitTag() } label: {
+                    Text(editingTagId == nil ? "붙이기" : "고치기")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(canSubmit ? Palette.textPrimary : Palette.textSecondary)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Capsule().fill(Palette.accent.opacity(canSubmit ? 0.45 : 0.18)))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSubmit)
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(Palette.surface2, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             if !used.isEmpty {
-                Text("이 분류에서 쓴 해시태그").font(.caption2).foregroundStyle(Palette.textTertiary)
+                // 제목 +2pt(`.caption2` 11 → `.footnote` 13) · 칩 +2pt(12 → `usedTagSize` 14) · **칩 글자 = 원문 색**
+                // (2026-09-18 사용자: *"너무 작은 글자 … 2pt 정도 키워줘. 글자 색깔은 원문의 글자 색깔과 같게"*).
+                Text("이 분류에서 쓴 해시태그").font(.footnote).foregroundStyle(Palette.textSecondary)
                 WrapLayout(hSpacing: 6, vSpacing: 6) {
                     ForEach(used, id: \.self) { t in
                         Button { model.addTag(to: item.id, text: t) } label: {
-                            Text(HashTag.display(t)).font(.caption)
-                                .foregroundStyle(Palette.textSecondary)
+                            Text(HashTag.display(t)).font(.system(size: usedTagSize))
+                                .foregroundStyle(Palette.textPrimary)
                                 .padding(.horizontal, 9).padding(.vertical, 5)
                                 .background(Capsule().stroke(Palette.border))
                         }

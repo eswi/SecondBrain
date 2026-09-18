@@ -41,6 +41,8 @@ struct InboxView: View {
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
     /// 제목 옆 `+`의 크기. **글자 크기 설정을 따라간다**(`.largeTitle` 기준으로 같이 자란다).
     @ScaledMetric(relativeTo: .largeTitle) private var plusSize: CGFloat = 30
+    /// **우측 가장자리 `#` 버튼의 접힘**(2026-09-18 사용자 지시 · `EdgeHandle`). 기기에 남는다 — 숨긴 것이 재실행마다 되살아나지 않게.
+    @AppStorage("inbox.edgeHandleTucked") private var edgeHandleTucked = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -56,6 +58,14 @@ struct InboxView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
+            // **우측 가장자리 `#` 버튼**(2026-09-18 사용자 지시). 세로 한가운데 · 오른쪽 가장자리에 물려 있다.
+            // 이 `VStack`에 얹으므로 상세로 밀려 들어가면 함께 덮인다(「새로운 기억」에서만 보인다).
+            // ⏸ 펼친 채 눌렀을 때 하는 일 = **다음 단계**(사용자가 정한다 · 지금은 비어 있다).
+            .overlay(alignment: .trailing) {
+                if !model.needsFolder {
+                    EdgeHandle(tucked: $edgeHandleTucked)
+                }
+            }
             .hiddenNavBar()
             .landscapeEdge()
             .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
