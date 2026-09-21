@@ -230,6 +230,9 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
      (AVFoundation · ffmpeg 불필요). `swift native/tools/track-edge-handle.swift <mp4>` → `t(ms) centerY(px) top bottom`.
      2026-09-21에 유튜브 손잡이 동영상을 재서 튕기기 모델(지수 → **스프링**)을 갈랐다(`edge-handle-design.md` §5-4). 상태를 안 바꾼다.
      ⚠️ **검출은 화살표 `<` 기준이다** — 첫 판(회색 띠 높이)은 **하단 독을 손잡이로 읽었다.** 손잡이 꼴이 바뀌면 문턱을 본다.
+     ✅ 2026-09-21 저녁에 **우리 앱과 유튜브를 한 녹화에 담아** 프레임별 이동량 표로 「드드득」을 갈랐다(§5-12·§5-13) — **느낌으로는 세 번 다 같았고 계측은 세 번 다 달랐다.**
+   - **`native/tools/probe-edge-handle-fill.swift`** — **화면 녹화에서 손잡이가 지나간 자리마다 「탭 안 색」과 「밑 배경색」을 찍는다**(비치는 재질인가 판정).
+     `swift native/tools/probe-edge-handle-fill.swift <mp4> <track 출력>` → 상관이 0이면 불투명. 2026-09-21에 **유튜브 탭 = 불투명**을 이것으로 확정했다(§5-14 · 스크린샷 한 장으로는 오판했다).
    - **`native/tools/sb-migrate/`** — **레거시 → UUID 마이그레이션 CLI**(별도 패키지 · 앱 빌드 영향 0).
      `--dry-run <folder>`(파일 무변경) · `--apply <folder> --out <outdir>`(원본 무변경).
      해시·병합·검증을 **앱과 같은 `SecondBrainCore`로** 한다(재구현 divergence 방지).
