@@ -1,9 +1,6 @@
-// native/tools/track-edge-handle.swift — 화면 녹화(mp4)에서 가장자리 손잡이의 세로 위치를 프레임마다 읽는다(2026-09-21 · 설계 edge-handle-design.md §5-4).
-// 사용: swift native/tools/track-edge-handle.swift <mp4>  → "t(ms) centerY(px) top bottom" · 못 찾으면 -1. 상태를 안 바꾼다(읽기만).
-// 판정 = 화살표 `<`(밝은 회색 · 채도 낮음) + 그 오른쪽 어두운 바탕. ⚠️ 손잡이 꼴이 바뀌면 문턱값도 본다.
-import Foundation
-import AVFoundation
-import CoreVideo
+// native/tools/track-edge-handle.swift — 화면 녹화(mp4)에서 가장자리 손잡이(화살표 `<`)의 세로 위치를 프레임마다 읽는다(2026-09-21 · 설계 edge-handle-design.md §5-4·§5-12).
+// 사용: swift native/tools/track-edge-handle.swift <mp4>  → "t(ms) y1,y2,…"(후보 전부 · 여럿이면 연속성으로 갈라 읽는다) · 못 찾으면 -. 상태를 안 바꾼다.
+// 판정 = 밝은 회색 `<`(채도 낮음) + 그 오른쪽 어두운 바탕. ⚠️ 첫 판(회색 띠 높이)은 하단 독을 손잡이로 읽었다. 손잡이 꼴이 바뀌면 문턱도 본다.
 
 // 사용법: swift track.swift <mp4>  → 각 프레임: t(ms) centerY(px) top bottom  (못 찾으면 -1)
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -40,17 +37,17 @@ while let sb = out.copyNextSampleBuffer() {
         while x <= w-18 { let (l,sat) = lumsat(x, y); if l > 170 && sat < 30 { return true }; x += 2 }
         return false
     }
-    var best: (len: Int, y0: Int, y1: Int) = (0,0,0)
+    var found: [(Int,Int)] = []
     var y = 0
     while y < h {
         if isChevronRow(y) {
             let y0 = y; var gap = 0; var last = y
             while y < h && gap < 6 { if isChevronRow(y) { last = y; gap = 0 } else { gap += 1 }; y += 1 }
             let len = last - y0 + 1
-            if len >= 55 && len <= 110 && len > best.len { best = (len, y0, last) }
+            if len >= 55 && len <= 110 { found.append((y0, last)) }
         } else { y += 1 }
     }
     CVPixelBufferUnlockBaseAddress(pb, .readOnly)
-    if best.len > 0 { print(String(format: "%.1f %.1f %d %d", t*1000, Double(best.y0+best.y1)/2, best.y0, best.y1)) }
-    else { print(String(format: "%.1f -1", t*1000)) }
+    let cs = found.map { String(format: "%.1f", Double($0.0+$0.1)/2) }.joined(separator: ",")
+    print(String(format: "%.1f ", t*1000) + (cs.isEmpty ? "-" : cs))
 }

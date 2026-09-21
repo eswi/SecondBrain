@@ -92,12 +92,33 @@ struct EdgeHandle: View {
     /// 이보다 느리게 놓으면 튕긴 것이 아니다 — 그 자리(60pt/s × 0.14 = 8pt 미만은 움직이지 않는 편이 낫다).
     private let flickThreshold: CGFloat = 60
 
+    // MARK: 튕기기 곡선 — **유튜브(시스템 PiP 탭) 화면 녹화의 프레임별 이동량과 맞췄다** (2026-09-21 19:1x · 설계 §5-12)
+    //
+    // 두 앱을 한 녹화에 담아 `track-edge-handle.swift`로 프레임(16.7ms)마다 위치를 읽었다:
+    //   유튜브(놓은 뒤): 48 47 44 41 37 34 30 26 23 20 17 14 12 10 8 7 5 4 3 2 1 … pt/프레임 — **정지 프레임 0 · 매 프레임 조금씩 줄어 0으로**
+    //   우리(`3c550d5`):  32 43 25 **0 0** 38 25 25 25 25 25 25 25 25 25 20 13 12 — **놓는 순간 두 프레임 정지 → 점프 → 일정 → 급정지**
+    // ★ 「드드득」 = ① 놓는 순간의 정지+점프(배선: 다음 턴으로 미룬 애니메이션 + `@AppStorage` 쓰기가 목록 전체를 재평가) ② 속도의 급변 셋(출발·90%·도착).
+    // ★ 유튜브 곡선 = **임계감쇠 스프링 ω 13.6/s · 초기속도 = 손가락 속도 · 도착점 = 놓은 자리 + 속도 × 0.14~0.15s** — RMS **1.1pt/프레임**(§5-4의 실측과 같다).
+    //   ⚠️ 그 스프링(`1b0fa24`)이 「느낌이 다르다」고 판정된 것은 **애니메이션이 아예 안 걸리던 배선(§5-7) 아래**였다 — 값이 아니라 배선이 틀렸던 것.
+    // `glideStyle`로 두 구간 꼴(§5-9 · 사용자가 정한 것)로 돌릴 수 있다.
+    private enum GlideStyle { case spring, twoStep }
+    private let glideStyle: GlideStyle = .spring
+    private let springOmega: Double = 13.6        // 1/s · 유튜브 실측(13.75 · 13.50 · 프레임 곡선 RMS 1.1)
+
     /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 애니메이션**. 도착점은 튕기는 순간 정해진다(경계 안).
     private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, animation: Animation)? {
         guard abs(vy) >= flickThreshold else { return nil }
         let target = min(max(from + vy * projection, 0), maxTop)
-        guard abs(target - from) > 0.5 else { return nil }
-        return (target, Animation(glideProfile))
+        let d = target - from
+        guard abs(d) > 0.5 else { return nil }
+        switch glideStyle {
+        case .twoStep:
+            return (target, Animation(glideProfile))
+        case .spring:
+            // 거리 대비 정규화 초기속도(1/s). 경계에 잘렸으면 ω·0.95까지 — 임계감쇠는 v0 > ω일 때 목표를 넘어간다(제목·탭바 침범).
+            let v0 = min(Double(vy / d), springOmega * 0.95)
+            return (target, .interpolatingSpring(mass: 1, stiffness: springOmega * springOmega, damping: 2 * springOmega, initialVelocity: v0))
+        }
     }
 
     /// 거리 비율(0~1)과 시각의 표 — **두 구간**: 앞 `fastFraction`은 빠른 속도 · 남은 거리는 `tailSpeedRatio` 속도. 거리와 무관하게 같은 꼴.
@@ -109,37 +130,44 @@ struct EdgeHandle: View {
         return StepGlide(times: [tFast, tFast + tTail], dists: [fastFraction, 1])
     }
 
-    @GestureState private var dragY: CGFloat = 0
-    /// **화면에 그리는 위치**(pt · 얹힌 영역 위에서부터). 저장값 `topOffset`과 갈라 둔다 —
-    /// ⛔ **09-21 18:5x까지 애니메이션이 아예 안 걸렸다**(사용자: *"휙 점프해가는 느낌"* — 0.35초든 0.8초든 같은 느낌 = 안 움직이고 뛰는 것).
-    ///   짚인 원인 둘: ① 놓는 순간 **같은 프레임에서 셋이 함께 바뀌었다**(`dragY` 0으로 리셋 · `topOffset`을 놓인 자리로 즉시 쓰기 ·
-    ///   다시 목표로 애니메이션 쓰기) — SwiftUI가 한 갱신으로 합치면서 애니메이션 트랜잭션이 떨어질 수 있다 ② `@AppStorage`에 직접
-    ///   `withAnimation`을 걸었다 — 저장 프로퍼티라 트랜잭션이 안 실리는 보고가 있다. → **그리는 값은 `@State`로, 애니메이션 쓰기는 다음 턴으로.**
+    /// **화면에 그리는 위치**(pt · 얹힌 영역 위에서부터). 저장값 `topOffset`과 갈라 둔다(§5-7).
+    /// ★ **2026-09-21 19:1x — 끌기도 이 값에 직접 쓴다**(`@GestureState dragY`를 걷었다). 그래야 놓는 순간 **쓰기가 하나**다:
+    ///   옛 꼴은 「dragY 0으로 리셋 + visualTop을 놓인 자리로 + 다음 턴에 애니메이션」이라 **두 프레임 정지 뒤 점프**가 났다(녹화 실측 §5-12).
+    ///   저장(`topOffset`)은 **애니메이션이 끝난 뒤** 한 번 — 튕기는 프레임에 `@AppStorage`를 쓰면 `InboxView` 본문(목록 전체)이 재평가된다.
     @State private var visualTop: CGFloat = -1   // 음수 = 아직 안 정함(저장값 또는 가운데로 채운다)
+    @State private var dragBase: CGFloat? = nil  // 끌기 시작 때의 위치
 
     var body: some View {
         GeometryReader { geo in
             let maxTop = max(0, geo.size.height - height)
             let settled: CGFloat = visualTop >= 0 ? visualTop : (topOffset < 0 ? maxTop / 2 : CGFloat(topOffset))
-            let top = min(max(settled + dragY, 0), maxTop)   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
             shape
                 .frame(width: width, height: height)
                 .contentShape(Rectangle())
-                .offset(y: top)
+                .offset(y: min(max(settled, 0), maxTop))   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
                 .gesture(
                     DragGesture(minimumDistance: 4)
-                        .updating($dragY) { v, st, _ in st = v.translation.height }   // 세로만 읽는다
-                        .onEnded { v in
-                            // ① 이 프레임: 손가락이 놓인 자리에 고정(애니메이션 없음) — `dragY`가 0으로 돌아가는 것과 합이 같아 튀지 않는다.
-                            let lifted = min(max(settled + v.translation.height, 0), maxTop)
+                        .onChanged { v in
+                            let base = dragBase ?? settled
+                            if dragBase == nil { dragBase = base }
                             var still = Transaction(); still.disablesAnimations = true
-                            withTransaction(still) { visualTop = lifted }
-                            topOffset = Double(lifted)
-                            // ② 다음 턴: 목표까지 스프링 — 별도 갱신이라 트랜잭션이 온전히 실린다.
-                            guard let g = glide(from: lifted, velocity: v.velocity.height, maxTop: maxTop) else { return }
-                            DispatchQueue.main.async {
-                                withAnimation(g.animation) { visualTop = g.target }
-                                topOffset = Double(g.target)   // 저장은 애니메이션과 무관 · 값만
+                            withTransaction(still) { visualTop = min(max(base + v.translation.height, 0), maxTop) }   // 세로만 · 손가락을 따라간다
+                        }
+                        .onEnded { v in
+                            let base = dragBase ?? settled
+                            dragBase = nil
+                            let lifted = min(max(base + v.translation.height, 0), maxTop)
+                            guard let g = glide(from: lifted, velocity: v.velocity.height, maxTop: maxTop) else {
+                                var still = Transaction(); still.disablesAnimations = true
+                                withTransaction(still) { visualTop = lifted }
+                                topOffset = Double(lifted)
+                                return
+                            }
+                            // **쓰기 하나로 애니메이션 시작** — 지금 값(= 마지막 onChanged의 lifted)에서 목표까지. 저장은 끝난 뒤.
+                            withAnimation(g.animation, completionCriteria: .logicallyComplete) {
+                                visualTop = g.target
+                            } completion: {
+                                topOffset = Double(g.target)
                             }
                         }
                 )
