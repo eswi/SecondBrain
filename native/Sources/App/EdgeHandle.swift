@@ -26,7 +26,8 @@ import SwiftUI
 ///      ⛔ **첫 판(17:39 `5d0f1ac`)은 `predictedEndTranslation` + 고정 0.55초 스프링이었다** — 사용자(17:5x): *"너무 민감하게 튕겨나가고
 ///      세게 튕겨나가고 미끄러지는 느낌이 없어."* 원인 둘: ⓐ 그 예측은 스크롤 뷰의 「보통」 감속률 **0.998**(속도 × 499)이라
 ///      어떤 튕김도 거의 끝까지 갔다 ⓑ 시간이 거리·속도와 무관한 고정값이라 감속 곡선이 아니었다.
-///      둘째 판(`2b53a7a`)은 지수 감속 모델(Claude가 고른 값)이었고, **셋째 판은 사용자 동영상을 재서 맞췄다** — 스프링(`glide(from:velocity:maxTop:)` 위 표).
+///      둘째 판(`2b53a7a`) 지수 감속 → 셋째 판(`1b0fa24`) 동영상 실측 스프링 → **애니메이션이 안 걸리던 배선을 고친 뒤(`a83e86f`)**
+///      **사용자가 속도 곡선을 직접 정했다**(19:0x · `glideProfile` 위 표) — 스프링은 걷었다.
 /// - 위치는 **기기에 남는다**(`@AppStorage` · 음수 = 아직 안 옮김 → 세로 가운데).
 ///
 /// ## 옛 꼴 (지우지 않는다 · 09-18 `823beae`)
@@ -58,32 +59,51 @@ struct EdgeHandle: View {
     //   0.97 → 0.8로 **점점 작아진다** = 스프링(지수 감속이면 일정). 그래서 **도착점 = 놓은 자리 + 속도 × 0.14s** ·
     //   **애니메이션 = 초기 속도를 이어받는 임계감쇠 스프링(ω ≈ 13.6/s)**. 정규화 초기속도 = v/d = 1/0.14 ≈ 7.1/s(항상 같다).
     // ⛔ 앞 판(`2b53a7a` · 지수 감속 r=0.995 · 거리 = v×0.199s)은 **거리가 1.4배 멀고 빠른 튕김이 더 오래 갔다** — 잰 뒤에 갈렸다(계측 규칙 4).
-    // ★ **사용자가 정하는 숫자 셋** (2026-09-21 18:4x 사용자: *"튕기는 순간 정지할 위치는 정해지는 것 … 이동이 너무 빠르다 … 속도를 약간 늦춰주고
-    //   목적지에 도달할수록 느려지면서 부드럽게 … 필요한 숫자를 알려주면 내가 숫자를 정해줄께."*)
-    //   | 숫자 | 뜻 | 실측(시스템 PiP 탭) | 지금 |
-    //   |---|---|---|---|
-    //   | `projection` | **얼마나 멀리** — 도착점 = 놓은 자리 + 속도 × 이 값(초). 튕기는 순간 정해진다 | 0.14 | **0.14** |
-    //   | `glideResponse` | **얼마나 오래** — 스프링의 response(초). 이 시간쯤에 멈춘다(임계감쇠 · 끝은 스며든다) | 0.46 | **0.80** |
-    //   | `velocityCarry` | **시작이 얼마나 튀나** — 손가락 속도 중 이어받는 비율(0 = 정지에서 출발 · 1 = 그대로) | 1.0 | **0.5** |
-    //   ⛔ 실측값 셋은 「같게」의 근거였고, 사용자가 「느낌이 너무 다르다」고 해서 뒤 둘을 바꿨다 — **값은 사용자가 정한다.**
+    // MARK: 튕기기 — 사용자가 정한 속도 곡선 (2026-09-21 19:0x · 설계 §5-8)
+    //
+    // 사용자: *"과정이 보인다. 이제 버튼이 이동하는 속도를 30% 정도 올려주고, 이동거리 50% 지금까지는 그대로 유지 후 50% 이후 부터
+    //   남은 거리가 5% 줄어들 때 마다 속도를 5%씩 줄여줘. 그래서 도착할 때 속도가 0이 되도록."*
+    // → **앞 절반은 일정 속도, 뒤 절반은 5% 거리마다 계단식으로 느려져 도착 때 0.** 스프링(§5-4~5-7)을 걷고 **직접 정의한 프로파일**로 간다.
+    //   ⚠️ **해석 하나:** 뒤 절반 = 5%씩 열 구간. 구간마다 **5%씩** 줄이면 도착 때 50%가 남아 0이 안 된다 → 「도착 때 0」을 우선해
+    //   구간마다 **10%씩**(= 1/구간 수) 줄인다(`decrementPerStep`). 사용자가 다른 뜻이면 이 상수 하나.
+    //   | 숫자 | 뜻 | 지금 |
+    //   |---|---|---|
+    //   | `projection` | 얼마나 멀리 — 도착점 = 놓은 자리 + 속도 × 이 값(초). 튕기는 순간 정해진다 | 0.14 |
+    //   | `baseDuration` | 기준 시간 — 「지금 속도」의 기준(§5-6의 0.8초) | 0.80 |
+    //   | `speedBoost` | 앞 절반의 일정 속도 = 거리/기준시간 × 이 값 | **1.3**(30% 올림) |
+    //   | `cruiseFraction` | 일정 속도로 가는 거리 비율 | 0.5 |
+    //   | `stepFraction` | 계단 하나의 거리 비율 | 0.05 |
+    //   | `decrementPerStep` | 계단마다 줄이는 속도(앞 절반 속도 대비) | 0.10(→ 마지막 계단 10% 속도 · 도착 때 0) |
+    //   전체 시간(거리 무관 · 비율만) = (0.5 + 0.05·Σₖ 1/(1−0.1k)) / 1.3 × 0.8 ≈ **1.21초**. 마지막 계단(5% 거리 · 10% 속도)이 0.25초쯤이다.
     private let projection: CGFloat = 0.14
-    private let glideResponse: Double = 0.80
-    private let velocityCarry: Double = 0.5
-    private var springOmega: Double { 2 * .pi / glideResponse }   // 1/s
+    private let baseDuration: Double = 0.80
+    private let speedBoost: Double = 1.3
+    private let cruiseFraction: Double = 0.5
+    private let stepFraction: Double = 0.05
+    private let decrementPerStep: Double = 0.10
     /// 이보다 느리게 놓으면 튕긴 것이 아니다 — 그 자리(60pt/s × 0.14 = 8pt 미만은 움직이지 않는 편이 낫다).
     private let flickThreshold: CGFloat = 60
 
-    /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 스프링**. 초기속도는 ω·0.95까지만 —
-    /// 임계감쇠는 v0 > ω·d일 때 목표를 넘어가므로(경계에서는 제목·탭바 침범) 넘치지 않게 눌러 도착한다.
+    /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 애니메이션**. 도착점은 튕기는 순간 정해진다(경계 안).
     private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, animation: Animation)? {
         guard abs(vy) >= flickThreshold else { return nil }
         let target = min(max(from + vy * projection, 0), maxTop)
-        let d = target - from
-        guard abs(d) > 0.5 else { return nil }
-        let v0 = min(Double(vy / d) * velocityCarry, springOmega * 0.95)   // 거리 대비 정규화(1/s) · 이어받는 비율 · ω 넘으면 목표를 넘어가므로 캡
-        let anim = Animation.interpolatingSpring(mass: 1, stiffness: springOmega * springOmega,
-                                                 damping: 2 * springOmega, initialVelocity: v0)
-        return (target, anim)
+        guard abs(target - from) > 0.5 else { return nil }
+        return (target, Animation(glideProfile))
+    }
+
+    /// 거리 비율(0~1)과 시각의 표 — 앞 절반 일정 속도 · 뒤 절반 계단식 감속. 거리와 무관하게 같은 꼴(시간은 비율로만 정해진다).
+    private var glideProfile: StepGlide {
+        let v0 = speedBoost / baseDuration                    // 거리 1 기준 속도(1/s)
+        var times: [Double] = [cruiseFraction / v0], dists: [Double] = [cruiseFraction]
+        let steps = Int(((1 - cruiseFraction) / stepFraction).rounded())
+        for k in 0..<steps {
+            let v = v0 * max(1 - decrementPerStep * Double(k), 0.02)   // 계단 k의 속도(0으로 나누지 않게 바닥)
+            times.append(times.last! + stepFraction / v)
+            dists.append(min(dists.last! + stepFraction, 1))
+        }
+        dists[dists.count - 1] = 1
+        return StepGlide(times: times, dists: dists)
     }
 
     @GestureState private var dragY: CGFloat = 0
@@ -158,5 +178,19 @@ private struct ChevronMark: Shape {
         p.addLine(to: CGPoint(x: rect.minX + t, y: rect.midY))
         p.addLine(to: CGPoint(x: rect.maxX - t, y: rect.maxY - t))
         return p
+    }
+}
+
+/// **거리-시각 표를 따라가는 애니메이션** — 표의 점 사이는 직선(일정 속도)이라 구간마다 속도가 계단으로 바뀐다. `EdgeHandle.glideProfile`이 만든다.
+private struct StepGlide: CustomAnimation {
+    let times: [Double]   // 구간 끝 시각(초 · 누적)
+    let dists: [Double]   // 구간 끝 거리 비율(누적 · 마지막은 1)
+    func animate<V: VectorArithmetic>(value: V, time: TimeInterval, context: inout AnimationContext<V>) -> V? {
+        guard let total = times.last, time < total else { return nil }   // nil = 끝났다(목표값으로)
+        var i = 0
+        while i < times.count - 1 && times[i] <= time { i += 1 }
+        let t0 = i == 0 ? 0 : times[i - 1], d0 = i == 0 ? 0 : dists[i - 1]
+        let f = t0 == times[i] ? dists[i] : d0 + (dists[i] - d0) * ((time - t0) / (times[i] - t0))
+        return value.scaled(by: f)
     }
 }
