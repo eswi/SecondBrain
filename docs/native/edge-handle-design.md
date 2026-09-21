@@ -134,6 +134,33 @@ ffmpeg가 없어 **AVFoundation으로 프레임을 읽는 Swift 스크립트**�
 
 ★ **둘째 판의 값 셋을 「Claude가 고른 값 · 못 잼」으로 적어 둔 것이 이번에 값을 했다** — 동영상 하나로 셋 다 갈렸다(계측 규칙 7).
 
+### 5-5. 인터넷에서 찾은 것 — 그 손잡이는 유튜브가 아니라 **iOS 시스템 PiP 탭**이다 (09-21 18:3x · 사용자: *"인터넷 어딘가에 검색해볼 수 없을까?"*)
+
+- **정체:** 스크린샷·동영상의 손잡이는 **iOS 시스템 「화면 속 화면(PiP)」 창을 가장자리로 밀어 숨겼을 때 나오는 시스템 탭**이다.
+  유튜브는 `AVPictureInPictureController`(시스템 PiP)를 쓰는 것뿐이라 **유튜브 문서에는 물리값이 없고, Apple도 이 값을 공개하지 않는다.**
+  (YouTube 도움말: *"drag the window to the edge to hide it and then pull the tab to bring it back"* · iOS 사용 안내 여럿이 같은 동작을 시스템 기능으로 설명.)
+- **Apple이 공개한 설계 원칙**(WWDC 2018 「Designing Fluid Interfaces」 §803 + 발표자의 샘플 코드 `fluid-interfaces/Pip.swift`):
+  ```swift
+  let decelerationRate = UIScrollView.DecelerationRate.normal.rawValue          // 0.998
+  let projectedPosition = center + project(initialVelocity: velocity, decelerationRate:)   // (v/1000)·r/(1−r)
+  let relativeInitialVelocity = relativeVelocity(forVelocity: velocity, from: center, to: target)   // v / 거리
+  UISpringTimingParameters(damping: 1, response: 0.4, initialVelocity: relativeInitialVelocity)
+  ```
+  발표: *"We recommend starting with 100% damping, or no overshoot"* · 모멘텀이 있는 제스처에만 약간의 overshoot.
+- **우리 실측(§5-4)과의 대조:**
+
+  | 항목 | Apple 샘플(공개) | 시스템 PiP 탭(우리 동영상 실측) | 지금 빌드 `1b0fa24` |
+  |---|---|---|---|
+  | 꼴 | 투사 → **임계감쇠 스프링 + 상대 초기속도** | 같은 꼴(스프링 RMS < 지수 RMS · 시간이 세기 무관) | 같은 꼴(`interpolatingSpring` · mass 1 · stiffness ω² · damping 2ω = `UISpringTimingParameters(damping: 1, response:)`와 같은 식) |
+  | response | **0.4 s** | **0.457 · 0.465 s**(2π/ω · ω 13.75 · 13.50) | 0.46 s(ω 13.6) |
+  | 투사 배율 | 0.998 → **0.499 s**(샘플은 그 뒤 **가까운 모서리로 스냅**하므로 배율이 커도 된다) | **0.135 · 0.150 s**(≈ 감속률 0.993) | 0.14 s |
+  | 초기속도 | v / 거리(상대) | v / 거리 = 1/0.14 ≈ 7.1/s(늘 같다) | 같음 · 벽에서는 ω·0.95까지 |
+
+  ★ **모델은 Apple 공개 원칙과 같고, 값 둘(response · 투사 배율)은 우리 동영상 실측이 유일한 근거다.** 시스템 탭은 스냅점 없이 한 축으로만 움직이므로
+  샘플의 0.499s가 아니라 짧은 배율을 쓰는 것이 자연스럽다(샘플은 어디로 던져도 모서리에 붙는다). **바꿀 것 없음** — 폰 판정만 남는다.
+- **출처:** Apple WWDC18 803 대본(asciiwwdc.com/2018/sessions/803) · github.com/nathangitter/fluid-interfaces `Pip.swift`(2026-09-21 `gh api`로 읽음) ·
+  YouTube 도움말 support.google.com/youtube/answer/7552722 · UIScrollView 감속 = ms마다 r배(Lobanov, 「Deceleration mechanics of UIScrollView」 — 본문은 403이라 검색 요약만).
+
 ## 6. 판정 — 09-21 빌드에서 볼 것
 
 ⓐ 「새로운 기억」 오른쪽 가장자리에 손잡이 하나(펼침 꼴 없음) · ⓑ **눌러 위아래로 끌면 따라오나** · ⓒ **제목 영역 위로 못 올라가나** ·
