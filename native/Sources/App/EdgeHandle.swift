@@ -58,19 +58,29 @@ struct EdgeHandle: View {
     //   0.97 → 0.8로 **점점 작아진다** = 스프링(지수 감속이면 일정). 그래서 **도착점 = 놓은 자리 + 속도 × 0.14s** ·
     //   **애니메이션 = 초기 속도를 이어받는 임계감쇠 스프링(ω ≈ 13.6/s)**. 정규화 초기속도 = v/d = 1/0.14 ≈ 7.1/s(항상 같다).
     // ⛔ 앞 판(`2b53a7a` · 지수 감속 r=0.995 · 거리 = v×0.199s)은 **거리가 1.4배 멀고 빠른 튕김이 더 오래 갔다** — 잰 뒤에 갈렸다(계측 규칙 4).
-    private let projection: CGFloat = 0.14        // s · 실측 0.135 · 0.150의 가운데
-    private let springOmega: Double = 13.6        // 1/s · 실측 13.75 · 13.50
+    // ★ **사용자가 정하는 숫자 셋** (2026-09-21 18:4x 사용자: *"튕기는 순간 정지할 위치는 정해지는 것 … 이동이 너무 빠르다 … 속도를 약간 늦춰주고
+    //   목적지에 도달할수록 느려지면서 부드럽게 … 필요한 숫자를 알려주면 내가 숫자를 정해줄께."*)
+    //   | 숫자 | 뜻 | 실측(시스템 PiP 탭) | 지금 |
+    //   |---|---|---|---|
+    //   | `projection` | **얼마나 멀리** — 도착점 = 놓은 자리 + 속도 × 이 값(초). 튕기는 순간 정해진다 | 0.14 | **0.14** |
+    //   | `glideResponse` | **얼마나 오래** — 스프링의 response(초). 이 시간쯤에 멈춘다(임계감쇠 · 끝은 스며든다) | 0.46 | **0.80** |
+    //   | `velocityCarry` | **시작이 얼마나 튀나** — 손가락 속도 중 이어받는 비율(0 = 정지에서 출발 · 1 = 그대로) | 1.0 | **0.5** |
+    //   ⛔ 실측값 셋은 「같게」의 근거였고, 사용자가 「느낌이 너무 다르다」고 해서 뒤 둘을 바꿨다 — **값은 사용자가 정한다.**
+    private let projection: CGFloat = 0.14
+    private let glideResponse: Double = 0.80
+    private let velocityCarry: Double = 0.5
+    private var springOmega: Double { 2 * .pi / glideResponse }   // 1/s
     /// 이보다 느리게 놓으면 튕긴 것이 아니다 — 그 자리(60pt/s × 0.14 = 8pt 미만은 움직이지 않는 편이 낫다).
     private let flickThreshold: CGFloat = 60
 
-    /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 스프링**. 경계에 잘리면 초기속도를 ω·0.95까지만 —
-    /// 임계감쇠는 v0 > ω·d일 때 목표를 넘어가므로(제목·탭바 침범) 벽에서는 넘치지 않게 눌러 도착한다.
+    /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 스프링**. 초기속도는 ω·0.95까지만 —
+    /// 임계감쇠는 v0 > ω·d일 때 목표를 넘어가므로(경계에서는 제목·탭바 침범) 넘치지 않게 눌러 도착한다.
     private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, animation: Animation)? {
         guard abs(vy) >= flickThreshold else { return nil }
         let target = min(max(from + vy * projection, 0), maxTop)
         let d = target - from
         guard abs(d) > 0.5 else { return nil }
-        let v0 = min(Double(vy / d), springOmega * 0.95)           // 거리 대비 정규화(1/s) · 부호는 같아 늘 양수
+        let v0 = min(Double(vy / d) * velocityCarry, springOmega * 0.95)   // 거리 대비 정규화(1/s) · 이어받는 비율 · ω 넘으면 목표를 넘어가므로 캡
         let anim = Animation.interpolatingSpring(mass: 1, stiffness: springOmega * springOmega,
                                                  damping: 2 * springOmega, initialVelocity: v0)
         return (target, anim)
