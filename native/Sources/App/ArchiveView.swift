@@ -15,6 +15,10 @@ struct ArchiveView: View {
         var id: String { rawValue }
     }
     @State private var option: ViewOption = .done
+    /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 「완료된/삭제된/모든 기억」을 거친 목록에서(§2 20번).
+    @State private var tagFilter = TagFilter()
+    @State private var showTagPanel = false
+    @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
 
     private var items: [ResolvedItem] {
         switch option {
@@ -23,6 +27,8 @@ struct ArchiveView: View {
         case .all:     return model.doneItems + model.trashed
         }
     }
+    private var tagCandidates: [String] { TagFilter.available(in: items) }
+    private var shown: [ResolvedItem] { tagFilter.pruned(to: tagCandidates).apply(items) }
 
     var body: some View {
         NavigationStack {
@@ -34,26 +40,35 @@ struct ArchiveView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
 
-                if items.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "archivebox").font(.system(size: 40)).foregroundStyle(Palette.textTertiary)
-                        Text("비었어요").font(.callout).foregroundStyle(Palette.textSecondary)
-                    }
-                    Spacer()
-                } else {
-                    List {
-                        ForEach(items, id: \.id) { item in
-                            row(item)
-                                .swipeActions(edge: .leading) {
-                                    Button { restore(item) } label: { Label("되돌리기", systemImage: "arrow.uturn.backward") }
-                                        .tint(Palette.accent)
-                                }
+                Group {
+                    if items.isEmpty {   // ⚠️ 태그 필터 전 기준 — 필터로 전부 숨었을 때는 빈 목록(설계 §2 17번 · 「비었어요」는 다른 뜻이다)
+                        VStack(spacing: 10) {
+                            Spacer()
+                            Image(systemName: "archivebox").font(.system(size: 40)).foregroundStyle(Palette.textTertiary)
+                            Text("비었어요").font(.callout).foregroundStyle(Palette.textSecondary)
+                            Spacer()
                         }
+                    } else {
+                        List {
+                            ForEach(shown, id: \.id) { item in
+                                row(item)
+                                    .swipeActions(edge: .leading) {
+                                        Button { restore(item) } label: { Label("되돌리기", systemImage: "arrow.uturn.backward") }
+                                            .tint(Palette.accent)
+                                    }
+                            }
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .background(Palette.bg)
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .background(Palette.bg)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    // 해시태그 필터 손잡이·패널(2026-09-22) — 목록 영역에 얹는다(제목·구분 선택은 안 덮는다).
+                    if !items.isEmpty {
+                        TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, available: tagCandidates)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

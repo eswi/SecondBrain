@@ -43,7 +43,10 @@ struct InboxView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var plusSize: CGFloat = 30
     /// **우측 가장자리 버튼의 세로 위치**(`EdgeHandle` · 2026-09-21 사용자: 위아래로만 옮긴다). 기기에 남는다 · 음수 = 아직 안 옮김(가운데).
     /// *(옛 `inbox.edgeHandleTucked`(09-18 접힘)는 펼침 꼴을 거두면서 함께 거뒀다.)*
-    @AppStorage("inbox.edgeHandleTop") private var edgeHandleTop: Double = -1
+    @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
+    /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 이 화면의 것. 세션 한정(역순 토글과 같은 수명 · §2 14번).
+    @State private var tagFilter = TagFilter()
+    @State private var showTagPanel = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -57,8 +60,11 @@ struct InboxView: View {
                     // **우측 가장자리 버튼**(2026-09-18 사용자 지시 · `EdgeHandle`). **`content`에 얹는다** — 그래서 위아래로 옮겨도
                     // **머리줄(제목)을 못 넘고 탭바(이 뷰 밖)를 못 넘는다**(2026-09-21 사용자: *"최상단 제목 영역으로 침범하지 않도록
                     // 그리고 최하단 탭바를 침범하지 않도록"*). 상세로 밀려 들어가면 함께 덮인다(「새로운 기억」에서만 보인다).
-                    // ⏸ 누르면 하는 일 = **없다**(사용자가 새로 디자인한다).
-                    content.overlay { EdgeHandle(topOffset: $edgeHandleTop) }
+                    // ✅ **누르면 = 해시태그 필터 패널**(2026-09-22 사용자 결정 · `TagFilterDock` · 정본 `tag-filter-design.md`).
+                    //    *(옛 서술 · 09-21: "⏸ 누르면 하는 일 = 없다(사용자가 새로 디자인한다)")*
+                    content.overlay {
+                        TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, available: tagCandidates)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -144,12 +150,25 @@ struct InboxView: View {
         }
     }
 
+    /// **필터 전** 이 화면에 나열된 기억 — 원칙 띠(보이는 N개) · 지금 챙길 것 · 새 기억들(설계 §2 18번 · 대시보드·「쓰다 만 기억」은 기억 목록이 아니다).
+    private var listedMemories: [ResolvedItem] {
+        let tab = model.newTab
+        return Array(model.orderedPrinciples.prefix(activeN)) + tab.upcoming.map(\.item) + tab.newMemories
+    }
+    /// 패널에 나열하는 태그 — **필터 걸기 전** 목록에서(설계 §2 3번).
+    private var tagCandidates: [String] { TagFilter.available(in: listedMemories) }
+
     private var content: some View {
         let tab = model.newTab
+        // **해시태그 필터**(2026-09-22) — 셋을 다 거른다. 화면에 없는 태그는 접는다(`pruned`). 안 걸려 있으면 그대로다.
+        let tf = tagFilter.pruned(to: tagCandidates)
+        let principles = tf.apply(Array(model.orderedPrinciples.prefix(activeN)))
+        let upcoming = tab.upcoming.filter { tf.matches($0.item.hashtags.map(\.text)) }
+        let newMems = tf.apply(tab.newMemories)
         // 데이터는 그대로(오래된 순) — 토글이 켜지면 보기 순서만 뒤집는다.
-        let orderedNew = reverseNewOrder ? Array(tab.newMemories.reversed()) : tab.newMemories
+        let orderedNew = reverseNewOrder ? Array(newMems.reversed()) : newMems
         return List {
-            if !model.orderedPrinciples.isEmpty {
+            if !principles.isEmpty {
                 Section {
                     // 밴드 전체가 하나의 버튼 — 아무 데나 터치 → 원칙 목록(§3). 상위 N개만, 순서대로 번호.
                     // (NavigationLink 대신 Button+path — List 자동 chevron(>) 제거.)
@@ -157,7 +176,7 @@ struct InboxView: View {
                         path.append(PrincipleListRoute())
                     } label: {
                         VStack(spacing: 6) {
-                            ForEach(Array(model.orderedPrinciples.prefix(activeN).enumerated()), id: \.element.id) { idx, p in
+                            ForEach(Array(principles.enumerated()), id: \.element.id) { idx, p in
                                 PrincipleRow(item: p, number: idx + 1)
                             }
                         }
@@ -166,15 +185,15 @@ struct InboxView: View {
                     .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
                 } header: {
-                    sectionTitle("원칙", count: model.principleCount,
+                    sectionTitle("원칙", count: tf.isActive ? principles.count : model.principleCount,   // 필터 중엔 남은 수
                                  symbol: "star.fill", symbolColor: TypeCatalog.meta("principle").color)
                         .listRowInsets(EdgeInsets())
                 }
             }
 
-            if !tab.upcoming.isEmpty {
+            if !upcoming.isEmpty {
                 Section {
-                    ForEach(tab.upcoming, id: \.item.id) { entry in
+                    ForEach(upcoming, id: \.item.id) { entry in
                         UpcomingCard(entry: entry, model: model)
                             .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                             .listRowBackground(Palette.bg).listRowSeparator(.hidden)
@@ -183,7 +202,7 @@ struct InboxView: View {
                             .contextMenu { itemActions(entry.item) }
                     }
                 } header: {
-                    sectionTitle("지금 챙길 것", count: tab.upcoming.count).listRowInsets(EdgeInsets())
+                    sectionTitle("지금 챙길 것", count: upcoming.count).listRowInsets(EdgeInsets())
                 }
             }
 
@@ -194,7 +213,7 @@ struct InboxView: View {
             }
 
             Section {
-                if tab.newMemories.isEmpty {
+                if tab.newMemories.isEmpty {   // ⚠️ 필터 전 기준 — 필터로 전부 숨었을 때는 아무 문구도 없다(설계 §2 17번 · 문구는 §4 미결)
                     emptyNewRow
                 } else {
                     ForEach(orderedNew, id: \.id) { item in
@@ -208,8 +227,8 @@ struct InboxView: View {
                 }
             } header: {
                 // 항목이 둘 이상일 때만 역순 토글을 보인다(하나 이하면 순서 의미 없음).
-                sectionTitle("새 기억들", count: tab.newMemories.count,
-                             trailing: tab.newMemories.count > 1 ? AnyView(reverseOrderToggle) : nil)
+                sectionTitle("새 기억들", count: newMems.count,
+                             trailing: newMems.count > 1 ? AnyView(reverseOrderToggle) : nil)
                     .listRowInsets(EdgeInsets())
             }
 

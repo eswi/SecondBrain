@@ -6,13 +6,20 @@ import SecondBrainCore
 /// (윗단 = "가장 살아있는 것" 정의는 나중에 기획. v1은 필터 + 리스트만.)
 struct LivingView: View {
     @ObservedObject var model: InboxModel
+    /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 분류 칩을 거친 목록에서 태그를 뽑고 거른다.
+    @State private var tagFilter = TagFilter()
+    @State private var showTagPanel = false
+    @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 headerRow
                 FilterChipsBar(filter: $model.filter, presentTypes: model.livingPresentTypes)
-                content
+                content.overlay {
+                    TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel,
+                                  available: TagFilter.available(in: model.livingMemories))
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
@@ -26,15 +33,16 @@ struct LivingView: View {
 
     private var content: some View {
         let items = model.livingMemories
+        let shown = tagFilter.pruned(to: TagFilter.available(in: items)).apply(items)   // 해시태그 필터(2026-09-22)
         return List {
-            if items.isEmpty {
+            if items.isEmpty {   // ⚠️ 태그 필터 전 기준 — 필터로 전부 숨었을 때는 빈 목록(설계 §2 17번 · 아래 말들은 다른 뜻이다)
                 Text(model.filter == .all ? "아직 살아있는 기억이 없어요\n새 기억을 기억하기로 하면 여기로 와요" : "이 종류가 없어요")
                     .font(.callout).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 28)
                     .listRowBackground(Palette.bg).listRowSeparator(.hidden)
             } else {
-                ForEach(items, id: \.id) { item in
+                ForEach(shown, id: \.id) { item in
                     MemoryRow(item: item, model: model, backTitle: "살아있는 기억")
                         .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                         .listRowBackground(Palette.bg).listRowSeparator(.hidden)

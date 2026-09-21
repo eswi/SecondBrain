@@ -12,6 +12,10 @@ struct SearchView: View {
     @ObservedObject var model: InboxModel
     @State private var query = ""
     @State private var filter: TypeFilter = .all   // 살아있는 기억(model.filter)과 분리된 독립 필터
+    /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 검색어·분류 칩을 거친 **결과**에서 태그를 뽑고 거른다(§2 19번).
+    @State private var tagFilter = TagFilter()
+    @State private var showTagPanel = false
+    @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
 
     private var searching: Bool {
         !query.trimmingCharacters(in: .whitespaces).isEmpty
@@ -41,6 +45,11 @@ struct SearchView: View {
 
     private func norm(_ t: String?) -> String? { (t?.isEmpty ?? true) ? nil : t }
 
+    /// 패널에 나열하는 태그 — 태그 필터 **전** 결과에서.
+    private var tagCandidates: [String] { TagFilter.available(in: results) }
+    /// ③태그 필터. 화면에 없는 태그는 접는다(`pruned`).
+    private var shown: [ResolvedItem] { tagFilter.pruned(to: tagCandidates).apply(results) }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -50,6 +59,12 @@ struct SearchView: View {
                     FilterChipsBar(filter: $filter, presentTypes: Array(Set(hits.map { norm($0.type) })))
                 }
                 resultsArea
+                    .overlay {
+                        // 손잡이·패널은 **나열된 기억이 있을 때만**(검색 중이 아니거나 결과가 없으면 거를 것이 없다).
+                        if searching && !results.isEmpty {
+                            TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, available: tagCandidates)
+                        }
+                    }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
@@ -100,13 +115,13 @@ struct SearchView: View {
     @ViewBuilder private var resultsArea: some View {
         if !searching {
             hint.frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if results.isEmpty {
+        } else if results.isEmpty {   // ⚠️ 태그 필터 전 기준 — 필터로 전부 숨었을 때는 빈 목록(설계 §2 17번 · 「결과 없음」은 다른 뜻이다)
             Text("결과 없음").font(.callout).foregroundStyle(Palette.textSecondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             // **한 번만 만든다** — 줄마다 부르면 `partition`이 그때마다 다시 돈다(InboxModel 주석).
             let screens = model.screenNames
-            List(results, id: \.id) { item in
+            List(shown, id: \.id) { item in
                 NavigationLink(value: DetailRoute(item: item, backTitle: "검색")) {
                     let expired = isExpiredNow(item)   // 유효 기간 지난 정보 = 아이콘·텍스트 회색(2026-09-14)
                     HStack(spacing: 10) {

@@ -1,6 +1,11 @@
 import SwiftUI
 
-/// **「새로운 기억」 우측 가장자리 버튼** (2026-09-18 사용자 지시 · 정본 = `docs/native/edge-handle-design.md`).
+/// **목록 화면 우측 가장자리 손잡이** (2026-09-18 사용자 지시 · 꼴·움직임 정본 = `docs/native/edge-handle-design.md`).
+///
+/// ## 2026-09-22 사용자 결정 — **누르면 해시태그 필터 패널**(정본 = `docs/native/tag-filter-design.md`)
+/// *"그 버튼의 역할은 해시태그 필터를 위한 것이야. 기억의 목록들이 나오는 모든 창 … 에서"* → **자리가 넷**으로 늘었다(새로운 기억 · 검색 · 살아있는 기억 · 보관된 기억).
+/// 이 뷰는 **`onTap`(누르기)과 `active`(필터가 걸려 있으면 `<`를 강조색으로 · Claude 판단)** 둘만 늘었다 — 패널은 `TagFilterDock`이 그린다.
+/// 세로 자리(`topStorageKey`)는 **네 화면이 한 값을 같이 쓴다**(옛 키 문자열 그대로 — 저장된 자리가 이어진다).
 ///
 /// ## 2026-09-21 사용자 지시로 바뀐 것 (설계 §5 · 말 그대로 있다)
 /// - **펼침 꼴(`#` + `»`)을 없앴다** — *"눌렀을 때 나타나는 버튼은 새로 디자인할 것이니 일단 없애자."*
@@ -37,8 +42,14 @@ import SwiftUI
 /// ## 색 (Claude가 골랐다 — 09-18 사용자가 맡겼다)
 /// 카드 바탕(`surface2`) + hairline(`border`) · 화살표 `textSecondary`.
 struct EdgeHandle: View {
+    /// `@AppStorage` 키 — 네 화면이 같이 쓴다. ⚠️ 문자열은 09-21의 「새로운 기억」 것 그대로다(바꾸면 저장된 자리가 사라진다).
+    static let topStorageKey = "inbox.edgeHandleTop"
     /// 얹힌 영역의 **위에서부터의 거리**(pt). **음수 = 아직 안 옮김** → 세로 가운데에 둔다.
     @Binding var topOffset: Double
+    /// 필터가 걸려 있나 — 참이면 `<`가 강조색(`Palette.accent`)이다. 꼴·크기는 그대로(설계 §2 10번).
+    var active: Bool = false
+    /// 누르면(끌지 않고) — 패널을 연다. 끌기(`DragGesture(minimumDistance: 4)`)와 갈린다: 4pt 안에서 떼면 누르기다.
+    var onTap: () -> Void = {}
 
     /// 스크린샷에서 **잰** 치수(머리주석 표). 옛 값: 09-18 접힌 꼴 높이 52 · 반지름 26 · 폭 30 → 09-21 17:07 92·14·24(추정).
     private let height: CGFloat = 96
@@ -156,11 +167,16 @@ struct EdgeHandle: View {
                 .frame(width: width, height: height)
                 .contentShape(Rectangle())
                 .offset(y: min(max(settled, 0), maxTop))   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
+                .onTapGesture { onTap() }   // 2026-09-22 — 해시태그 필터 패널(`TagFilterDock`)
                 .gesture(
                     DragGesture(minimumDistance: 4)
                         .onChanged { v in
                             let base = dragBase ?? settled
-                            if dragBase == nil { dragBase = base }
+                            if dragBase == nil {
+                                dragBase = base
+                                // 아직 가운데를 따르는 중(-1)이면 애니메이션 없이 그 자리에 먼저 놓는다 — -1에서 스프링이 출발하지 않게.
+                                if visualTop < 0 { var still = Transaction(); still.disablesAnimations = true; withTransaction(still) { visualTop = base } }
+                            }
                             // ★ **손가락을 1:1이 아니라 상호작용 스프링으로 따라간다**(2026-09-21 19:2x · 설계 §5-13).
                             //   1:1로 따르면 **터치 종료가 도착하기까지 한두 프레임 멈춘다**(녹화: `42 0 0 26 30` · `23 10 9 17`) — 유튜브 탭은
                             //   스프링으로 따라가며 그 틈을 관성으로 넘는다(`7 22 20 24 24 19 13 17 26 31 34…`). 놓을 때 같은 꼴의 스프링이 목표만 바꿔
@@ -186,7 +202,10 @@ struct EdgeHandle: View {
                         }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .onAppear { if visualTop < 0 { visualTop = topOffset < 0 ? maxTop / 2 : CGFloat(topOffset) } }
+                // ⛔ 옛 꼴(09-21 ~ 09-22): `.onAppear { if visualTop < 0 { visualTop = topOffset < 0 ? maxTop / 2 : topOffset } }` —
+                //    **첫 레이아웃의 높이로 가운데를 굳혔다.** 시뮬레이터에서 안 옮긴 손잡이(-1)가 가운데가 아니라 위쪽에 굳어 있었고(2026-09-22 실측),
+                //    패널(`TagFilterPanel`)은 저장값으로 진짜 가운데를 계산해 **둘이 어긋났다.** 이제 `settled`가 매 레이아웃 살아 있는 높이로 가운데를 잡고,
+                //    끌기 시작(`onChanged`)에서만 `visualTop`에 옮긴다. 폰에서는 저장값이 있어 티가 안 났다(사용자가 이미 옮겨 뒀다).
         }
     }
 
@@ -207,7 +226,7 @@ struct EdgeHandle: View {
                 r.fill(tintGradient)
             }
             ChevronMark(stroke: chevronStroke)
-                .stroke(Color(hex: 0xBDC1C7), style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
+                .stroke(active ? Palette.accent : Color(hex: 0xBDC1C7), style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
                 .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값
         }
     }
