@@ -87,12 +87,18 @@ struct EdgeHandle: View {
     }
 
     @GestureState private var dragY: CGFloat = 0
+    /// **화면에 그리는 위치**(pt · 얹힌 영역 위에서부터). 저장값 `topOffset`과 갈라 둔다 —
+    /// ⛔ **09-21 18:5x까지 애니메이션이 아예 안 걸렸다**(사용자: *"휙 점프해가는 느낌"* — 0.35초든 0.8초든 같은 느낌 = 안 움직이고 뛰는 것).
+    ///   짚인 원인 둘: ① 놓는 순간 **같은 프레임에서 셋이 함께 바뀌었다**(`dragY` 0으로 리셋 · `topOffset`을 놓인 자리로 즉시 쓰기 ·
+    ///   다시 목표로 애니메이션 쓰기) — SwiftUI가 한 갱신으로 합치면서 애니메이션 트랜잭션이 떨어질 수 있다 ② `@AppStorage`에 직접
+    ///   `withAnimation`을 걸었다 — 저장 프로퍼티라 트랜잭션이 안 실리는 보고가 있다. → **그리는 값은 `@State`로, 애니메이션 쓰기는 다음 턴으로.**
+    @State private var visualTop: CGFloat = -1   // 음수 = 아직 안 정함(저장값 또는 가운데로 채운다)
 
     var body: some View {
         GeometryReader { geo in
             let maxTop = max(0, geo.size.height - height)
-            let base: CGFloat = topOffset < 0 ? maxTop / 2 : CGFloat(topOffset)
-            let top = min(max(base + dragY, 0), maxTop)   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
+            let settled: CGFloat = visualTop >= 0 ? visualTop : (topOffset < 0 ? maxTop / 2 : CGFloat(topOffset))
+            let top = min(max(settled + dragY, 0), maxTop)   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
             shape
                 .frame(width: width, height: height)
                 .contentShape(Rectangle())
@@ -101,17 +107,21 @@ struct EdgeHandle: View {
                     DragGesture(minimumDistance: 4)
                         .updating($dragY) { v, st, _ in st = v.translation.height }   // 세로만 읽는다
                         .onEnded { v in
-                            // 먼저 손가락이 놓인 자리에(애니메이션 없이) — `dragY`가 0으로 돌아가는 프레임과 맞물려 튀지 않게.
-                            let lifted = min(max(base + v.translation.height, 0), maxTop)
+                            // ① 이 프레임: 손가락이 놓인 자리에 고정(애니메이션 없음) — `dragY`가 0으로 돌아가는 것과 합이 같아 튀지 않는다.
+                            let lifted = min(max(settled + v.translation.height, 0), maxTop)
                             var still = Transaction(); still.disablesAnimations = true
-                            withTransaction(still) { topOffset = Double(lifted) }
-                            // 그다음 놓는 순간의 속도만큼 미끄러진다(경계 안 · 거리와 시간을 같은 모델에서).
-                            if let g = glide(from: lifted, velocity: v.velocity.height, maxTop: maxTop) {
-                                withAnimation(g.animation) { topOffset = Double(g.target) }
+                            withTransaction(still) { visualTop = lifted }
+                            topOffset = Double(lifted)
+                            // ② 다음 턴: 목표까지 스프링 — 별도 갱신이라 트랜잭션이 온전히 실린다.
+                            guard let g = glide(from: lifted, velocity: v.velocity.height, maxTop: maxTop) else { return }
+                            DispatchQueue.main.async {
+                                withAnimation(g.animation) { visualTop = g.target }
+                                topOffset = Double(g.target)   // 저장은 애니메이션과 무관 · 값만
                             }
                         }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .onAppear { if visualTop < 0 { visualTop = topOffset < 0 ? maxTop / 2 : CGFloat(topOffset) } }
         }
     }
 
