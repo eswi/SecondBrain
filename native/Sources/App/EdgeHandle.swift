@@ -63,24 +63,23 @@ struct EdgeHandle: View {
     //
     // 사용자: *"과정이 보인다. 이제 버튼이 이동하는 속도를 30% 정도 올려주고, 이동거리 50% 지금까지는 그대로 유지 후 50% 이후 부터
     //   남은 거리가 5% 줄어들 때 마다 속도를 5%씩 줄여줘. 그래서 도착할 때 속도가 0이 되도록."*
-    // → **앞 절반은 일정 속도, 뒤 절반은 5% 거리마다 계단식으로 느려져 도착 때 0.** 스프링(§5-4~5-7)을 걷고 **직접 정의한 프로파일**로 간다.
-    //   ⚠️ **해석 하나:** 뒤 절반 = 5%씩 열 구간. 구간마다 **5%씩** 줄이면 도착 때 50%가 남아 0이 안 된다 → 「도착 때 0」을 우선해
-    //   구간마다 **10%씩**(= 1/구간 수) 줄인다(`decrementPerStep`). 사용자가 다른 뜻이면 이 상수 하나.
+    // → 스프링(§5-4~5-7)을 걷고 **직접 정의한 프로파일**(거리-시각 표 · `StepGlide`)로 간다. 표의 꼴은 사용자가 정한다(아래 · 설계 §5-8·§5-9).
     //   | 숫자 | 뜻 | 지금 |
     //   |---|---|---|
     //   | `projection` | 얼마나 멀리 — 도착점 = 놓은 자리 + 속도 × 이 값(초). 튕기는 순간 정해진다 | 0.14 |
     //   | `baseDuration` | 기준 시간 — 「지금 속도」의 기준(§5-6의 0.8초) | 0.80 |
     //   | `speedBoost` | 앞 절반의 일정 속도 = 거리/기준시간 × 이 값 | **1.3**(30% 올림) |
-    //   | `cruiseFraction` | 일정 속도로 가는 거리 비율 | 0.5 |
-    //   | `stepFraction` | 계단 하나의 거리 비율 | 0.05 |
-    //   | `decrementPerStep` | 계단마다 줄이는 속도(앞 절반 속도 대비) | 0.10(→ 마지막 계단 10% 속도 · 도착 때 0) |
-    //   전체 시간(거리 무관 · 비율만) = (0.5 + 0.05·Σₖ 1/(1−0.1k)) / 2.6 × 0.8 ≈ **0.60초**(1.3일 때 1.21초). 마지막 계단(5% 거리 · 10% 속도)이 0.15초.
+    //   | `fastFraction` | 빠른 속도로 가는 거리 비율(19:2x 사용자) | 0.9 |
+    //   | `tailSpeedRatio` | 남은 거리의 속도(빠른 속도 대비) | 0.5 |
+    //   *(19:0x~19:1x의 계단식 — 앞 절반 일정 · 5%마다 10%씩 감속 · 도착 0 — 은 19:2x에 사용자가 걷었다: "위치에 따라 속도를 조절하지 말고".
+    //   전말은 설계 §5-8 · `aadf8b5`·`a8edc6b`. 되살리려면 그 커밋의 `glideProfile`.)*
     private let projection: CGFloat = 0.14
     private let baseDuration: Double = 0.80
     private let speedBoost: Double = 2.6   // 1.3 → 2.6 (2026-09-21 19:1x 사용자: "지금보다 2배 속도로. 전체적으로 느려") · 전체 ≈0.6초
-    private let cruiseFraction: Double = 0.5
-    private let stepFraction: Double = 0.05
-    private let decrementPerStep: Double = 0.10
+    /// **빠른 속도로 가는 거리 비율** — 그 뒤 남은 거리는 `tailSpeedRatio` 속도로(2026-09-21 19:2x 사용자: *"위치에 따라 속도를 조절하지 말고,
+    /// 그냥 전체 거리의 90%는 빠르게 가고, 마지막 10% 남은 거리는 2분의 1 속도로"*). 계단 셋(`cruiseFraction`·`stepFraction`·`decrementPerStep`)은 걷었다.
+    private let fastFraction: Double = 0.9
+    private let tailSpeedRatio: Double = 0.5
     /// 이보다 느리게 놓으면 튕긴 것이 아니다 — 그 자리(60pt/s × 0.14 = 8pt 미만은 움직이지 않는 편이 낫다).
     private let flickThreshold: CGFloat = 60
 
@@ -92,18 +91,13 @@ struct EdgeHandle: View {
         return (target, Animation(glideProfile))
     }
 
-    /// 거리 비율(0~1)과 시각의 표 — 앞 절반 일정 속도 · 뒤 절반 계단식 감속. 거리와 무관하게 같은 꼴(시간은 비율로만 정해진다).
+    /// 거리 비율(0~1)과 시각의 표 — **두 구간**: 앞 `fastFraction`은 빠른 속도 · 남은 거리는 `tailSpeedRatio` 속도. 거리와 무관하게 같은 꼴.
+    /// 지금 값(2.6 · 0.9 · 0.5): 앞 90% 0.28s + 꼬리 10% 0.06s = **0.34s**.
     private var glideProfile: StepGlide {
         let v0 = speedBoost / baseDuration                    // 거리 1 기준 속도(1/s)
-        var times: [Double] = [cruiseFraction / v0], dists: [Double] = [cruiseFraction]
-        let steps = Int(((1 - cruiseFraction) / stepFraction).rounded())
-        for k in 0..<steps {
-            let v = v0 * max(1 - decrementPerStep * Double(k), 0.02)   // 계단 k의 속도(0으로 나누지 않게 바닥)
-            times.append(times.last! + stepFraction / v)
-            dists.append(min(dists.last! + stepFraction, 1))
-        }
-        dists[dists.count - 1] = 1
-        return StepGlide(times: times, dists: dists)
+        let tFast = fastFraction / v0
+        let tTail = (1 - fastFraction) / (v0 * tailSpeedRatio)
+        return StepGlide(times: [tFast, tFast + tTail], dists: [fastFraction, 1])
     }
 
     @GestureState private var dragY: CGFloat = 0
