@@ -75,7 +75,7 @@ struct EdgeHandle: View {
     //   전말은 설계 §5-8 · `aadf8b5`·`a8edc6b`. 되살리려면 그 커밋의 `glideProfile`.)*
     private let projection: CGFloat = 0.14
     private let baseDuration: Double = 0.80
-    private let speedBoost: Double = 2.6   // 1.3 → 2.6 (2026-09-21 19:1x 사용자: "지금보다 2배 속도로. 전체적으로 느려") · 전체 ≈0.6초
+    private let speedBoost: Double = 3.9   // 1.3 → 2.6(19:1x 2배) → 3.9(19:3x 사용자: "지금보다 50% 더 빠르게") · 전체 ≈0.23초
     /// **빠른 속도로 가는 거리 비율** — 그 뒤 남은 거리는 `tailSpeedRatio` 속도로(2026-09-21 19:2x 사용자: *"위치에 따라 속도를 조절하지 말고,
     /// 그냥 전체 거리의 90%는 빠르게 가고, 마지막 10% 남은 거리는 2분의 1 속도로"*). 계단 셋(`cruiseFraction`·`stepFraction`·`decrementPerStep`)은 걷었다.
     private let fastFraction: Double = 0.9
@@ -92,7 +92,7 @@ struct EdgeHandle: View {
     }
 
     /// 거리 비율(0~1)과 시각의 표 — **두 구간**: 앞 `fastFraction`은 빠른 속도 · 남은 거리는 `tailSpeedRatio` 속도. 거리와 무관하게 같은 꼴.
-    /// 지금 값(2.6 · 0.9 · 0.5): 앞 90% 0.28s + 꼬리 10% 0.06s = **0.34s**.
+    /// 지금 값(3.9 · 0.9 · 0.5): 앞 90% 0.18s + 꼬리 10% 0.04s = **0.23s**. (2.6일 때 0.34s)
     private var glideProfile: StepGlide {
         let v0 = speedBoost / baseDuration                    // 거리 1 기준 속도(1/s)
         let tFast = fastFraction / v0
