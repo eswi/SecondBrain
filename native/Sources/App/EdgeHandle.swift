@@ -47,6 +47,15 @@ struct EdgeHandle: View {
     /// 화살표 획 두께 — `ChevronMark`와 같은 값을 써야 상자가 꼭 10 × 27.5가 된다.
     private let chevronStroke: CGFloat = 5.5
     /// 재질 위에 덮는 회색의 비율(0 = 재질만 · 1 = 09-21 17:17의 불투명 회색). **Claude가 고른 값** — 폰에서 다듬는다.
+    /// A/B 스위치(§5-10) — false = 불투명(지금) · true = 재질 + 덮기(17:39~19:3x 빌드).
+    private let useMaterial = false
+    private var tintGradient: LinearGradient {
+        LinearGradient(stops: [
+            .init(color: Color(hex: 0x393E3F), location: 0),
+            .init(color: Color(hex: 0x313635), location: 0.5),
+            .init(color: Color(hex: 0x444F55), location: 1),
+        ], startPoint: .top, endPoint: .bottom)
+    }
     private let tintOpacity: Double = 0.7   // 0.6으로 재니 밝기 50~57(참고 60~76)이라 0.7로 올렸다(17:4x 시뮬 실측)
     // MARK: 튕기기 — 유튜브 손잡이 **동영상을 재서** 맞췄다 (2026-09-21 18:2x · 설계 §5-4)
     //
@@ -145,16 +154,16 @@ struct EdgeHandle: View {
                                            bottomTrailingRadius: 0, topTrailingRadius: 0, style: .circular)
             // 바탕 = 비치는 재질(어두운 판) + 스크린샷에서 잰 회색 그라데이션을 `tintOpacity`만큼 덮는다. 테두리·그림자 없음(스크린샷에 없다).
             // *(09-21 17:17 빌드는 그라데이션만 불투명으로 — 잰 색은 그대로고 덮는 비율만 더해졌다.)*
-            r.fill(.regularMaterial)
-                .environment(\.colorScheme, .dark)   // 재질의 어두운 판을 고정한다(이 앱은 늘 어둡다)
-                .overlay(
-                    r.fill(LinearGradient(stops: [
-                        .init(color: Color(hex: 0x393E3F), location: 0),
-                        .init(color: Color(hex: 0x313635), location: 0.5),
-                        .init(color: Color(hex: 0x444F55), location: 1),
-                    ], startPoint: .top, endPoint: .bottom))
-                    .opacity(tintOpacity)
-                )
+            // ⚠️ **A/B 중(2026-09-21 19:4x · 설계 §5-10):** 재질(`.regularMaterial`)을 **잠시 걷고 불투명 그라데이션만**.
+            //   사용자: *"애니메이션이 부드럽지 않아. 드드드득~"* — 움직이는 재질은 매 프레임 밑을 다시 블러해 프레임을 떨군다(짚인 원인).
+            //   부드러워지면 원인이 재질이다 → 비침을 포기하거나 덜 비싼 재질로(사용자가 고른다). `useMaterial`을 true로 돌리면 09-21 17:39 꼴.
+            if useMaterial {
+                r.fill(.regularMaterial)
+                    .environment(\.colorScheme, .dark)   // 재질의 어두운 판을 고정한다(이 앱은 늘 어둡다)
+                    .overlay(r.fill(tintGradient).opacity(tintOpacity))
+            } else {
+                r.fill(tintGradient)
+            }
             ChevronMark(stroke: chevronStroke)
                 .stroke(Color(hex: 0xBDC1C7), style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
                 .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값
@@ -180,11 +189,48 @@ private struct StepGlide: CustomAnimation {
     let times: [Double]   // 구간 끝 시각(초 · 누적)
     let dists: [Double]   // 구간 끝 거리 비율(누적 · 마지막은 1)
     func animate<V: VectorArithmetic>(value: V, time: TimeInterval, context: inout AnimationContext<V>) -> V? {
-        guard let total = times.last, time < total else { return nil }   // nil = 끝났다(목표값으로)
+        let total = times.last ?? 0
+        guard time < total else {
+            GlideLog.shared.finish(distance: value.magnitudeSquared.squareRoot(), total: total, times: times, dists: dists)
+            return nil   // nil = 끝났다(목표값으로)
+        }
         var i = 0
         while i < times.count - 1 && times[i] <= time { i += 1 }
         let t0 = i == 0 ? 0 : times[i - 1], d0 = i == 0 ? 0 : dists[i - 1]
         let f = t0 == times[i] ? dists[i] : d0 + (dists[i] - d0) * ((time - t0) / (times[i] - t0))
+        GlideLog.shared.record(time: time, fraction: f)
         return value.scaled(by: f)
+    }
+}
+
+/// **튕기기 프레임 계측**(2026-09-21 19:4x · 설계 §5-10 · `CLAUDE.md` 빌드 ⓒ — *"적게 만드는 것이 절반이다"*).
+/// `StepGlide.animate`가 불릴 때마다 (시각, 진행률)을 **메모리에** 모으고, 끝날 때 한 번에 `Application Support/SecondBrain/edge-handle/glide.log`에 쓴다
+/// (프레임마다 I/O를 하면 그 자체가 프레임을 떨군다). 폰에서 가져와 **프레임 간격(FPS)**과 **진행률의 직선성(같은 속도인가)**을 숫자로 본다.
+/// 상태를 안 바꾼다(읽기 전용 계측). 사용자 판정이 끝나면 걷는다.
+final class GlideLog: @unchecked Sendable {
+    static let shared = GlideLog()
+    private let lock = NSLock()
+    private var samples: [(t: Double, f: Double)] = []
+    private var wall = Date()
+
+    func record(time: Double, fraction: Double) {
+        lock.lock(); defer { lock.unlock() }
+        if samples.isEmpty { wall = Date() }
+        samples.append((time, fraction))
+    }
+    func finish(distance: Double, total: Double, times: [Double], dists: [Double]) {
+        lock.lock(); let s = samples; samples = []; let started = wall; lock.unlock()
+        guard !s.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async {
+            let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm:ss.SSS"
+            var out = "glide \(f.string(from: started)) distance=\(String(format: "%.1f", distance))pt frames=\(s.count) total=\(String(format: "%.3f", total))s profile=\(zip(times, dists).map { String(format: "%.3f@%.2f", $0, $1) }.joined(separator: ","))\n"
+            for x in s { out += String(format: "  %.4f %.4f\n", x.t, x.f) }
+            guard let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else { return }
+            let dir = base.appendingPathComponent("SecondBrain/edge-handle", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent("glide.log")
+            if let h = try? FileHandle(forWritingTo: url) { defer { try? h.close() }; _ = try? h.seekToEnd(); try? h.write(contentsOf: Data(out.utf8)) }
+            else { try? Data(out.utf8).write(to: url) }
+        }
     }
 }
