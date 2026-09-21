@@ -83,6 +83,9 @@ struct EdgeHandle: View {
     //   *(19:0x~19:1x의 계단식 — 앞 절반 일정 · 5%마다 10%씩 감속 · 도착 0 — 은 19:2x에 사용자가 걷었다: "위치에 따라 속도를 조절하지 말고".
     //   전말은 설계 §5-8 · `aadf8b5`·`a8edc6b`. 되살리려면 그 커밋의 `glideProfile`.)*
     private let projection: CGFloat = 0.14
+    /// 이 속도(pt/s) 아래는 `projection`만 · 이 위(`hardFlickSpeed`)는 벽까지 · 사이는 비례(실측: 약한 튕김 1337 · 센 튕김 2229·2880pt/s).
+    private let softFlickSpeed: CGFloat = 1200
+    private let hardFlickSpeed: CGFloat = 2000
     private let baseDuration: Double = 0.80
     private let speedBoost: Double = 3.9   // 1.3 → 2.6(19:1x 2배) → 3.9(19:3x 사용자: "지금보다 50% 더 빠르게") · 전체 ≈0.23초
     /// **빠른 속도로 가는 거리 비율** — 그 뒤 남은 거리는 `tailSpeedRatio` 속도로(2026-09-21 19:2x 사용자: *"위치에 따라 속도를 조절하지 말고,
@@ -110,7 +113,13 @@ struct EdgeHandle: View {
     /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 애니메이션**. 도착점은 튕기는 순간 정해진다(경계 안).
     private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, animation: Animation)? {
         guard abs(vy) >= flickThreshold else { return nil }
-        let target = min(max(from + vy * projection, 0), maxTop)
+        // **세게 던지면 범위 끝까지**(2026-09-21 19:3x 사용자: *"유튜브 버튼은 세게 던지면 갈 수 있는 범위 내에서 끝까지 가지만 우리는 세게 던져도
+        //   다 가지 않아. 세게 던지면 범위 내에서 끝까지 가게하자."*). 느린 튕김은 속도 × `projection` 그대로, `hardFlickSpeed` 이상은 그 방향의 벽,
+        //   사이(`softFlickSpeed`~`hardFlickSpeed`)는 둘을 비례해 잇는다 — 문턱에서 갑자기 바뀌지 않게.
+        let wall: CGFloat = vy > 0 ? maxTop : 0
+        let projected = min(max(from + vy * projection, 0), maxTop)
+        let k = min(max((abs(vy) - softFlickSpeed) / (hardFlickSpeed - softFlickSpeed), 0), 1)   // 0 = 느린 · 1 = 센
+        let target = projected + (wall - projected) * k
         let d = target - from
         guard abs(d) > 0.5 else { return nil }
         switch glideStyle {
