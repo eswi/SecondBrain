@@ -232,47 +232,14 @@ private struct StepGlide: CustomAnimation {
     let dists: [Double]   // 구간 끝 거리 비율(누적 · 마지막은 1)
     func animate<V: VectorArithmetic>(value: V, time: TimeInterval, context: inout AnimationContext<V>) -> V? {
         let total = times.last ?? 0
-        guard time < total else {
-            GlideLog.shared.finish(distance: value.magnitudeSquared.squareRoot(), total: total, times: times, dists: dists)
-            return nil   // nil = 끝났다(목표값으로)
-        }
+        guard time < total else { return nil }   // nil = 끝났다(목표값으로)
         var i = 0
         while i < times.count - 1 && times[i] <= time { i += 1 }
         let t0 = i == 0 ? 0 : times[i - 1], d0 = i == 0 ? 0 : dists[i - 1]
         let f = t0 == times[i] ? dists[i] : d0 + (dists[i] - d0) * ((time - t0) / (times[i] - t0))
-        GlideLog.shared.record(time: time, fraction: f)
         return value.scaled(by: f)
     }
 }
 
-/// **튕기기 프레임 계측**(2026-09-21 19:4x · 설계 §5-10 · `CLAUDE.md` 빌드 ⓒ — *"적게 만드는 것이 절반이다"*).
-/// `StepGlide.animate`가 불릴 때마다 (시각, 진행률)을 **메모리에** 모으고, 끝날 때 한 번에 `Application Support/SecondBrain/edge-handle/glide.log`에 쓴다
-/// (프레임마다 I/O를 하면 그 자체가 프레임을 떨군다). 폰에서 가져와 **프레임 간격(FPS)**과 **진행률의 직선성(같은 속도인가)**을 숫자로 본다.
-/// 상태를 안 바꾼다(읽기 전용 계측). 사용자 판정이 끝나면 걷는다.
-final class GlideLog: @unchecked Sendable {
-    static let shared = GlideLog()
-    private let lock = NSLock()
-    private var samples: [(t: Double, f: Double)] = []
-    private var wall = Date()
-
-    func record(time: Double, fraction: Double) {
-        lock.lock(); defer { lock.unlock() }
-        if samples.isEmpty { wall = Date() }
-        samples.append((time, fraction))
-    }
-    func finish(distance: Double, total: Double, times: [Double], dists: [Double]) {
-        lock.lock(); let s = samples; samples = []; let started = wall; lock.unlock()
-        guard !s.isEmpty else { return }
-        DispatchQueue.global(qos: .utility).async {
-            let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm:ss.SSS"
-            var out = "glide \(f.string(from: started)) distance=\(String(format: "%.1f", distance))pt frames=\(s.count) total=\(String(format: "%.3f", total))s profile=\(zip(times, dists).map { String(format: "%.3f@%.2f", $0, $1) }.joined(separator: ","))\n"
-            for x in s { out += String(format: "  %.4f %.4f\n", x.t, x.f) }
-            guard let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else { return }
-            let dir = base.appendingPathComponent("SecondBrain/edge-handle", isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let url = dir.appendingPathComponent("glide.log")
-            if let h = try? FileHandle(forWritingTo: url) { defer { try? h.close() }; _ = try? h.seekToEnd(); try? h.write(contentsOf: Data(out.utf8)) }
-            else { try? Data(out.utf8).write(to: url) }
-        }
-    }
-}
+// *(2026-09-21 18:5x~19:3x에 `GlideLog`(프레임 계측 · `edge-handle/glide.log`)가 여기 있었다 — 판정이 끝나 걷었다(설계 §5-10·§5-11 · 커밋 `3c550d5`~`f29294a`).
+//   계산은 120Hz·직선으로 맞았고 원인은 표시 쪽이었다는 것을 이 로그가 갈랐다. 다시 필요하면 그 커밋에서.)*
