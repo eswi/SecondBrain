@@ -104,6 +104,8 @@ struct EdgeHandle: View {
     private enum GlideStyle { case spring, twoStep }
     private let glideStyle: GlideStyle = .spring
     private let springOmega: Double = 13.6        // 1/s · 유튜브 실측(13.75 · 13.50 · 프레임 곡선 RMS 1.1)
+    /// **끌기 중 손가락을 따라가는 스프링** — 짧은 response로 살짝만 뒤따른다(2000pt/s에서 약 40pt 뒤). Apple `interactiveSpring` 기본(0.15 · 0.86)보다 조금 빠르게.
+    private var trackingSpring: Animation { .interactiveSpring(response: 0.12, dampingFraction: 0.86, blendDuration: 0) }
 
     /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 애니메이션**. 도착점은 튕기는 순간 정해진다(경계 안).
     private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, animation: Animation)? {
@@ -115,9 +117,9 @@ struct EdgeHandle: View {
         case .twoStep:
             return (target, Animation(glideProfile))
         case .spring:
-            // 거리 대비 정규화 초기속도(1/s). 경계에 잘렸으면 ω·0.95까지 — 임계감쇠는 v0 > ω일 때 목표를 넘어간다(제목·탭바 침범).
-            let v0 = min(Double(vy / d), springOmega * 0.95)
-            return (target, .interpolatingSpring(mass: 1, stiffness: springOmega * springOmega, damping: 2 * springOmega, initialVelocity: v0))
+            // 임계감쇠 · response = 2π/ω. **초기속도를 명시하지 않는다** — 끌기 스프링(`trackingSpring`)이 돌고 있으면 그 속도를 이어받는다(§5-13).
+            // ⚠️ 옛 꼴(`750a763`): `interpolatingSpring(initialVelocity: vy/d)` + 끌기 1:1 — 꼬리는 맞았으나 놓는 순간 한두 프레임이 비었다.
+            return (target, .spring(response: 2 * .pi / springOmega, dampingFraction: 1.0, blendDuration: 0))
         }
     }
 
@@ -150,8 +152,11 @@ struct EdgeHandle: View {
                         .onChanged { v in
                             let base = dragBase ?? settled
                             if dragBase == nil { dragBase = base }
-                            var still = Transaction(); still.disablesAnimations = true
-                            withTransaction(still) { visualTop = min(max(base + v.translation.height, 0), maxTop) }   // 세로만 · 손가락을 따라간다
+                            // ★ **손가락을 1:1이 아니라 상호작용 스프링으로 따라간다**(2026-09-21 19:2x · 설계 §5-13).
+                            //   1:1로 따르면 **터치 종료가 도착하기까지 한두 프레임 멈춘다**(녹화: `42 0 0 26 30` · `23 10 9 17`) — 유튜브 탭은
+                            //   스프링으로 따라가며 그 틈을 관성으로 넘는다(`7 22 20 24 24 19 13 17 26 31 34…`). 놓을 때 같은 꼴의 스프링이 목표만 바꿔
+                            //   이어받으므로(SwiftUI 스프링은 끊기면 속도를 보존해 다시 겨눈다) 놓는 순간에 이음새가 없다.
+                            withAnimation(trackingSpring) { visualTop = min(max(base + v.translation.height, 0), maxTop) }   // 세로만
                         }
                         .onEnded { v in
                             let base = dragBase ?? settled
@@ -163,7 +168,7 @@ struct EdgeHandle: View {
                                 topOffset = Double(lifted)
                                 return
                             }
-                            // **쓰기 하나로 애니메이션 시작** — 지금 값(= 마지막 onChanged의 lifted)에서 목표까지. 저장은 끝난 뒤.
+                            // **쓰기 하나로 목표를 바꾼다** — 끌기 스프링이 아직 도는 중이라 속도를 이어받아 목표로 겨눈다. 저장은 끝난 뒤.
                             withAnimation(g.animation, completionCriteria: .logicallyComplete) {
                                 visualTop = g.target
                             } completion: {
