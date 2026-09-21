@@ -226,6 +226,10 @@ xcodebuild -project SecondBrain.xcodeproj -scheme SecondBrainApp-iOS \
      (⛔ **url 쪽은 「고쳐 쓴 URL의 옛 값」을 세고 있던 것이다** — 자료 총수가 셋 많았다).
      ★ **도구가 기능보다 오래되면 이렇게 된다** — **검산식은 맞았고 읽는 법이 낡았다.**
      ★ **「셋 다 0」을 볼 때는 도구가 어긋남을 잡을 수 있는지 함께 본다** — 대조군 표본으로 확인했다(계측 규칙 7).
+   - **`native/tools/track-edge-handle.swift`** — **화면 녹화(mp4)에서 가장자리 손잡이의 세로 위치를 프레임마다 읽는다**
+     (AVFoundation · ffmpeg 불필요). `swift native/tools/track-edge-handle.swift <mp4>` → `t(ms) centerY(px) top bottom`.
+     2026-09-21에 유튜브 손잡이 동영상을 재서 튕기기 모델(지수 → **스프링**)을 갈랐다(`edge-handle-design.md` §5-4). 상태를 안 바꾼다.
+     ⚠️ **검출은 화살표 `<` 기준이다** — 첫 판(회색 띠 높이)은 **하단 독을 손잡이로 읽었다.** 손잡이 꼴이 바뀌면 문턱을 본다.
    - **`native/tools/sb-migrate/`** — **레거시 → UUID 마이그레이션 CLI**(별도 패키지 · 앱 빌드 영향 0).
      `--dry-run <folder>`(파일 무변경) · `--apply <folder> --out <outdir>`(원본 무변경).
      해시·병합·검증을 **앱과 같은 `SecondBrainCore`로** 한다(재구현 divergence 방지).
