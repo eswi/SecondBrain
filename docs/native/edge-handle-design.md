@@ -1,7 +1,8 @@
 # 「새로운 기억」 우측 가장자리 버튼 — `#` (2026-09-18 · 회사 맥북 · 사용자 지시)
 
 > **성격:** 사용자가 대화에서 지시한 것을 그 자리에서 적은 문서. **하는 일은 아직 정해지지 않았다** — 사용자가 다음 단계에서 정한다.
-> 부품 = `native/Sources/App/EdgeHandle.swift` · 얹은 자리 = `InboxView`(루트 `VStack`의 `.overlay(alignment: .trailing)`).
+> 부품 = `native/Sources/App/EdgeHandle.swift` · 얹은 자리 = `InboxView`(`content`의 `.overlay` · 09-21에 루트에서 옮겼다).
+> ✅ **사양서 반영 = `second-brain-v0-spec.md` §0-A-4**(2026-09-21 19:4x · 사용자 지시). 사양서는 「무엇인가」만, 전말은 여기.
 
 ## 1. 지시 — 사용자 말 그대로 (2026-09-18 16:5x)
 
