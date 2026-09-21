@@ -2,7 +2,9 @@
 // 사용: swift native/tools/track-edge-handle.swift <mp4>  → "t(ms) y1,y2,…"(후보 전부 · 여럿이면 연속성으로 갈라 읽는다) · 못 찾으면 -. 상태를 안 바꾼다.
 // 판정 = 밝은 회색 `<`(채도 낮음) + 그 오른쪽 어두운 바탕. ⚠️ 첫 판(회색 띠 높이)은 하단 독을 손잡이로 읽었다. 손잡이 꼴이 바뀌면 문턱도 본다.
 
-// 사용법: swift track.swift <mp4>  → 각 프레임: t(ms) centerY(px) top bottom  (못 찾으면 -1)
+import Foundation
+import AVFoundation
+import CoreVideo
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
 let asset = AVURLAsset(url: url)
 let sem = DispatchSemaphore(value: 0)
