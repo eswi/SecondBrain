@@ -74,10 +74,10 @@ struct EdgeHandle: View {
     //   | `cruiseFraction` | 일정 속도로 가는 거리 비율 | 0.5 |
     //   | `stepFraction` | 계단 하나의 거리 비율 | 0.05 |
     //   | `decrementPerStep` | 계단마다 줄이는 속도(앞 절반 속도 대비) | 0.10(→ 마지막 계단 10% 속도 · 도착 때 0) |
-    //   전체 시간(거리 무관 · 비율만) = (0.5 + 0.05·Σₖ 1/(1−0.1k)) / 1.3 × 0.8 ≈ **1.21초**. 마지막 계단(5% 거리 · 10% 속도)이 0.25초쯤이다.
+    //   전체 시간(거리 무관 · 비율만) = (0.5 + 0.05·Σₖ 1/(1−0.1k)) / 2.6 × 0.8 ≈ **0.60초**(1.3일 때 1.21초). 마지막 계단(5% 거리 · 10% 속도)이 0.15초.
     private let projection: CGFloat = 0.14
     private let baseDuration: Double = 0.80
-    private let speedBoost: Double = 1.3
+    private let speedBoost: Double = 2.6   // 1.3 → 2.6 (2026-09-21 19:1x 사용자: "지금보다 2배 속도로. 전체적으로 느려") · 전체 ≈0.6초
     private let cruiseFraction: Double = 0.5
     private let stepFraction: Double = 0.05
     private let decrementPerStep: Double = 0.10
