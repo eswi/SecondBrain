@@ -41,8 +41,9 @@ struct InboxView: View {
     @AppStorage(PrincipleSettings.activeCountKey) private var activeN = PrincipleSettings.defaultActiveCount
     /// 제목 옆 `+`의 크기. **글자 크기 설정을 따라간다**(`.largeTitle` 기준으로 같이 자란다).
     @ScaledMetric(relativeTo: .largeTitle) private var plusSize: CGFloat = 30
-    /// **우측 가장자리 `#` 버튼의 접힘**(2026-09-18 사용자 지시 · `EdgeHandle`). 기기에 남는다 — 숨긴 것이 재실행마다 되살아나지 않게.
-    @AppStorage("inbox.edgeHandleTucked") private var edgeHandleTucked = false
+    /// **우측 가장자리 버튼의 세로 위치**(`EdgeHandle` · 2026-09-21 사용자: 위아래로만 옮긴다). 기기에 남는다 · 음수 = 아직 안 옮김(가운데).
+    /// *(옛 `inbox.edgeHandleTucked`(09-18 접힘)는 펼침 꼴을 거두면서 함께 거뒀다.)*
+    @AppStorage("inbox.edgeHandleTop") private var edgeHandleTop: Double = -1
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -53,19 +54,15 @@ struct InboxView: View {
                     folderPrompt
                     Spacer(minLength: 0)
                 } else {
-                    content
+                    // **우측 가장자리 버튼**(2026-09-18 사용자 지시 · `EdgeHandle`). **`content`에 얹는다** — 그래서 위아래로 옮겨도
+                    // **머리줄(제목)을 못 넘고 탭바(이 뷰 밖)를 못 넘는다**(2026-09-21 사용자: *"최상단 제목 영역으로 침범하지 않도록
+                    // 그리고 최하단 탭바를 침범하지 않도록"*). 상세로 밀려 들어가면 함께 덮인다(「새로운 기억」에서만 보인다).
+                    // ⏸ 누르면 하는 일 = **없다**(사용자가 새로 디자인한다).
+                    content.overlay { EdgeHandle(topOffset: $edgeHandleTop) }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Palette.bg.ignoresSafeArea())
-            // **우측 가장자리 `#` 버튼**(2026-09-18 사용자 지시). 세로 한가운데 · 오른쪽 가장자리에 물려 있다.
-            // 이 `VStack`에 얹으므로 상세로 밀려 들어가면 함께 덮인다(「새로운 기억」에서만 보인다).
-            // ⏸ 펼친 채 눌렀을 때 하는 일 = **다음 단계**(사용자가 정한다 · 지금은 비어 있다).
-            .overlay(alignment: .trailing) {
-                if !model.needsFolder {
-                    EdgeHandle(tucked: $edgeHandleTucked)
-                }
-            }
             .hiddenNavBar()
             .landscapeEdge()
             .navigationDestination(for: DetailRoute.self) { DetailView(item: $0.item, model: model, backTitle: $0.backTitle) }
@@ -584,7 +581,7 @@ struct UpcomingCard: View {
                             SourceBadge(source: entry.item.source)
                             // 캡션 색 = 원문과 같은 textPrimary(밝게). 크기(.caption)로 이미 비중을 죽이므로 색만 올린다.
                             // 지금 챙길 것: 수집 시각은 빼고(상세에 남음) 스케줄 위주 + 연도 생략 — 미리 알림 시각까지 한 줄에 보이게.
-                            Text(itemCaption(entry.item, showCaptureTime: false)).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                            itemCaptionText(entry.item, showCaptureTime: false).font(.caption).foregroundStyle(Palette.textPrimary).lineLimit(1)
                             // **「임시」는 이 캡션 줄에 붙인다 (2026-08-18 사용자 결정) — 검색·새 기억들과 같은 자리.**
                             // **이 섹션에 미확정이 들어온다** — `InboxModel.partition`이 시점 있는 항목을 **확정 무관**으로
                             // 여기로 보낸다. 그런데 표시가 없어서 **같은 미확정 항목이 화면마다 달라 보였다**
@@ -683,7 +680,7 @@ struct MemoryRow: View {
                     // 캡션 줄 — `UpcomingCard`·`SearchView`와 **같은 배치**(출처 · 날짜 · 임시).
                     HStack(spacing: 6) {
                         SourceBadge(source: item.source)
-                        Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                        itemCaptionText(item).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
                         if provisional { ProvisionalBadge() }
                         Spacer(minLength: 0)
                     }

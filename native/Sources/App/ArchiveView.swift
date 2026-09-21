@@ -78,7 +78,7 @@ struct ArchiveView: View {
                 JustifiedText(text: item.raw ?? "", style: .callout,
                               weight: .regular, color: expired ? Palette.textTertiary : Palette.textSecondary, maxLines: 2)
                 // 캡션 색 = 이 화면 원문과 같은 textSecondary(밝게). 크기(.caption2)로 비중은 유지, 색만 올린다.
-                Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                itemCaptionText(item).font(.caption2).foregroundStyle(Palette.textSecondary).lineLimit(1)
             }
             Spacer(minLength: 4)
             Text(item.deleted || item.type == "discard" ? "삭제" : "완료")

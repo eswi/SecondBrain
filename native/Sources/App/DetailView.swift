@@ -1029,6 +1029,7 @@ struct DetailView: View {
     // ⚠️ **문구 둘은 임시다**(항시 규칙 6 · 설계 §4): 자리표시자 「해시태그 추가」 · 나열 제목 「이 분류에서 쓴 해시태그」.
     // ★ **2026-09-18 사용자 「고칠 것」(설계 §7 · 말 그대로 있다):** 나열 칩 **+2pt·원문 색** · 제목 +2pt ·
     //   자리표시자 **밝게** · [붙이기] **밝게 + 흐린 바탕**(버튼으로 보이게). **문구는 안 바뀌었다.**
+    // ★ **2026-09-21 사용자:** [붙이기] → **[추가하기]** · 목록 캡션의 `#태그` 색 = 이 절의 칩 글자색(`accent`) — `itemCaptionText`.
     // ⚠️ **최신 항목에서 읽는다**(`model.current`) — op 직후 화면이 바로 따라오게(자료 카드와 같다).
     private var tagsSection: some View {
         let cur = model.current(item.id) ?? item
@@ -1062,11 +1063,12 @@ struct DetailView: View {
                         .font(.subheadline).tint(Palette.textSecondary)
                         .buttonStyle(.plain)
                 }
-                // [붙이기]·[고치기] — **버튼으로 보이게**(2026-09-18 사용자: *"버튼 느낌이 나도록 배경색을 흐리게라도"*).
+                // [추가하기]·[고치기] — **버튼으로 보이게**(2026-09-18 사용자: *"버튼 느낌이 나도록 배경색을 흐리게라도"*).
+                // ★ **문구 「붙이기」 → 「추가하기」**(2026-09-21 사용자: *"[붙이기] 를 [추가하기]로 바꾸자."*). 하는 일은 그대로.
                 // 글자는 원문 색 · 바탕은 강조색을 옅게(활성 45% · 비활성 18%). 옛 꼴은 `.caption` 글자만 있고 바탕이 없었다.
                 let canSubmit = HashTag.normalize(tagInput) != nil
                 Button { submitTag() } label: {
-                    Text(editingTagId == nil ? "붙이기" : "고치기")
+                    Text(editingTagId == nil ? "추가하기" : "고치기")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(canSubmit ? Palette.textPrimary : Palette.textSecondary)
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -1122,7 +1124,7 @@ struct DetailView: View {
         .background(Capsule().fill(editing ? Palette.accent : Palette.accent.opacity(0.14)))
     }
 
-    /// 엔터·[붙이기]·[고치기] — 고치는 중이면 그 칩에 새 값, 아니면 새 칩. 칸을 비운다.
+    /// 엔터·[추가하기]·[고치기] — 고치는 중이면 그 칩에 새 값, 아니면 새 칩. 칸을 비운다.
     private func submitTag() {
         guard HashTag.normalize(tagInput) != nil else { return }
         if let id = editingTagId {

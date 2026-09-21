@@ -121,6 +121,26 @@ extension ResolvedItem {
 /// 항목 캡션. `showCaptureTime`=false면 **수집 시각을 뺀다**(지금 챙길 것 목록 — 스케줄이 핵심이고 폭이 좁다;
 /// 수집 시각은 상세 "최초 수집 · 성역"에 그대로 남는다). 보관함·검색은 기본값(true)으로 수집 시각 유지.
 func itemCaption(_ it: ResolvedItem, showCaptureTime: Bool = true, now: Date = Date()) -> String {
+    let (head, tags) = captionParts(it, showCaptureTime: showCaptureTime, now: now)
+    return (head + (tags.isEmpty ? [] : [tags.joined(separator: " ")])).joined(separator: " · ")
+}
+
+/// **캡션을 `Text`로 — 해시태그 부분만 상세 칩과 같은 색(`Palette.accent`)** (2026-09-21 사용자:
+/// *"해시태그가 있는 기억을 목록에 보여줄 때 해시태그의 색깔은, 상세화면에서 해시태그에 쓰는 색깔로 통일하자."*).
+/// 글은 `itemCaption`과 **한 글자도 다르지 않다** — 둘이 같은 `captionParts`를 쓴다(태그가 없으면 결과도 같다).
+/// 바깥에서 준 `.foregroundStyle`은 앞부분에만 먹고 **태그 조각은 자기 색을 지킨다**(`Text` 이어붙이기의 규칙).
+/// ⚠️ **캡션이 쓰이는 넷이 함께 따라온다**(새로운 기억·살아있는 기억·검색·보관함) — 사용자가 말한 곳은 「새로운 기억」이지만
+/// 한 함수를 쓰는 이유가 「어긋날 자리를 없애는 것」이라 갈라 두지 않았다(Claude 판단 · 뒤집을 수 있다).
+func itemCaptionText(_ it: ResolvedItem, showCaptureTime: Bool = true, now: Date = Date()) -> Text {
+    let (head, tags) = captionParts(it, showCaptureTime: showCaptureTime, now: now)
+    let headText = head.joined(separator: " · ")
+    guard !tags.isEmpty else { return Text(headText) }
+    let tagText = Text(tags.joined(separator: " ")).foregroundStyle(Palette.accent)
+    return headText.isEmpty ? tagText : Text(headText + " · ") + tagText
+}
+
+/// 캡션의 조각 — **앞부분**(수집 시각 · 마감 · 다시 보기)과 **해시태그**(`#태그` 나열)를 갈라 준다. 위 두 함수가 함께 쓴다.
+private func captionParts(_ it: ResolvedItem, showCaptureTime: Bool, now: Date) -> (head: [String], tags: [String]) {
     var parts: [String] = []
     if showCaptureTime {
         let dt = "\(it.date ?? "") \(it.time ?? "")".trimmingCharacters(in: .whitespaces)
@@ -132,9 +152,7 @@ func itemCaption(_ it: ResolvedItem, showCaptureTime: Bool = true, now: Date = D
     if let rs = ItemSchedule.gatedResurface(it) { parts.append("↻\(displaySchedule(rs, now: now))") }
     // **해시태그 — 있을 때만 맨 뒤에**(2026-09-17 사용자: *"목록 줄의 캡션에도 태그 보이게 해보자. 있을 경우에만"*).
     // 한 함수라 캡션이 쓰이는 넷(새로운 기억·살아있는 기억·검색·보관함)이 같이 따라온다.
-    let tags = it.hashtags
-    if !tags.isEmpty { parts.append(tags.map(\.display).joined(separator: " ")) }
-    return parts.joined(separator: " · ")
+    return (parts, it.hashtags.map(\.display))
 }
 
 // MARK: - 줄바꿈 나열 (해시태그 칩 · 2026-09-17)

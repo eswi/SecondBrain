@@ -128,7 +128,7 @@ struct SearchView: View {
                             // 여기서는 표시 없이 떠서 **같은 것이 두 화면에서 달라 보였다**
                             // (`2026-08-14-macbook.md` §14-3·§14-4에서 걸린 구멍).
                             HStack(spacing: 6) {
-                                Text(itemCaption(item)).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
+                                itemCaptionText(item).font(.caption2).foregroundStyle(Palette.textTertiary).lineLimit(1)
                                 if !item.confirmed { ProvisionalBadge() }
                                 Spacer(minLength: 0)
                                 // **가장 오른쪽 = 그 기억이 지금 있는 화면 이름**(2026-08-28 사용자 결정).
