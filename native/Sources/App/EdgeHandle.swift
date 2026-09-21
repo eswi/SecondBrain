@@ -26,7 +26,7 @@ import SwiftUI
 ///      ⛔ **첫 판(17:39 `5d0f1ac`)은 `predictedEndTranslation` + 고정 0.55초 스프링이었다** — 사용자(17:5x): *"너무 민감하게 튕겨나가고
 ///      세게 튕겨나가고 미끄러지는 느낌이 없어."* 원인 둘: ⓐ 그 예측은 스크롤 뷰의 「보통」 감속률 **0.998**(속도 × 499)이라
 ///      어떤 튕김도 거의 끝까지 갔다 ⓑ 시간이 거리·속도와 무관한 고정값이라 감속 곡선이 아니었다.
-///      ✅ 지금은 **손가락 속도(`velocity`)를 직접 읽어 지수 감속 모델로 거리와 시간을 함께 계산한다**(`glide(from:velocity:maxTop:)` 주석).
+///      둘째 판(`2b53a7a`)은 지수 감속 모델(Claude가 고른 값)이었고, **셋째 판은 사용자 동영상을 재서 맞췄다** — 스프링(`glide(from:velocity:maxTop:)` 위 표).
 /// - 위치는 **기기에 남는다**(`@AppStorage` · 음수 = 아직 안 옮김 → 세로 가운데).
 ///
 /// ## 옛 꼴 (지우지 않는다 · 09-18 `823beae`)
@@ -47,39 +47,34 @@ struct EdgeHandle: View {
     private let chevronStroke: CGFloat = 5.5
     /// 재질 위에 덮는 회색의 비율(0 = 재질만 · 1 = 09-21 17:17의 불투명 회색). **Claude가 고른 값** — 폰에서 다듬는다.
     private let tintOpacity: Double = 0.7   // 0.6으로 재니 밝기 50~57(참고 60~76)이라 0.7로 올렸다(17:4x 시뮬 실측)
-    // MARK: 튕기기 — 지수 감속 모델 (UIScrollView와 같은 꼴 · 값만 다르다)
+    // MARK: 튕기기 — 유튜브 손잡이 **동영상을 재서** 맞췄다 (2026-09-21 18:2x · 설계 §5-4)
     //
-    // 속도 v(pt/ms)가 1ms마다 r배로 줄면 **가는 거리 = v · r/(1−r)** · **멈추는 시간 = ln(stop/v)/ln(r)** ms.
-    // | r | 배율 r/(1−r) | 1500pt/s 튕김이 가는 거리 |
-    // |---|---|---|
-    // | 0.998 (스크롤 「보통」 · 17:39 판) | 499 | **749pt** — 화면 끝까지(사용자: 세게 튕겨나간다) |
-    // | 0.995 (지금) | 199 | 299pt |
-    // | 0.99 (스크롤 「빠름」) | 99 | 149pt |
-    // 시간은 같은 모델에서 나오므로 **빠르게 튕기면 멀리·오래**, 살짝 튕기면 **짧게·금방** 멈춘다 — 이것이 「미끄러지는」 감이다.
-    // ⚠️ 셋 다 **Claude가 고른 값**이다 — 유튜브의 실제 곡선은 못 잼(사용자가 동영상을 주면 프레임을 뽑아 잰다).
-    private let decelerationRate: CGFloat = 0.995
-    /// 이 속도(pt/ms) 아래로 떨어지면 멈춘 것으로 본다 — 시간 계산의 끝점.
-    private let stopSpeed: CGFloat = 0.02
-    /// 이보다 느리게 놓으면 튕긴 것이 아니다 — 그 자리에 둔다(150pt/s · 사용자: 너무 민감하다).
-    private let flickThreshold: CGFloat = 150
+    // 사용자의 화면 녹화(60fps · 세게 한 번 · 약하게 한 번)에서 손잡이 중심 y를 프레임마다 읽어 놓은 뒤 구간을 두 모델에 맞췄다:
+    // | 튕김 | 놓는 속도 | 간 거리 | 거리/속도 | 멈추기까지 | 지수 감속 RMS | **임계감쇠 스프링 RMS** |
+    // |---|---|---|---|---|---|---|
+    // | 세게(아래로) | 2229 pt/s | 300 pt | **0.135 s** | **342 ms** | 13.6 pt | **8.8 pt** (ω 13.75) |
+    // | 약하게(위로) | 1337 pt/s | 200 pt | **0.150 s** | **358 ms** | 9.5 pt | **5.6 pt** (ω 13.50) |
+    // ★ **세기와 무관하게 ~350ms에 멈춘다** = 스프링의 특징(지수 감속이면 빠른 쪽이 더 오래 간다) · 프레임마다 속도 비율이
+    //   0.97 → 0.8로 **점점 작아진다** = 스프링(지수 감속이면 일정). 그래서 **도착점 = 놓은 자리 + 속도 × 0.14s** ·
+    //   **애니메이션 = 초기 속도를 이어받는 임계감쇠 스프링(ω ≈ 13.6/s)**. 정규화 초기속도 = v/d = 1/0.14 ≈ 7.1/s(항상 같다).
+    // ⛔ 앞 판(`2b53a7a` · 지수 감속 r=0.995 · 거리 = v×0.199s)은 **거리가 1.4배 멀고 빠른 튕김이 더 오래 갔다** — 잰 뒤에 갈렸다(계측 규칙 4).
+    private let projection: CGFloat = 0.14        // s · 실측 0.135 · 0.150의 가운데
+    private let springOmega: Double = 13.6        // 1/s · 실측 13.75 · 13.50
+    /// 이보다 느리게 놓으면 튕긴 것이 아니다 — 그 자리(60pt/s × 0.14 = 8pt 미만은 움직이지 않는 편이 낫다).
+    private let flickThreshold: CGFloat = 60
 
-    /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 걸리는 시간**. 경계에 잘리면 시간도 그만큼 줄인다(벽에 닿는 순간 멈춘다).
-    private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, duration: Double)? {
+    /// 놓은 자리 `from`에서 속도 `vy`(pt/s)로 튕겼을 때의 **도착점과 스프링**. 경계에 잘리면 초기속도를 ω·0.95까지만 —
+    /// 임계감쇠는 v0 > ω·d일 때 목표를 넘어가므로(제목·탭바 침범) 벽에서는 넘치지 않게 눌러 도착한다.
+    private func glide(from: CGFloat, velocity vy: CGFloat, maxTop: CGFloat) -> (target: CGFloat, animation: Animation)? {
         guard abs(vy) >= flickThreshold else { return nil }
-        let v = vy / 1000                                   // pt/ms
-        let r = decelerationRate, lnr = log(r)
-        let full = v * r / (1 - r)                          // 부호 있는 거리
-        let target = min(max(from + full, 0), maxTop)
-        let actual = target - from
-        guard abs(actual) > 0.5 else { return nil }
-        let tFull = log(stopSpeed / abs(v)) / lnr           // ms · 다 갈 때
-        // 경계에 잘렸으면: s(t) = full·(1 − r^t) 에서 s = actual 인 t
-        let frac = min(abs(actual) / abs(full), 1)
-        let t = frac < 1 ? log(1 - frac * (1 - pow(r, tFull))) / lnr : tFull
-        return (target, max(0.12, min(t / 1000, 1.6)))
+        let target = min(max(from + vy * projection, 0), maxTop)
+        let d = target - from
+        guard abs(d) > 0.5 else { return nil }
+        let v0 = min(Double(vy / d), springOmega * 0.95)           // 거리 대비 정규화(1/s) · 부호는 같아 늘 양수
+        let anim = Animation.interpolatingSpring(mass: 1, stiffness: springOmega * springOmega,
+                                                 damping: 2 * springOmega, initialVelocity: v0)
+        return (target, anim)
     }
-    /// 지수 감속의 꼴을 닮은 곡선 — 처음 기울기가 크고(놓는 순간 속도가 이어진다) 끝은 0으로 스며든다.
-    private func glideCurve(_ duration: Double) -> Animation { .timingCurve(0.1, 0.45, 0.3, 1.0, duration: duration) }
 
     @GestureState private var dragY: CGFloat = 0
 
@@ -102,7 +97,7 @@ struct EdgeHandle: View {
                             withTransaction(still) { topOffset = Double(lifted) }
                             // 그다음 놓는 순간의 속도만큼 미끄러진다(경계 안 · 거리와 시간을 같은 모델에서).
                             if let g = glide(from: lifted, velocity: v.velocity.height, maxTop: maxTop) {
-                                withAnimation(glideCurve(g.duration)) { topOffset = Double(g.target) }
+                                withAnimation(g.animation) { topOffset = Double(g.target) }
                             }
                         }
                 )
