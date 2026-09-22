@@ -5,11 +5,11 @@ import XCTest
 ///
 /// ① **무슨 결정인가** — 해시태그 필터(2026-09-22 사용자 · `docs/native/tag-filter-design.md` §1·§2):
 ///    **중복 선택**(하나라도 가진 기억이 걸린다 = OR) · 맨 끝 **「태그 없음」**(태그가 하나도 없는 기억) ·
-///    **「역선택」**(걸린 기억을 숨기고 안 걸린 기억을 보인다 = 정확히 여집합) · 나열하는 태그는 **필터 전 목록**에서.
-/// ② **사실** — `TagFilter.matches`는 활성이 아니면 전부 참이고, 활성이면 OR 판정, 역선택이면 그 부정이다.
+///    **「역선택」**(누르면 고른 태그들이 그 자리에서 뒤집힌다 — 상태가 아니라 동작 · 2026-09-22 19:5x 사용자 · 설계 §7-5) · 나열하는 태그는 **필터 전 목록**에서.
+/// ② **사실** — `TagFilter.matches`는 활성이 아니면 전부 참이고, 활성이면 OR 판정이다. `invert`는 선택 집합을 여집합으로 바꾸고 「태그 없음」을 뒤집는다.
 /// ③ **깨지면 무엇을 의심하나** — 구현이 아니라 **누가 결정을 바꿨나.**
 ///    - 1이 깨졌다 → OR을 AND로 바꿨다(그러면 「태그 없음」과 태그를 함께 고르는 것이 뜻을 잃는다 · 설계 §2 4번).
-///    - 3이 깨졌다 → 역선택이 여집합이 아니게 됐다(「선택되지 않은 기억들을 보이게」가 결정이다).
+///    - 3이 깨졌다 → 역선택이 「선택을 뒤집는 동작」이 아니게 됐다(플래그로 되돌렸거나 「태그 없음」을 안 뒤집는다). *(옛 3 · 19:5x까지: 플래그 = 보이는 목록의 정확한 여집합 — 사용자가 뒤집었다)*
 ///    - 4가 깨졌다 → 고른 것이 없을 때 무언가를 숨기게 됐다 — 「닫기」가 「취소」가 아닌데(§2 9번) 빈 필터가 목록을 줄이면 안 된다.
 final class TagFilterTests: XCTestCase {
 
@@ -38,23 +38,24 @@ final class TagFilterTests: XCTestCase {
         XCTAssertEqual(f.apply(items).map(\.id), ["b", "c", "d"])
     }
 
-    // MARK: 3) 「역선택」 = 정확히 여집합 (합치면 전부 · 겹침 없음)
-    func testInverted_isExactComplement() {
-        var f = TagFilter(selected: ["맛집"], includesUntagged: true)
-        let on = f.apply(items).map(\.id)
-        f.inverted = true
-        let off = f.apply(items).map(\.id)
-        XCTAssertEqual(on, ["a", "b", "d"])
-        XCTAssertEqual(off, ["c"])
-        XCTAssertEqual(Set(on).union(off), Set(items.map(\.id)))
-        XCTAssertTrue(Set(on).isDisjoint(with: off))
+    // MARK: 3) 「역선택」 = 고른 태그들이 뒤집힌다 (안 고른 것 ↔ 고른 것 · 「태그 없음」도) · 두 번이면 원래대로 · 화면에 없는 태그는 버린다
+    func testInvert_flipsSelectionAndUntagged_twiceIsIdentity() {
+        let avail = ["맛집", "서울"]
+        var f = TagFilter(selected: ["맛집", "사라진태그"], includesUntagged: true)
+        f.invert(available: avail)
+        XCTAssertEqual(f.selected, ["서울"]); XCTAssertFalse(f.includesUntagged)
+        XCTAssertEqual(f.apply(items).map(\.id), ["b", "c"])   // ⚠️ b(맛집·서울)는 뒤집기 전후 둘 다 보인다 — OR의 결과(설계 §7-5 · 사용자가 안다)
+        f.invert(available: avail)
+        XCTAssertEqual(f.selected, ["맛집"]); XCTAssertTrue(f.includesUntagged)   // 사라진태그는 안 돌아온다
+        // 아무것도 안 고른 채 뒤집으면 전부 고른 것이 된다(전부 보인다 · 칩이 다 켜진다)
+        var e = TagFilter(); e.invert(available: avail)
+        XCTAssertEqual(e.selected, Set(avail)); XCTAssertTrue(e.includesUntagged); XCTAssertEqual(e.apply(items).count, 4)
     }
 
-    // MARK: 4) 고른 것이 없으면 전부 — 역선택만 켜져 있어도 전부 (「닫기」는 취소가 아니고, 빈 필터는 목록을 줄이지 않는다)
+    // MARK: 4) 고른 것이 없으면 전부 (「닫기」는 취소가 아니고, 빈 필터는 목록을 줄이지 않는다)
     func testInactive_passesEverything() {
         XCTAssertFalse(TagFilter().isActive)
         XCTAssertEqual(TagFilter().apply(items).count, 4)
-        XCTAssertEqual(TagFilter(inverted: true).apply(items).count, 4)
     }
 
     // MARK: 5) 나열 = 필터 전 목록의 태그 · 중복 제거 · 정렬 · 지운 태그(빈 값)는 없다
@@ -67,23 +68,24 @@ final class TagFilterTests: XCTestCase {
 
     // MARK: 6) 화면에 없는 태그는 접힌다 — 보이지 않는 필터에 갇히지 않게
     func testPruned_dropsStaleKeepsRest() {
-        let f = TagFilter(selected: ["맛집", "사라진태그"], includesUntagged: true, inverted: true)
+        let f = TagFilter(selected: ["맛집", "사라진태그"], includesUntagged: true)
         let p = f.pruned(to: ["맛집", "서울"])
         XCTAssertEqual(p.selected, ["맛집"])
-        XCTAssertTrue(p.includesUntagged); XCTAssertTrue(p.inverted)
+        XCTAssertTrue(p.includesUntagged)
         XCTAssertFalse(TagFilter(selected: ["사라진태그"]).pruned(to: []).isActive)
     }
 
-    // MARK: 7) 제목의 숫자 셋 = 전체 · 선택 · 그 외 — 합이 맞고, 「역선택」을 켜도 셋은 그대로다 (2026-09-22 사용자 · 설계 §7)
-    //    깨졌다면 → 누군가 「선택」을 「보이는 것」으로 바꿨다(그러면 역선택을 켤 때 선택 수가 뒤집혀 제목이 거짓말을 한다).
-    func testCounts_totalSelectedRest_ignoreInversion() {
+    // MARK: 7) 제목의 숫자 셋 = 전체 · 선택 · 그 외 — 합이 맞고, 「선택」은 지금 고른 것에 걸린 수다 (2026-09-22 사용자 · 설계 §7)
+    //    깨졌다면 → 합이 안 맞게 바꿨거나, 고른 것이 없는데 「선택」이 0이 아니게 됐다.
+    //    *(옛 7 · 19:5x까지: "역선택을 켜도 셋은 그대로" — 플래그 시절의 조항. 지금은 역선택이 선택을 바꾸므로 숫자도 따라 바뀌는 것이 맞다.)*
+    func testCounts_totalSelectedRest() {
         var f = TagFilter(selected: ["맛집"], includesUntagged: true)
         var c = f.counts(in: items)
         XCTAssertEqual(c.total, 4); XCTAssertEqual(c.selected, 3); XCTAssertEqual(c.rest, 1)
-        f.inverted = true
+        f.invert(available: ["맛집", "서울"])   // 선택이 바뀌었으니 숫자도 따라간다
         c = f.counts(in: items)
-        XCTAssertEqual(c.selected, 3); XCTAssertEqual(c.rest, 1)   // 보이는 것은 1이지만 선택은 3
-        let none = TagFilter(inverted: true).counts(in: items)
+        XCTAssertEqual(c.selected, 2); XCTAssertEqual(c.rest, 2); XCTAssertEqual(c.selected + c.rest, c.total)
+        let none = TagFilter().counts(in: items)
         XCTAssertEqual(none.total, 4); XCTAssertEqual(none.selected, 0); XCTAssertEqual(none.rest, 4)
     }
 }

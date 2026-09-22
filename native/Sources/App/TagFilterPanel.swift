@@ -117,16 +117,22 @@ struct TagFilterPanel: View {
 
             Divider().overlay(Palette.border)   // 사용자: "수평 seperator를 하나"
 
-            // ③ 아래 띠 — 「역선택」 **스위치** · 오른쪽 「닫기 >」(패널만 감춘다 · 필터는 그대로 · 설계 §2 9번).
-            //    「역선택」은 칩(선택)이 아니라 **토글**이라 시스템 스위치로 그린다(2026-09-22 사용자: *"이건 선택이 아니라 토글이야"* — 칩 꼴은 뒤집혔다 · 설계 §7-4).
-            //    ⛔ 첫 판(`bb02f98`)은 「닫기」가 두 줄(닫/기)로 꺾였다 — 스위치 51pt에 라벨 간격·버튼 여백을 더하니 안쪽 161을 넘었다(시뮬 스크린샷 · 설계 §7-4).
-            //    → 라벨과 스위치 사이 6 · 「닫기」 좌우 여백 10 → 6 · 사이 8 → 4 · 「닫기」는 꺾이지 않게(`fixedSize`) = 36.4 + 6 + 51 + 4 + 48 ≈ 146 ≤ 161.
+            // ③ 아래 띠 — 「역선택」 **버튼**(아이콘 + 바탕 없는 글자) · 오른쪽 「닫기 >」(패널만 감춘다 · 필터는 그대로 · 설계 §2 9번).
+            //    「역선택」은 **누르면 고른 태그들이 그 자리에서 뒤집히는 동작**이다 — 상태(스위치)가 아니다(2026-09-22 19:5x 사용자:
+            //    *"켜고 끄는 것이 아니라, 결정된 태그들이 반대로 뒤바뀌는 변화를 한 번에 … 그냥 바로 선택을 역전시키는 방식"* · 설계 §7-5).
+            //    아이콘 = 화살표 둘이 서로 꼬리를 물어 원을 이루는 `arrow.2.circlepath`(사용자가 꼴을 말했다 · 심볼 선택은 Claude · 14pt에서 17×16).
+            //    *(옛 꼴 둘 · 회색 칩(01:2x) → 시스템 스위치(19:50 `bb02f98`·`4097b25`) — 사용자: "시스템 스위치를 쓴 것은 좋은 결정이 아니었다")*
             HStack(spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("역선택").font(.system(size: chipSize, weight: .semibold)).foregroundStyle(Palette.textPrimary)
-                    Toggle("역선택", isOn: $filter.inverted).labelsHidden().toggleStyle(.switch).tint(Palette.accent)
+                Button { filter.invert(available: available) } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.2.circlepath").font(.system(size: chipSize, weight: .semibold))
+                        Text("역선택").font(.system(size: chipSize, weight: .semibold))
+                    }
+                    .foregroundStyle(Palette.textPrimary)
+                    .padding(.horizontal, 6).padding(.vertical, 5)
+                    .fixedSize()
                 }
-                .fixedSize()
+                .buttonStyle(.plain)
                 Spacer(minLength: 0)
                 Button(action: onClose) {
                     HStack(spacing: 3) {
