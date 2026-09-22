@@ -18,7 +18,7 @@ struct LivingView: View {
                 FilterChipsBar(filter: $model.filter, presentTypes: model.livingPresentTypes)
                 content.overlay {
                     TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel,
-                                  available: TagFilter.available(in: model.livingMemories))
+                                  items: model.livingMemories)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

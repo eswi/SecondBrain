@@ -67,7 +67,7 @@ struct ArchiveView: View {
                 .overlay {
                     // 해시태그 필터 손잡이·패널(2026-09-22) — 목록 영역에 얹는다(제목·구분 선택은 안 덮는다).
                     if !items.isEmpty {
-                        TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, available: tagCandidates)
+                        TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, items: items)
                     }
                 }
             }

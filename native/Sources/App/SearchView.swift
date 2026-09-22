@@ -62,7 +62,7 @@ struct SearchView: View {
                     .overlay {
                         // 손잡이·패널은 **나열된 기억이 있을 때만**(검색 중이 아니거나 결과가 없으면 거를 것이 없다).
                         if searching && !results.isEmpty {
-                            TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, available: tagCandidates)
+                            TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, items: results)
                         }
                     }
             }

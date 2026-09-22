@@ -63,7 +63,7 @@ struct InboxView: View {
                     // ✅ **누르면 = 해시태그 필터 패널**(2026-09-22 사용자 결정 · `TagFilterDock` · 정본 `tag-filter-design.md`).
                     //    *(옛 서술 · 09-21: "⏸ 누르면 하는 일 = 없다(사용자가 새로 디자인한다)")*
                     content.overlay {
-                        TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, available: tagCandidates)
+                        TagFilterDock(topOffset: $edgeHandleTop, filter: $tagFilter, isOpen: $showTagPanel, items: listedMemories)
                     }
                 }
             }

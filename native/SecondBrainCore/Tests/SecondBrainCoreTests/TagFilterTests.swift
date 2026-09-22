@@ -73,4 +73,17 @@ final class TagFilterTests: XCTestCase {
         XCTAssertTrue(p.includesUntagged); XCTAssertTrue(p.inverted)
         XCTAssertFalse(TagFilter(selected: ["사라진태그"]).pruned(to: []).isActive)
     }
+
+    // MARK: 7) 제목의 숫자 셋 = 전체 · 선택 · 그 외 — 합이 맞고, 「역선택」을 켜도 셋은 그대로다 (2026-09-22 사용자 · 설계 §7)
+    //    깨졌다면 → 누군가 「선택」을 「보이는 것」으로 바꿨다(그러면 역선택을 켤 때 선택 수가 뒤집혀 제목이 거짓말을 한다).
+    func testCounts_totalSelectedRest_ignoreInversion() {
+        var f = TagFilter(selected: ["맛집"], includesUntagged: true)
+        var c = f.counts(in: items)
+        XCTAssertEqual(c.total, 4); XCTAssertEqual(c.selected, 3); XCTAssertEqual(c.rest, 1)
+        f.inverted = true
+        c = f.counts(in: items)
+        XCTAssertEqual(c.selected, 3); XCTAssertEqual(c.rest, 1)   // 보이는 것은 1이지만 선택은 3
+        let none = TagFilter(inverted: true).counts(in: items)
+        XCTAssertEqual(none.total, 4); XCTAssertEqual(none.selected, 0); XCTAssertEqual(none.rest, 4)
+    }
 }

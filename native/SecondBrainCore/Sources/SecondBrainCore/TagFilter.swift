@@ -44,6 +44,14 @@ public struct TagFilter: Equatable, Sendable {
         return seen.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
+    /// **제목의 숫자 셋**(2026-09-22 사용자 · 설계 §7) — `total` = 거르는 대상 전부 · `selected` = 고른 것에 **걸린** 기억 · `rest` = 나머지.
+    /// ⚠️ **「역선택」과 무관하다** — 역선택은 무엇을 **보이나**를 뒤집을 뿐, 무엇이 **선택됐나**는 그대로다(Claude 판단 · 설계 §7). 고른 것이 없으면 `selected` = 0.
+    public func counts(in items: [ResolvedItem]) -> (total: Int, selected: Int, rest: Int) {
+        var f = self; f.inverted = false
+        let sel = f.isActive ? items.filter { f.matches($0.hashtags.map(\.text)) }.count : 0
+        return (items.count, sel, items.count - sel)
+    }
+
     /// 목록을 거른다(순서 유지).
     public func apply(_ items: [ResolvedItem]) -> [ResolvedItem] {
         guard isActive else { return items }
