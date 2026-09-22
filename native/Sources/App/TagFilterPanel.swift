@@ -53,8 +53,8 @@ struct TagFilterPanel: View {
     @State private var panelHeight: CGFloat = 0
     /// 칩 글자 = 상세의 「이 분류에서 쓴 해시태그」 칩과 같은 14pt(글자 크기 설정을 따라간다).
     @ScaledMetric(relativeTo: .body) private var chipSize: CGFloat = 14
-    /// 제목 글자 13pt — 「전체 123 · 선택 45 · 그 외 78」이 157.1pt(macOS 실측 · 설계 §7-1)로 45% 패널 안쪽 161pt에 들어간다. 넘치면 한 줄 안에서 줄인다(`minimumScaleFactor`).
-    @ScaledMetric(relativeTo: .footnote) private var titleSize: CGFloat = 13
+    /// 제목 글자 = **「닫기」와 같은 크기**(`chipSize` 14pt · 2026-09-22 사용자: *"제목쪽 크기도 닫기 크기에 맞춰봐줘"* — 13pt였다).
+    /// 14pt semibold로 「전체 94 · 선택 12 · 그 외 82」 = 162.0pt(macOS 실측 · 3pt쯤 크게 읽는 도구) vs 안쪽 161 — 아슬해서 넘치면 한 줄 안에서 줄인다(`minimumScaleFactor(0.8)` · 세 자리 셋 170.1도 0.8이면 든다).
     private let radius: CGFloat = 14   // 손잡이와 같은 원호
     /// 화면 폭에 대한 패널 폭 비율(사용자: "대략 45%").
     private let widthRatio: CGFloat = 0.45
@@ -94,7 +94,7 @@ struct TagFilterPanel: View {
         return VStack(alignment: .leading, spacing: 0) {
             // ① 제목 띠 — 숫자 셋(항상 보인다 · 사용자). 문구는 사용자가 골랐다(2026-09-22 맥북).
             Text("전체 \(c.total) · 선택 \(c.selected) · 그 외 \(c.rest)")
-                .font(.system(size: titleSize, weight: .semibold))
+                .font(.system(size: chipSize, weight: .semibold))
                 .foregroundStyle(Palette.textPrimary)
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,9 +117,13 @@ struct TagFilterPanel: View {
 
             Divider().overlay(Palette.border)   // 사용자: "수평 seperator를 하나"
 
-            // ③ 아래 띠 — 「역선택」 토글 · 오른쪽 「닫기 >」(패널만 감춘다 · 필터는 그대로 · 설계 §2 9번).
+            // ③ 아래 띠 — 「역선택」 **스위치** · 오른쪽 「닫기 >」(패널만 감춘다 · 필터는 그대로 · 설계 §2 9번).
+            //    「역선택」은 칩(선택)이 아니라 **토글**이라 시스템 스위치로 그린다(2026-09-22 사용자: *"이건 선택이 아니라 토글이야"* — 칩 꼴은 뒤집혔다 · 설계 §7-4).
             HStack(spacing: 8) {
-                chip("역선택", on: filter.inverted) { filter.inverted.toggle() }
+                Toggle(isOn: $filter.inverted) {
+                    Text("역선택").font(.system(size: chipSize, weight: .semibold)).foregroundStyle(Palette.textPrimary)
+                }
+                .toggleStyle(.switch).tint(Palette.accent).fixedSize()
                 Spacer(minLength: 0)
                 Button(action: onClose) {
                     HStack(spacing: 3) {
