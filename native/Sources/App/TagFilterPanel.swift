@@ -119,11 +119,14 @@ struct TagFilterPanel: View {
 
             // ③ 아래 띠 — 「역선택」 **스위치** · 오른쪽 「닫기 >」(패널만 감춘다 · 필터는 그대로 · 설계 §2 9번).
             //    「역선택」은 칩(선택)이 아니라 **토글**이라 시스템 스위치로 그린다(2026-09-22 사용자: *"이건 선택이 아니라 토글이야"* — 칩 꼴은 뒤집혔다 · 설계 §7-4).
-            HStack(spacing: 8) {
-                Toggle(isOn: $filter.inverted) {
+            //    ⛔ 첫 판(`bb02f98`)은 「닫기」가 두 줄(닫/기)로 꺾였다 — 스위치 51pt에 라벨 간격·버튼 여백을 더하니 안쪽 161을 넘었다(시뮬 스크린샷 · 설계 §7-4).
+            //    → 라벨과 스위치 사이 6 · 「닫기」 좌우 여백 10 → 6 · 사이 8 → 4 · 「닫기」는 꺾이지 않게(`fixedSize`) = 36.4 + 6 + 51 + 4 + 48 ≈ 146 ≤ 161.
+            HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text("역선택").font(.system(size: chipSize, weight: .semibold)).foregroundStyle(Palette.textPrimary)
+                    Toggle("역선택", isOn: $filter.inverted).labelsHidden().toggleStyle(.switch).tint(Palette.accent)
                 }
-                .toggleStyle(.switch).tint(Palette.accent).fixedSize()
+                .fixedSize()
                 Spacer(minLength: 0)
                 Button(action: onClose) {
                     HStack(spacing: 3) {
@@ -131,7 +134,8 @@ struct TagFilterPanel: View {
                         Image(systemName: "chevron.right").font(.system(size: chipSize - 2, weight: .semibold))
                     }
                     .foregroundStyle(Palette.textPrimary)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .padding(.horizontal, 6).padding(.vertical, 5)
+                    .fixedSize()
                 }
                 .buttonStyle(.plain)
             }
