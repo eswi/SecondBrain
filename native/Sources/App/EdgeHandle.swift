@@ -17,7 +17,7 @@ import SwiftUI
 ///   잰 값(`images/2.png` 920×2000 · 0.437pt/px · 근거 = 설계 §5-1):
 ///   | 무엇 | 값 |
 ///   |---|---|
-///   | 보이는 폭 × 높이 | **24 × 96** pt |
+///   | 보이는 폭 × 높이 | **24 × 96** pt · **터치 영역은 왼쪽으로 20 더해 44 × 96**(보이는 꼴 그대로 · 2026-09-23 사용자: *"너비가 너무 좁아서 터치가 잘 안되는 불편함"* → 「보통의 해법」 = 투명 여백으로 표적만 넓힌다 · Apple 권장 44) |
 ///   | 왼쪽 모서리 반지름 | **14** pt **원호**(`.circular`) — 참고의 모서리 프로파일이 반지름 14 원과 맞았다(dy 0.9pt→dx 9.1 · 1.75→7.2 · 4.4→3.8 · 셋 다 ±0.3pt). `.continuous` 15로 그리면 곡선이 22pt까지 퍼져 다르게 보였다(17:2x 실측) |
 ///   | 바탕 | 세로 그라데이션 **위 `#393E3F` → 가운데 `#313635` → 아래 `#444F55`** · 테두리·그림자 없음 |
 ///   | 화살표 `<` | 상자 **10 × 27.5** pt · 획 **5.5** pt 둥근 끝(참고의 수평 단면 5.7 · 5로 그리니 5.3이라 올렸다) · 색 **`#BDC1C7`** · 좌우 여백 7·7(정확히 가운데) |
@@ -55,6 +55,8 @@ struct EdgeHandle: View {
     private let height: CGFloat = 96
     private let radius: CGFloat = 14
     private let width: CGFloat = 24
+    /// 보이는 폭 왼쪽에 더하는 **투명한 터치 여백** — 표적 폭 24 → 44(2026-09-23). 그림은 안 바뀐다. 끌기도 이 영역에서 시작된다.
+    private let hitInset: CGFloat = 20
     /// 화살표 획 두께 — `ChevronMark`와 같은 값을 써야 상자가 꼭 10 × 27.5가 된다.
     private let chevronStroke: CGFloat = 5.5
     /// 재질 위에 덮는 회색의 비율(0 = 재질만 · 1 = 09-21 17:17의 불투명 회색). **Claude가 고른 값** — 폰에서 다듬는다.
@@ -165,6 +167,7 @@ struct EdgeHandle: View {
             let settled: CGFloat = visualTop >= 0 ? visualTop : (topOffset < 0 ? maxTop / 2 : CGFloat(topOffset))
             shape
                 .frame(width: width, height: height)
+                .padding(.leading, hitInset)      // 터치 영역만 왼쪽으로 넓힌다(보이는 꼴 그대로) — 아래 `contentShape`가 이 여백까지 덮는다
                 .contentShape(Rectangle())
                 .offset(y: min(max(settled, 0), maxTop))   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
                 .onTapGesture { onTap() }   // 2026-09-22 — 해시태그 필터 패널(`TagFilterDock`)
