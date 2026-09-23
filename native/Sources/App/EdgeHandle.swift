@@ -46,8 +46,17 @@ struct EdgeHandle: View {
     static let topStorageKey = "inbox.edgeHandleTop"
     /// 얹힌 영역의 **위에서부터의 거리**(pt). **음수 = 아직 안 옮김** → 세로 가운데에 둔다.
     @Binding var topOffset: Double
-    /// 필터가 걸려 있나 — 참이면 `<`가 강조색(`Palette.accent`)이다. 꼴·크기는 그대로(설계 §2 10번).
+    /// 필터가 걸려 있나 — 참이면 「걸러 보는 중」 신호가 켜진다(어떤 신호인지는 `activeSignal` · §5-18).
+    /// *(옛 서술 · 09-22: "참이면 `<`가 강조색" → 09-23 반짝임 → 09-23 11:3x 신호 셋을 차례로 본다)*
     var active: Bool = false
+    /// 고른 것의 수(태그 수 + 「태그 없음」이면 1) — 신호 B(선택 수 배지)가 쓴다.
+    var activeCount: Int = 0
+
+    /// **「걸러 보는 중」 신호 셋 — 사용자가 눈으로 보고 고른다**(2026-09-23 11:3x: *"A. B. C. 3개를 차례대로 구현해서 적용해보자"*).
+    /// `<` 반짝임은 *"아무리 해봐도 약해"*(사용자) → 이 셋으로 갈았다. 셋 다 1.0초 주기로 반짝인다(`pulse`).
+    enum ActiveSignal { case hashBadge, countBadge, fullTint }
+    /// A = `#` 배지 · B = 선택 수 배지 · C = 손잡이 바탕 전체 강조색. **차례로 바꿔 깐다** — 고르면 나머지 둘은 지운다(기록은 §5-18에).
+    static let activeSignal: ActiveSignal = .hashBadge
     /// 누르면(끌지 않고) — 패널을 연다. 끌기(`DragGesture(minimumDistance: 4)`)와 갈린다: 4pt 안에서 떼면 누르기다.
     var onTap: () -> Void = {}
 
@@ -259,20 +268,44 @@ struct EdgeHandle: View {
             } else {
                 r.fill(tintGradient)
             }
+            // C — 손잡이 바탕 전체를 강조색으로(그라데이션 위에 덮는다) · 반짝임.
+            if active && Self.activeSignal == .fullTint {
+                r.fill(Palette.accent).pulsing(pulse)
+            }
             ChevronMark(stroke: chevronStroke)
-                .stroke(active ? Palette.accent : Color(hex: 0xBDC1C7), style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
+                .stroke(active && Self.activeSignal == .fullTint ? Color.white : Color(hex: 0xBDC1C7),
+                        style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
                 .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값
-                // 필터가 걸리면 반짝인다(§5-17) — 밝기와 빛 번짐이 함께 왕복한다. 안 걸리면 멈춘 채 원래 색.
-                .opacity(active ? (pulse ? 0.3 : 1) : 1)
-                .brightness(active && !pulse ? 0.2 : 0)   // 밝은 쪽을 20% 더 밝게(사용자 2026-09-23 11:0x) — 불투명도는 1이 끝이라 색을 밝힌다
-                .shadow(color: active ? Palette.accent.opacity(pulse ? 0.95 : 0.15) : .clear, radius: 5)
+                // *(옛 신호 · 09-22~09-23 11:1x: `<`를 강조색으로 → 반짝임(§5-17). 사용자: "아무리 해봐도 약해" → §5-18의 셋으로)*
                 .task(id: active) {
                     var still = Transaction(); still.disablesAnimations = true
                     withTransaction(still) { pulse = false }
                     guard active else { return }
-                    withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) { pulse = true }   // 한 주기 0.9초(사용자 값)
+                    withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) { pulse = true }   // 한 주기 1.0초(사용자 값 · 11:2x · 옛 0.45 = 0.9초)
                 }
         }
+        // A·B — 손잡이 위쪽의 강조색 동그라미 배지(16pt) · 안에 `#`(A) 또는 고른 수(B) · 반짝임.
+        .overlay(alignment: .top) {
+            if active && Self.activeSignal != .fullTint {
+                ZStack {
+                    Circle().fill(Palette.accent)
+                    Text(Self.activeSignal == .hashBadge ? "#" : "\(activeCount)")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.bg)
+                }
+                .frame(width: 16, height: 16)
+                .padding(.top, 10)
+                .pulsing(pulse)
+            }
+        }
+    }
+}
+
+private extension View {
+    /// 반짝임 한 벌 — 밝기 1(+20%) ↔ 0.3 · 빛 번짐 0.15 ↔ 0.95(§5-17 값 · 사용자 11:0x). `pulse`가 `repeatForever`로 왕복한다.
+    func pulsing(_ pulse: Bool) -> some View {
+        self.opacity(pulse ? 0.3 : 1)
+            .brightness(pulse ? 0 : 0.2)
+            .shadow(color: Palette.accent.opacity(pulse ? 0.95 : 0.15), radius: 5)
     }
 }
 
