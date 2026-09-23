@@ -75,7 +75,9 @@ struct TagFilterPanel: View {
         GeometryReader { geo in
             let handleH: CGFloat = 96
             let wanted: CGFloat = topOffset < 0 ? max(0, geo.size.height - handleH) / 2 : CGFloat(topOffset)
-            let top = min(max(wanted, 0), max(0, geo.size.height - panelHeight))
+            // 테두리(2pt · 바깥)까지 영역 안에 들도록 위·아래로 `outlineWidth`만큼 물린다 — 손잡이를 맨 아래로 내려 열면 **아랫 테두리가 탭바에 가려졌다**
+            // (2026-09-23 12:4x 사용자 · 설계 §7-6). 맨 위는 위쪽에 제목 영역이 있어 티가 안 났지만 같은 형태라 같이 물린다.
+            let top = min(max(wanted, outlineWidth), max(outlineWidth, geo.size.height - panelHeight - outlineWidth))
             let width = max(160, (geo.size.width * widthRatio).rounded())
             panel(width: width, maxChipsHeight: max(120, geo.size.height * 0.5))
                 .frame(width: width)
