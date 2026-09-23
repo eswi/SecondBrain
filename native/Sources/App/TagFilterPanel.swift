@@ -24,8 +24,7 @@ struct TagFilterDock: View {
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             } else {
-                let f = filter.pruned(to: available)
-                EdgeHandle(topOffset: $topOffset, active: f.isActive, activeCount: f.selected.count + (f.includesUntagged ? 1 : 0)) { isOpen = true }
+                EdgeHandle(topOffset: $topOffset, active: filter.pruned(to: available).isActive) { isOpen = true }
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }

@@ -49,14 +49,13 @@ struct EdgeHandle: View {
     /// 필터가 걸려 있나 — 참이면 「걸러 보는 중」 신호가 켜진다(어떤 신호인지는 `activeSignal` · §5-18).
     /// *(옛 서술 · 09-22: "참이면 `<`가 강조색" → 09-23 반짝임 → 09-23 11:3x 신호 셋을 차례로 본다)*
     var active: Bool = false
-    /// 고른 것의 수(태그 수 + 「태그 없음」이면 1) — 신호 B(선택 수 배지)가 쓴다.
-    var activeCount: Int = 0
-
-    /// **「걸러 보는 중」 신호 셋 — 사용자가 눈으로 보고 고른다**(2026-09-23 11:3x: *"A. B. C. 3개를 차례대로 구현해서 적용해보자"*).
-    /// `<` 반짝임은 *"아무리 해봐도 약해"*(사용자) → 이 셋으로 갈았다. 셋 다 1.0초 주기로 반짝인다(`pulse`).
-    enum ActiveSignal { case hashBadge, countBadge, fullTint }
-    /// A = `#` 배지 · B = 선택 수 배지 · C = 손잡이 바탕 전체 강조색. **차례로 바꿔 깐다** — 고르면 나머지 둘은 지운다(기록은 §5-18에).
-    static let activeSignal: ActiveSignal = .hashBadge
+    /// ⛔ **A·B·C 신호 스위치는 걷었다**(2026-09-23 11:4x · A `#` 배지를 보고 사용자가 결론: *"A를 지우고 기존의 < 기호를 # 기호로 바꾸자"*).
+    ///    B·C는 폰에 안 깔렸다 — 기록은 설계 §5-18·§5-19에.
+    /// **`#`의 세로 늘림 배율** — 그린 `<`(10×27.5 · 높이/폭 2.75)가 SF `chevron.left`(15×20 · 1.33)보다 **2.06배** 세로로 길다.
+    /// 사용자: *"< 글자를 새로 그린 비율만큼 늘리면 될 것 같아"* → `#` 글자도 세로로 2.06배.
+    private let markStretch: CGFloat = 2.75 / (20.0 / 15.0)
+    /// `#` 글자 크기 — 늘린 뒤 상자가 `<`와 같은 높이(27.5)가 되게 잡은 값(잉크 높이 ≈ 0.7×크기 · 시뮬 픽셀로 닫는다 · §5-19).
+    private let markFontSize: CGFloat = 19
     /// 누르면(끌지 않고) — 패널을 연다. 끌기(`DragGesture(minimumDistance: 4)`)와 갈린다: 4pt 안에서 떼면 누르기다.
     var onTap: () -> Void = {}
 
@@ -268,15 +267,16 @@ struct EdgeHandle: View {
             } else {
                 r.fill(tintGradient)
             }
-            // C — 손잡이 바탕 전체를 강조색으로(그라데이션 위에 덮는다) · 반짝임.
-            if active && Self.activeSignal == .fullTint {
-                r.fill(Palette.accent).pulsing(pulse)
-            }
-            ChevronMark(stroke: chevronStroke)
-                .stroke(active && Self.activeSignal == .fullTint ? Color.white : Color(hex: 0xBDC1C7),
-                        style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
-                .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값
-                // *(옛 신호 · 09-22~09-23 11:1x: `<`를 강조색으로 → 반짝임(§5-17). 사용자: "아무리 해봐도 약해" → §5-18의 셋으로)*
+            // **`#` 표식**(2026-09-23 11:4x 사용자 · 설계 §5-19) — 옛 `<`(`ChevronMark`) 자리에 `#` 글자를 **세로로 2.06배 늘려** 그린다.
+            // 필터가 걸리면 강조색으로 1.0초 주기 반짝임(§5-17 값) · 안 걸리면 `<`가 쓰던 회색 `#BDC1C7`로 멈춘다.
+            // *(옛 표식 · 09-21~09-23 11:3x: 직접 그린 `<` 10×27.5 · 획 5.5 — `ChevronMark`는 기록용으로 남긴다 · 09-22~11:1x에는 `<`가 강조색·반짝임 · 11:32 `e6cc6b4`는 `#` 배지 A)*
+            Text("#")
+                .font(.system(size: markFontSize, weight: .heavy, design: .rounded))
+                .foregroundStyle(active ? Palette.accent : Color(hex: 0xBDC1C7))
+                .scaleEffect(x: 1, y: markStretch)
+                .opacity(active ? (pulse ? 0.3 : 1) : 1)
+                .brightness(active && !pulse ? 0.2 : 0)
+                .shadow(color: active ? Palette.accent.opacity(pulse ? 0.95 : 0.15) : .clear, radius: 5)
                 .task(id: active) {
                     var still = Transaction(); still.disablesAnimations = true
                     withTransaction(still) { pulse = false }
@@ -284,28 +284,6 @@ struct EdgeHandle: View {
                     withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) { pulse = true }   // 한 주기 1.0초(사용자 값 · 11:2x · 옛 0.45 = 0.9초)
                 }
         }
-        // A·B — 손잡이 위쪽의 강조색 동그라미 배지(16pt) · 안에 `#`(A) 또는 고른 수(B) · 반짝임.
-        .overlay(alignment: .top) {
-            if active && Self.activeSignal != .fullTint {
-                ZStack {
-                    Circle().fill(Palette.accent)
-                    Text(Self.activeSignal == .hashBadge ? "#" : "\(activeCount)")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.bg)
-                }
-                .frame(width: 16, height: 16)
-                .padding(.top, 10)
-                .pulsing(pulse)
-            }
-        }
-    }
-}
-
-private extension View {
-    /// 반짝임 한 벌 — 밝기 1(+20%) ↔ 0.3 · 빛 번짐 0.15 ↔ 0.95(§5-17 값 · 사용자 11:0x). `pulse`가 `repeatForever`로 왕복한다.
-    func pulsing(_ pulse: Bool) -> some View {
-        self.opacity(pulse ? 0.3 : 1)
-            .brightness(pulse ? 0 : 0.2)
-            .shadow(color: Palette.accent.opacity(pulse ? 0.95 : 0.15), radius: 5)
     }
 }
 
