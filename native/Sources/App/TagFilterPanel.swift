@@ -66,6 +66,10 @@ struct TagFilterPanel: View {
     private let bodyFill = Color(hex: 0x302C3B)   // 칩 영역 바탕(옛 `surface2` 26232F보다 한 단 밝다)
     private let barFill  = Color(hex: 0x3E3A4B)   // 제목 띠·아래 띠 바탕(칩 영역보다 밝다)
     private let chipFill = Color(hex: 0x555064)   // 안 고른 칩 바탕(회색 · 글자와 6.5:1)
+    /// **바깥 테두리**(2026-09-23 12:2x 사용자: *"현재 네모 크기를 줄이지 말고 그 바깥으로 테두리를 그려줘. 색깔은 맘대로"*) —
+    /// 패널 바깥으로 2pt · 밝은 회보라(글자 둘째 색과 셋째 색 사이 · Claude 값). 옛 hairline(`border` · 안쪽 1pt)은 어두워서 영역이 안 갈렸다.
+    private let outlineWidth: CGFloat = 2
+    private let outlineColor = Color(hex: 0x9A96AD)
 
     var body: some View {
         GeometryReader { geo in
@@ -77,7 +81,8 @@ struct TagFilterPanel: View {
                 .frame(width: width)
                 .background(shape.fill(bodyFill))
                 .clipShape(shape)
-                .overlay(shape.strokeBorder(Palette.border))
+                .overlay { outline.strokeBorder(outlineColor, lineWidth: outlineWidth).padding(-outlineWidth) }   // 바깥으로 그린다 — 안쪽 크기는 그대로
+                // *(옛 · 09-22~09-23 12:1x: `.overlay(shape.strokeBorder(Palette.border))` 안쪽 hairline)*
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
                 .offset(y: top)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -86,6 +91,11 @@ struct TagFilterPanel: View {
 
     private var shape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(topLeadingRadius: radius, bottomLeadingRadius: radius,
+                               bottomTrailingRadius: 0, topTrailingRadius: 0, style: .circular)
+    }
+    /// 테두리 꼴 — 패널보다 `outlineWidth`만큼 큰 상자에 원호도 그만큼 키워 **동심**으로 맞춘다.
+    private var outline: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: radius + outlineWidth, bottomLeadingRadius: radius + outlineWidth,
                                bottomTrailingRadius: 0, topTrailingRadius: 0, style: .circular)
     }
 
