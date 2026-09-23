@@ -16,7 +16,7 @@ struct ArchiveView: View {
     }
     @State private var option: ViewOption = .done
     /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 「완료된/삭제된/모든 기억」을 거친 목록에서(§2 20번).
-    @State private var tagFilter = TagFilter()
+    @AppStorage(TagFilter.storageKey("archive")) private var tagFilter = TagFilter()   // 기기에 남는다(2026-09-23 사용자 · 옛 `@State` = 세션 한정)
     @State private var showTagPanel = false
     @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
 

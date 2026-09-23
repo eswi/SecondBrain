@@ -45,7 +45,7 @@ struct InboxView: View {
     /// *(옛 `inbox.edgeHandleTucked`(09-18 접힘)는 펼침 꼴을 거두면서 함께 거뒀다.)*
     @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
     /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 이 화면의 것. 세션 한정(역순 토글과 같은 수명 · §2 14번).
-    @State private var tagFilter = TagFilter()
+    @AppStorage(TagFilter.storageKey("inbox")) private var tagFilter = TagFilter()   // 기기에 남는다(2026-09-23 사용자 · 옛 `@State` = 세션 한정)
     @State private var showTagPanel = false
 
     var body: some View {

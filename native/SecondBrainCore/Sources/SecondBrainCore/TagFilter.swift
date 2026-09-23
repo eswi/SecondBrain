@@ -65,3 +65,25 @@ public struct TagFilter: Equatable, Sendable {
         return items.filter { matches($0.hashtags.map(\.text)) }
     }
 }
+
+// MARK: - 기기에 남기기 (2026-09-23 사용자: "앱을 완전 종료했다가 새로 실행했을 경우에도 해시태그 설정이 그대로 유지되도록")
+
+/// `@AppStorage`가 받는 꼴(`RawRepresentable<String>`) — JSON 한 줄. 화면마다 키가 다르다(`storageKey`).
+/// ⚠️ `TagFilter`를 `Codable`로 만들지 않는다 — `RawRepresentable`과 함께 두면 합성 `Codable`이 `rawValue`를 부르고 `rawValue`가 다시 인코딩을 불러 **무한 재귀**한다. 그래서 속 DTO를 따로 둔다.
+/// *(옛 · 09-22~09-23 12:4x: 상태가 `@State`라 세션 한정이었다 — 설계 §2 14번 · 사용자가 뒤집었다 · §7-7)*
+extension TagFilter: RawRepresentable {
+    private struct Stored: Codable { var selected: [String]; var includesUntagged: Bool }
+
+    /// 화면별 저장 키 — `tagFilter.<화면>` (`inbox` · `search` · `living` · `archive`).
+    public static func storageKey(_ screen: String) -> String { "tagFilter." + screen }
+
+    public init?(rawValue: String) {
+        guard let data = rawValue.data(using: .utf8), let s = try? JSONDecoder().decode(Stored.self, from: data) else { return nil }
+        self.init(selected: Set(s.selected), includesUntagged: s.includesUntagged)
+    }
+    /// 정렬해 적는다 — 같은 필터는 같은 글(시험 8).
+    public var rawValue: String {
+        let s = Stored(selected: selected.sorted(), includesUntagged: includesUntagged)
+        return (try? JSONEncoder().encode(s)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+}

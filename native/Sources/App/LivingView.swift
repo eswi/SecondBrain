@@ -7,7 +7,7 @@ import SecondBrainCore
 struct LivingView: View {
     @ObservedObject var model: InboxModel
     /// **해시태그 필터**(2026-09-22 사용자 결정 · 정본 `tag-filter-design.md`) — 분류 칩을 거친 목록에서 태그를 뽑고 거른다.
-    @State private var tagFilter = TagFilter()
+    @AppStorage(TagFilter.storageKey("living")) private var tagFilter = TagFilter()   // 기기에 남는다(2026-09-23 사용자 · 옛 `@State` = 세션 한정)
     @State private var showTagPanel = false
     @AppStorage(EdgeHandle.topStorageKey) private var edgeHandleTop: Double = -1
 

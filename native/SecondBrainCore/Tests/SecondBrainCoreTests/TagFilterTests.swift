@@ -88,4 +88,15 @@ final class TagFilterTests: XCTestCase {
         let none = TagFilter().counts(in: items)
         XCTAssertEqual(none.total, 4); XCTAssertEqual(none.selected, 0); XCTAssertEqual(none.rest, 4)
     }
+
+    // MARK: 8) 기기에 남는다 — 글로 적고 다시 읽으면 같다 · 빈 필터도 · 깨진 글은 nil (2026-09-23 사용자 · 설계 §7-7)
+    //    깨졌다면 → 저장 꼴을 바꿨다(옛 기기에 남은 글을 못 읽게 된다 — 그때는 옛 꼴도 읽게 하거나 키를 바꾼다).
+    func testRawValue_roundTrip() {
+        let f = TagFilter(selected: ["서울", "맛집"], includesUntagged: true)
+        XCTAssertEqual(TagFilter(rawValue: f.rawValue), f)
+        XCTAssertEqual(f.rawValue, TagFilter(selected: ["맛집", "서울"], includesUntagged: true).rawValue)   // 순서 무관 · 같은 글
+        XCTAssertEqual(TagFilter(rawValue: TagFilter().rawValue), TagFilter())
+        XCTAssertNil(TagFilter(rawValue: "")); XCTAssertNil(TagFilter(rawValue: "{broken"))
+        XCTAssertEqual(TagFilter.storageKey("inbox"), "tagFilter.inbox")
+    }
 }
