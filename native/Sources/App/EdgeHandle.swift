@@ -161,6 +161,32 @@ struct EdgeHandle: View {
     @State private var visualTop: CGFloat = -1   // 음수 = 아직 안 정함(저장값 또는 가운데로 채운다)
     @State private var dragBase: CGFloat? = nil  // 끌기 시작 때의 위치
 
+    // MARK: 가만히 두면 흐려진다 · 필터가 걸리면 반짝인다 (2026-09-23 사용자 · 설계 §5-17)
+    /// 손잡이가 나타난 뒤(= 패널이 감춰진 뒤) **30초** 아무 손도 안 대면 **50%로 흐려진다.** 그 영역을 건드리면(누르기·끌기) 바로 돌아오고 30초를 다시 센다.
+    /// 사용자: *"해시태그 화면이 감춰진 후 30초가 지나면 해시태그 버튼이 50% 정도로 투명하게 바뀌게 해줘. 다시 그 영역을 건드리면 돌아오게 하고."*
+    /// ⚠️ 건드리는 것은 **평소 동작도 그대로 한다**(누르면 열리고 끌면 움직인다) — 「돌아오기만」이 아니다(Claude 판단 · 뒤집을 수 있다).
+    private let idleSeconds: Double = 30
+    private let dimOpacity: Double = 0.5
+    @State private var dimmed = false
+    @State private var idleTask: Task<Void, Never>? = nil
+    /// 필터가 걸려 있으면(`active`) `<`가 **강조색으로 계속 반짝인다**(밝기 1 ↔ 0.3 · 빛 번짐 함께 · 0.8초 왕복 · 멈추지 않는다).
+    /// 사용자: *"< 아이콘의 색깔이 바뀌는 방식인데, 눈에 잘 안들어 와. … 애니메이션이 지속되어도 괜찮으니 반짝여서 눈에 잘 들어오게 하자."*
+    /// *(옛 꼴 · 09-22: 색만 강조색으로 — 뒤집혔다 · `tag-filter-design.md` §2 10번)*
+    @State private var pulse = false
+
+    private func wake() {
+        if dimmed { withAnimation(.easeOut(duration: 0.25)) { dimmed = false } }
+        armIdle()
+    }
+    private func armIdle() {
+        idleTask?.cancel()
+        idleTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(idleSeconds))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.8)) { dimmed = true }
+        }
+    }
+
     var body: some View {
         GeometryReader { geo in
             let maxTop = max(0, geo.size.height - height)
@@ -169,14 +195,18 @@ struct EdgeHandle: View {
                 .frame(width: width, height: height)
                 .padding(.leading, hitInset)      // 터치 영역만 왼쪽으로 넓힌다(보이는 꼴 그대로) — 아래 `contentShape`가 이 여백까지 덮는다
                 .contentShape(Rectangle())
+                .opacity(dimmed ? dimOpacity : 1)   // 30초 가만히 두면 50%(§5-17)
                 .offset(y: min(max(settled, 0), maxTop))   // 제목 아래 ~ 탭바 위 — 영역 밖으로 못 나간다
-                .onTapGesture { onTap() }   // 2026-09-22 — 해시태그 필터 패널(`TagFilterDock`)
+                .onAppear { armIdle() }             // 나타난 순간(= 패널이 감춰진 순간)부터 30초를 센다
+                .onDisappear { idleTask?.cancel() }
+                .onTapGesture { wake(); onTap() }   // 2026-09-22 — 해시태그 필터 패널(`TagFilterDock`) · 건드리면 돌아온다(§5-17)
                 .gesture(
                     DragGesture(minimumDistance: 4)
                         .onChanged { v in
                             let base = dragBase ?? settled
                             if dragBase == nil {
                                 dragBase = base
+                                wake()   // 끌기도 「건드리는 것」이다(§5-17)
                                 // 아직 가운데를 따르는 중(-1)이면 애니메이션 없이 그 자리에 먼저 놓는다 — -1에서 스프링이 출발하지 않게.
                                 if visualTop < 0 { var still = Transaction(); still.disablesAnimations = true; withTransaction(still) { visualTop = base } }
                             }
@@ -231,6 +261,15 @@ struct EdgeHandle: View {
             ChevronMark(stroke: chevronStroke)
                 .stroke(active ? Palette.accent : Color(hex: 0xBDC1C7), style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
                 .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값
+                // 필터가 걸리면 반짝인다(§5-17) — 밝기와 빛 번짐이 함께 왕복한다. 안 걸리면 멈춘 채 원래 색.
+                .opacity(active ? (pulse ? 0.3 : 1) : 1)
+                .shadow(color: active ? Palette.accent.opacity(pulse ? 0.95 : 0.15) : .clear, radius: 5)
+                .task(id: active) {
+                    var still = Transaction(); still.disablesAnimations = true
+                    withTransaction(still) { pulse = false }
+                    guard active else { return }
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
+                }
         }
     }
 }
