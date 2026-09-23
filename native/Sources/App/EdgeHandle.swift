@@ -54,8 +54,8 @@ struct EdgeHandle: View {
     /// **`#`의 세로 늘림 배율** — 그린 `<`(10×27.5 · 높이/폭 2.75)가 SF `chevron.left`(15×20 · 1.33)보다 **2.06배** 세로로 길다.
     /// 사용자: *"< 글자를 새로 그린 비율만큼 늘리면 될 것 같아"* → `#` 글자도 세로로 2.06배.
     private let markStretch: CGFloat = 2.75 / (20.0 / 15.0)
-    /// `#` 글자 크기 — 늘린 뒤 상자가 `<`와 같은 높이(27.5)가 되게 잡은 값(잉크 높이 ≈ 0.7×크기 · 시뮬 픽셀로 닫는다 · §5-19).
-    private let markFontSize: CGFloat = 19
+    /// `#` 글자 크기 — 19에서 **90%로**(사용자 11:5x: *"지금 적용된 # 기호는 90% 정도만 사이즈를 줄여보자"*). 19일 때 실측 12.3×28.3(§5-19).
+    private let markFontSize: CGFloat = 19 * 0.9
     /// 누르면(끌지 않고) — 패널을 연다. 끌기(`DragGesture(minimumDistance: 4)`)와 갈린다: 4pt 안에서 떼면 누르기다.
     var onTap: () -> Void = {}
 
@@ -267,22 +267,27 @@ struct EdgeHandle: View {
             } else {
                 r.fill(tintGradient)
             }
-            // **`#` 표식**(2026-09-23 11:4x 사용자 · 설계 §5-19) — 옛 `<`(`ChevronMark`) 자리에 `#` 글자를 **세로로 2.06배 늘려** 그린다.
-            // 필터가 걸리면 강조색으로 1.0초 주기 반짝임(§5-17 값) · 안 걸리면 `<`가 쓰던 회색 `#BDC1C7`로 멈춘다.
-            // *(옛 표식 · 09-21~09-23 11:3x: 직접 그린 `<` 10×27.5 · 획 5.5 — `ChevronMark`는 기록용으로 남긴다 · 09-22~11:1x에는 `<`가 강조색·반짝임 · 11:32 `e6cc6b4`는 `#` 배지 A)*
-            Text("#")
-                .font(.system(size: markFontSize, weight: .heavy, design: .rounded))
-                .foregroundStyle(active ? Palette.accent : Color(hex: 0xBDC1C7))
-                .scaleEffect(x: 1, y: markStretch)
-                .opacity(active ? (pulse ? 0.3 : 1) : 1)
-                .brightness(active && !pulse ? 0.2 : 0)
-                .shadow(color: active ? Palette.accent.opacity(pulse ? 0.95 : 0.15) : .clear, radius: 5)
-                .task(id: active) {
-                    var still = Transaction(); still.disablesAnimations = true
-                    withTransaction(still) { pulse = false }
-                    guard active else { return }
-                    withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) { pulse = true }   // 한 주기 1.0초(사용자 값 · 11:2x · 옛 0.45 = 0.9초)
-                }
+            // **표식 둘**(2026-09-23 11:5x 사용자 · 설계 §5-19): **평소 = 그린 `<`**(09-21 그대로 · 10×27.5 · 획 5.5 · 회색) ·
+            // **필터가 걸리면 = `#`**(세로 2.06배 늘림 · 강조색 · 1.0초 주기 반짝임). 사용자: *"# 기호를 쓰는 상황은 태그 필터가 적용되었을 때만, 즉, 깜빡일 때만"*.
+            // *(옛 · 11:47 `5ab6543`: 평소에도 `#`(회색) — 사용자가 "평소에는 원래 < 기호를 수정 전 모습으로"로 되돌렸다 · 09-22~11:1x에는 `<`가 강조색·반짝임 · 11:32 `e6cc6b4`는 `#` 배지 A)*
+            if active {
+                Text("#")
+                    .font(.system(size: markFontSize, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Palette.accent)
+                    .scaleEffect(x: 1, y: markStretch)
+                    .opacity(pulse ? 0.3 : 1)
+                    .brightness(pulse ? 0 : 0.2)
+                    .shadow(color: Palette.accent.opacity(pulse ? 0.95 : 0.15), radius: 5)
+                    .task {
+                        var still = Transaction(); still.disablesAnimations = true
+                        withTransaction(still) { pulse = false }
+                        withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) { pulse = true }   // 한 주기 1.0초(사용자 값 · 11:2x)
+                    }
+            } else {
+                ChevronMark(stroke: chevronStroke)
+                    .stroke(Color(hex: 0xBDC1C7), style: StrokeStyle(lineWidth: chevronStroke, lineCap: .round, lineJoin: .round))
+                    .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값(§5-1)
+            }
         }
     }
 }
