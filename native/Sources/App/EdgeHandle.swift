@@ -169,7 +169,8 @@ struct EdgeHandle: View {
     private let dimOpacity: Double = 0.5
     @State private var dimmed = false
     @State private var idleTask: Task<Void, Never>? = nil
-    /// 필터가 걸려 있으면(`active`) `<`가 **강조색으로 계속 반짝인다**(밝기 1 ↔ 0.3 · 빛 번짐 함께 · 0.8초 왕복 · 멈추지 않는다).
+    /// 필터가 걸려 있으면(`active`) `<`가 **강조색으로 계속 반짝인다**(밝기 1+20% ↔ 0.3 · 빛 번짐 함께 · **한 방향 0.45초 = 한 주기 0.9초** · 멈추지 않는다).
+    /// *(첫 값 · 10:53 `7c72deb`: 한 방향 0.8초 = 주기 1.6초 · 밝은 쪽 1 — 사용자 11:0x: "0.45 + 0.45로 · 밝아졌을 때 20% 정도 더 밝게")*
     /// 사용자: *"< 아이콘의 색깔이 바뀌는 방식인데, 눈에 잘 안들어 와. … 애니메이션이 지속되어도 괜찮으니 반짝여서 눈에 잘 들어오게 하자."*
     /// *(옛 꼴 · 09-22: 색만 강조색으로 — 뒤집혔다 · `tag-filter-design.md` §2 10번)*
     @State private var pulse = false
@@ -263,12 +264,13 @@ struct EdgeHandle: View {
                 .frame(width: 10, height: 27.5)   // 획 포함 상자 — 스크린샷에서 잰 값
                 // 필터가 걸리면 반짝인다(§5-17) — 밝기와 빛 번짐이 함께 왕복한다. 안 걸리면 멈춘 채 원래 색.
                 .opacity(active ? (pulse ? 0.3 : 1) : 1)
+                .brightness(active && !pulse ? 0.2 : 0)   // 밝은 쪽을 20% 더 밝게(사용자 2026-09-23 11:0x) — 불투명도는 1이 끝이라 색을 밝힌다
                 .shadow(color: active ? Palette.accent.opacity(pulse ? 0.95 : 0.15) : .clear, radius: 5)
                 .task(id: active) {
                     var still = Transaction(); still.disablesAnimations = true
                     withTransaction(still) { pulse = false }
                     guard active else { return }
-                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
+                    withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) { pulse = true }   // 한 주기 0.9초(사용자 값)
                 }
         }
     }
