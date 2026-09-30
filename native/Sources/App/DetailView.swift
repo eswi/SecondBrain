@@ -753,30 +753,13 @@ struct DetailView: View {
         }
     }
 
-    /// ⏸ **지금은 아무도 안 부른다 (2026-08-23)** — 자료가 보조 자료 카드로 나가면서
-    /// `photoRow`가 사라졌다. **뷰어의 「위치 보기」가 이것을 쓴다**(설계 §0 26번 · 뷰어 상세 문서).
-    /// ⛔ **지우지 않는다** — 지도 핀 결함(27일 묵었던 것)을 고친 코드가 여기 있고,
-    /// 다시 만들면 그 값을 잃는다(`MapsLink` · `photoPinName`).
-    ///
-    /// 사진 EXIF 좌표를 작은 지도로(비상호작용) + 지도 앱 열기. 좌표는 사진 안에만 있음(그릇 X).
-    /// **여는 일만** `PlatformMedia`가 갈라 한다 — URL 꼴은 두 플랫폼이 같다.
+    /// ✅ **`PhotoPlaceMap`으로 옮겼다 (2026-09-30)** — 뷰어의 「위치 보기」가 그것을 쓴다(설계 §0 26번 · §3-Z-17).
+    /// *(옛 서술 · 2026-08-23~09-30: "⏸ 지금은 아무도 안 부른다 — 자료가 보조 자료 카드로 나가면서 `photoRow`가
+    /// 사라졌다. ⛔ 지우지 않는다 — 지도 핀 결함(27일 묵었던 것)을 고친 코드가 여기 있고, 다시 만들면 그 값을
+    /// 잃는다(`MapsLink` · `photoPinName`)")* → **지운 것이 아니라 옮긴 것이다**(기록 규칙 9). 이 함수도 여전히
+    /// 아무도 안 부른다 — 상세에 지도를 다시 놓을 때 이 한 줄로 부른다.
     @ViewBuilder private func photoMap(_ coord: CLLocationCoordinate2D) -> some View {
-        let region = MKCoordinateRegion(center: coord,
-                                        span: MKCoordinateSpan(latitudeDelta: 0.003, longitudeDelta: 0.003))
-        VStack(alignment: .leading, spacing: 6) {
-            Map(initialPosition: .region(region), interactionModes: []) {
-                Marker(MediaMigrationText.photoPinName, coordinate: coord)
-            }
-            .frame(height: 150)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
-            Button {
-                PlatformMedia.openInMaps(coord)
-            } label: {
-                Label("지도 앱에서 열기", systemImage: "map").font(.caption)
-            }
-            .buttonStyle(.plain).foregroundStyle(Palette.accent)
-        }
+        PhotoPlaceMap(coord: coord)
     }
 
     /// 수집 방식(source) 한글 라벨. 알 수 없으면 원문 그대로.

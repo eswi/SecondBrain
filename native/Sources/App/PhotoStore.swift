@@ -282,10 +282,19 @@ enum PhotoStore {
     // MARK: EXIF GPS 읽기 (볼 때 — 그릇엔 없음, 사진에서만)
 
     /// 사진 파일 EXIF의 촬영 좌표. 없으면(권한 거부·실내 등) nil. 온디바이스.
+    ///
+    /// ★ **읽은 좌표는 이름별로 기억해 둔다** (2026-09-30). 카드가 **사진 전부**를 묻게 되면서(옛: 첫 장만 ·
+    /// 사용자: *"위치 정보가 있는 사진의 썸네일에는 모두 … 표시"*) 그릴 때마다 파일을 여는 값이 커졌다.
+    /// **사진은 불변(성역)이므로 한 번 읽은 좌표는 안 바뀐다.** ⚠️ **없음(nil)은 기억하지 않는다** —
+    /// iCloud에서 아직 안 받은 파일(dataless)은 지금 nil이고 받은 뒤엔 값이 생기기 때문이다.
     static func coordinate(name: String) -> CLLocationCoordinate2D? {
-        guard let url = url(name: name) else { return nil }
-        return coordinate(fileURL: url)
+        if let hit = placeCache.object(forKey: name as NSString) { return hit.coordinate }
+        guard let url = url(name: name), let c = coordinate(fileURL: url) else { return nil }
+        placeCache.setObject(CLLocation(latitude: c.latitude, longitude: c.longitude), forKey: name as NSString)
+        return c
     }
+    /// `NSCache`는 스스로 잠근다(thread-safe) — 컴파일러가 못 보므로 `nonisolated(unsafe)`로 그 사실을 적는다.
+    nonisolated(unsafe) private static let placeCache = NSCache<NSString, CLLocation>()
 
     /// 같은 것을 **파일 경로로** 읽는다 — **아직 확정되지 않은 임시 사진**에 쓴다
     /// (수집 화면의 「보조 자료」 카드 · 2026-08-30에 갈라냈다).

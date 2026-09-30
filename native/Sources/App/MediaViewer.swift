@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 import SecondBrainCore
 
 //
@@ -24,7 +25,18 @@ import SecondBrainCore
 //  **사용자 결정 둘(2026-08-24):** 자리 표시는 **숫자 「2 / 3」**(음성의 「경과 / 길이」와 **같은 꼴** —
 //  새 문구를 안 짓는다) · 넘기는 것은 **단추만**(⛔ 스와이프는 확대 제스처와 싸운다).
 //
-//  ⏸ **여기 없는 것(뷰어 상세 문서로 간다):** 추가 · 삭제 · **위치 보기** ·
+//  ── ✅ **위치 보기**가 들어왔다 (2026-09-30 · 설계 §0 26번 · §3-Z-17) ─────────
+//  사용자: *"'주차위치'를 기억하면 사진을 찍게 되는데 사진에 위치 정보가 있고 표시도 하는데도 위치를 보여줄 방법이
+//  없어. … 사진을 선택하여 '사진 뷰어'로 진입하면 그 화면의 적절한 곳에 위치정보 조회 버턴이 나타나게 하고,
+//  그 버튼을 누르면 지도가 표시되는 등의 방법으로 위치를 보여줘."*
+//  · **우상단 핀 단추**(닫기와 같은 꼴 · 좌상단 닫기·가운데 「n / n」과 안 겹치는 빈자리) → 누르면 **지도 판**
+//    (`PhotoPlaceMap` · 손으로 옮기고 키울 수 있다 · 「지도 앱에서 열기」) · 다시 누르거나 장을 넘기면 닫힌다.
+//  · **위치 없는 장은 핀이 회색이고 눌리지 않는다** — §3-5 *"위치 없는 사진도 아이콘을 보여준다 — 회색으로"*의
+//    앞 반. ⏸ **뒤 반(「누르면 위치 정보가 없다고 알린다」)은 문구가 필요해서 안 했다** — 사용자가 정한다(항시 규칙 6).
+//  · **썸네일 줄의 장마다 우하단 핀** — 카드 네모(§0 18번)와 같은 그림, 같은 자리. 어느 장에 위치가 있나를 여기서 갈라 보인다.
+//  · ⛔ **화면에 나오는 새 말은 없다** — 핀은 아이콘, 지도 판의 말은 이미 있던 「지도 앱에서 열기」·「촬영 위치」.
+//
+//  ⏸ **여기 없는 것(뷰어 상세 문서로 간다):** 추가 · 삭제 · ~~**위치 보기**~~(✅ 2026-09-30) ·
 //     자료마다 개별 보기(수집 시각·기기) · **URL 뷰어**(QuickLook이 못 하던 그 자리) ·
 //     **대표 사진 정하기**(§3-Y-8 — 「붙인 순서」를 알려면 필드별 HLC를 내보내야 한다).
 //
@@ -62,6 +74,8 @@ struct MediaViewer: View {
     @State private var touchTick = 0
     /// **지우려고 묻는 중인 자리** — nil이면 안 묻는 중(`model.pendingDelete`와 같은 성격).
     @State private var deleting: Int?
+    /// **지도 판이 열려 있나** — 장을 넘기면 닫는다(다른 장의 위치를 보여주면 안 되므로 `index` 변화에 접는다).
+    @State private var showPlace = false
 
     /// **손을 뗀 뒤 얼마나 있다 사라지나.** **5초**(2026-08-24 사용자 — 처음엔 *"3초쯤"*이었다).
     private static let stripHideAfter: Duration = .seconds(5)
@@ -111,6 +125,14 @@ struct MediaViewer: View {
 
     /// 받아올 수 있는 종류인가 — **파일이 있는 둘만**이다.
     /// ⛔ **URL은 nil이다** — 파일이 없으므로 받을 것이 없다(설계 §3-Z-2 A).
+    /// 이 장의 EXIF 좌표 — 저장된 것은 이름으로(`PhotoStore`가 기억해 둔다) · 임시 파일은 경로로.
+    private func coordinate(_ name: String) -> CLLocationCoordinate2D? {
+        switch source {
+        case .saved: return PhotoStore.coordinate(name: name)
+        case .draft: return photoURL(name).flatMap { PhotoStore.coordinate(fileURL: $0) }
+        }
+    }
+
     private var fetchKind: MediaKind? {
         // ⛔ **저장 전에는 받아올 것이 없다** — 파일이 이미 손에 있다(클라우드에 올라간 적이 없다).
         if case .draft = source { return nil }
@@ -136,6 +158,8 @@ struct MediaViewer: View {
             counter
             arrows
             filmstrip
+            placePanel
+            placeButton
             downloadToast
             // ★ **지우기 확인** — 문구는 사용자가 골랐다(2026-09-03 · 항시 규칙 6):
             //   **「사진을 지울까요? / 되돌릴 수 없어요. / 원본은 그대로 있어요.」** · 버튼 **「지우기」**.
@@ -186,6 +210,53 @@ struct MediaViewer: View {
         .animation(.spring(duration: 0.3), value: fetch.state)
         .animation(.spring(duration: 0.3), value: fetch.timedOut)
         .onDisappear { audio.stop() }
+        .onChange(of: index) { _, _ in showPlace = false }   // 다른 장의 지도를 들고 있지 않게
+    }
+
+    // MARK: 위치 보기 (2026-09-30 · 머리주석)
+
+    /// 지금 장의 좌표 — 사진일 때만.
+    private var currentCoordinate: CLLocationCoordinate2D? {
+        guard kind == .photo, let n = name else { return nil }
+        return coordinate(n)
+    }
+
+    /// **우상단 핀 단추.** 위치가 있으면 흰색·눌린다, 없으면 회색·안 눌린다(§3-5의 「회색」).
+    @ViewBuilder private var placeButton: some View {
+        if kind == .photo, !names.isEmpty {
+            let has = currentCoordinate != nil
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { withAnimation(Self.fade) { showPlace.toggle() } } label: {
+                        Image(systemName: showPlace ? "mappin.slash" : "mappin.and.ellipse")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(has ? .white : .white.opacity(0.3))
+                            .padding(12)
+                            .background(Circle().fill(.black.opacity(has ? 0.45 : 0.2)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!has)
+                }
+                Spacer()
+            }
+            .padding(16)
+        }
+    }
+
+    /// **지도 판** — 화면 아래쪽, 썸네일 줄 바로 위. 배경을 눌러도 닫히지 않는다(지도를 손으로 움직이므로).
+    @ViewBuilder private var placePanel: some View {
+        if showPlace, let c = currentCoordinate {
+            VStack {
+                Spacer()
+                PhotoPlaceMap(coord: c, height: 260, interactive: true)
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.black.opacity(0.75)))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, Self.thumbSide + 16 + 8)   // 썸네일 줄 높이 + 틈
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -460,6 +531,15 @@ struct MediaViewer: View {
             }
         }
         .frame(width: Self.thumbSide, height: Self.thumbSide)
+        .overlay(alignment: .bottomTrailing) {
+            // 카드 네모(§0 18번)와 같은 핀, 같은 자리 — **장마다** 위치가 있나를 갈라 보인다(2026-09-30).
+            if coordinate(name) != nil {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: Self.thumbSide * 0.24))
+                    .foregroundStyle(.white, .black.opacity(0.45))
+                    .padding(Self.thumbSide * 0.05)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)

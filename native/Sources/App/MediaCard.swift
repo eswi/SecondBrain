@@ -543,7 +543,10 @@ struct MediaCard: View {
                       state: first,
                       borderState: worstOf(photoFetch, names: names, first: first),
                       count: names.count, image: img,
-                      hasPlace: names.first.flatMap { PhotoStore.coordinate(name: $0) } != nil)
+                      // ★ **한 장이라도** 위치가 있으면 그린다 (2026-09-30 · 옛: 첫 장만). 사용자: *"위치 정보가
+                      //   있는 사진의 썸네일에는 모두 … 표시"* — 네모는 종류당 하나라 **「안에 위치 있는 사진이 있다」**로 읽는다.
+                      //   장마다의 표시는 **뷰어의 썸네일 줄**이 한다(`MediaViewer.thumb`). 좌표는 `PhotoStore`가 기억해 둔다.
+                      hasPlace: names.contains { PhotoStore.coordinate(name: $0) != nil })
         case .url:
             // ★ **URL은 파일이 없다** — 그래서 `MediaFetch`의 세 상태(here/notDownloaded/absent)를
             //    아예 지나간다. **포인터 값이 곧 자료라서 늘 「있다」**(설계 §3-Z-2 A).
