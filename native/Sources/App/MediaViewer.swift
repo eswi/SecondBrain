@@ -436,8 +436,16 @@ struct MediaViewer: View {
                 arrow("chevron.right", enabled: index < names.count - 1) { step(1) }
             }
             .padding(.horizontal, 8)
+            // ★ **지도 판이 열려 있을 때만 위로 올린다** (2026-10-07 사용자: *"지도 판에 버튼이 반쯤 겹쳐 보여.
+            //   지도 닫으면 지금처럼 버튼이 위치하도록 되돌려주고."*) — 판 높이의 절반만큼 올리면
+            //   **판 위에 남는 공간의 가운데**에 온다. 닫히면 0으로 돌아온다(같은 애니메이션).
+            .offset(y: showPlace ? -Self.placePanelHeight / 2 : 0)
+            .animation(Self.fade, value: showPlace)
         }
     }
+
+    /// 지도 판이 차지하는 세로 — 지도 260 + 안 여백 12×2 + 썸네일 줄 자리(56 + 16 + 8). `placePanel`과 같은 수여야 한다.
+    private static let placePanelHeight: CGFloat = 260 + 24 + (thumbSide + 16 + 8)
 
     /// **하단 썸네일 줄** — 사진에서만(⏸ **실험이었다 → 남긴다** · 2026-08-24 사용자: *"맘에 들어"*).
     /// ⛔ **「세로에서만」이 풀렸다**(같은 날) — *"아래 사진은 가로 모두에서도 동작하게 해줘."*
