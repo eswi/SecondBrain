@@ -81,6 +81,9 @@ struct MediaViewer: View {
     @State private var viewSize: CGSize = .zero
     /// 지금 장의 **세로/가로 비율**(픽셀 · 방향 보정) — 사진이 화면에서 실제로 차지하는 세로를 알기 위해.
     @State private var imageAspect: CGFloat?
+    /// **지도 판의 실제 높이**(카드 전체 · 잰 값). 2026-10-07 19:2x 사용자: *"가로 사진은 아랫부분이 약간 지도에 겹치네."*
+    /// — 어림값 `placePanelHeight`가 **지도 260만 세고** 그 아래 「지도 앱에서 열기」 줄(+틈 6)을 빠뜨렸다(~23pt). 그래서 잰다.
+    @State private var measuredPanelHeight: CGFloat = 0
 
     /// **손을 뗀 뒤 얼마나 있다 사라지나.** **5초**(2026-08-24 사용자 — 처음엔 *"3초쯤"*이었다).
     private static let stripHideAfter: Duration = .seconds(5)
@@ -160,7 +163,7 @@ struct MediaViewer: View {
             Color.black.ignoresSafeArea()
             content
                 .offset(y: photoLift)                       // 지도 판이 열리면 사진을 밀어 올린다(`photoLift`)
-                .animation(Self.fade, value: showPlace)
+                .animation(Self.fade, value: photoLift)     // 열고 닫을 때 · 판을 둔 채 장이 바뀌어 양이 달라질 때
             closeButton
             counter
             arrows
@@ -217,7 +220,12 @@ struct MediaViewer: View {
         .animation(.spring(duration: 0.3), value: fetch.state)
         .animation(.spring(duration: 0.3), value: fetch.timedOut)
         .onDisappear { audio.stop() }
-        .onChange(of: index) { _, _ in showPlace = false }   // 다른 장의 지도를 들고 있지 않게
+        // ★ 장을 넘겨도 **새 장에 위치가 있으면 지도 판을 둔다**(새 좌표로 옮겨 간다) · 없으면 접는다
+        //   (2026-10-07 19:2x 사용자: *"그 사진에 위치 정보가 있다면 지도 판을 없애지 말자. 만일 위치 정보가 없다면 그 때는 지금처럼"*).
+        //   *(옛 · `a3dd79e`~`6299881`: 넘기면 무조건 접었다 — "다른 장의 지도를 들고 있지 않게")*
+        .onChange(of: index) { _, _ in
+            if currentCoordinate == nil { withAnimation(Self.fade) { showPlace = false } }
+        }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { viewSize = $0 }
         .task(id: name) {
             imageAspect = (kind == .photo ? name.flatMap { photoURL($0) } : nil).flatMap { Self.aspect(of: $0) }
@@ -261,10 +269,12 @@ struct MediaViewer: View {
             VStack {
                 Spacer()
                 PhotoPlaceMap(coord: c, height: 260, interactive: true)
+                    .id(name)                                   // 장이 바뀌면 지도를 새 좌표로 다시 놓는다(`initialPosition`은 안 따라간다)
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.black.opacity(0.75)))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPanelHeight = $0 }
                     .padding(.horizontal, 12)
-                    .padding(.bottom, Self.thumbSide + 16 + 8)   // 썸네일 줄 높이 + 틈
+                    .padding(.bottom, Self.placePanelBottom)     // 썸네일 줄 높이 + 틈
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -461,12 +471,20 @@ struct MediaViewer: View {
     }
 
     /// 지도 판이 열렸을 때의 세로 자리들 — 사진 위·아래(`scaledToFit`이 그리는 대로 · 밀기 전) · 판 꼭대기. 판이 닫혀 있거나 아직 모르면 nil.
+    /// ⚠️ `panelTop`은 **옛 어림값**(`placePanelHeight`)이다 — `arrowLift`가 그것으로 서 있고 사용자가 *"< > 위치도 지금이
+    /// 적절해. 수정하지 말자"*(19:2x)라 했으므로 **단추 계산은 안 건드린다.** 사진 밀기는 `measuredPanelTop`을 쓴다.
     private var placeGeometry: (photoTop: CGFloat, photoBottom: CGFloat, panelTop: CGFloat)? {
         guard showPlace, viewSize.height > 0, viewSize.width > 0, let a = imageAspect else { return nil }
         let h = viewSize.height
         let fitted = min(h, viewSize.width * a)                 // scaledToFit이 그리는 사진 세로
         let top = (h - fitted) / 2
         return (top, top + fitted, h - Self.placePanelHeight)
+    }
+
+    /// 판 꼭대기 — **잰 높이**로(없으면 어림값). 사진 밀기(`photoLift`)만 쓴다.
+    private var measuredPanelTop: CGFloat {
+        let panel = measuredPanelHeight > 0 ? measuredPanelHeight + Self.placePanelBottom : Self.placePanelHeight
+        return viewSize.height - panel
     }
 
     /// `‹` `›`를 올리는 양(음수 = 위). 지도 판이 닫혀 있거나 판이 사진을 안 가리면 0.
@@ -484,7 +502,7 @@ struct MediaViewer: View {
     /// 가로 사진은 대개 전부 드러나고, 세로 사진은 위에 붙은 뒤에도 아래가 조금 가릴 수 있다. 판이 닫히면 0.
     private var photoLift: CGFloat {
         guard let g = placeGeometry else { return 0 }
-        let hidden = g.photoBottom - g.panelTop
+        let hidden = g.photoBottom - measuredPanelTop           // ← 잰 값(어림값은 가로 사진 아래가 ~23pt 겹쳤다)
         guard hidden > 0 else { return 0 }
         return -min(hidden, max(0, g.photoTop))
     }
@@ -500,7 +518,9 @@ struct MediaViewer: View {
     }
 
     /// 지도 판이 차지하는 세로 — 지도 260 + 안 여백 12×2 + 썸네일 줄 자리(56 + 16 + 8). `placePanel`과 같은 수여야 한다.
-    private static let placePanelHeight: CGFloat = 260 + 24 + (thumbSide + 16 + 8)
+    private static let placePanelHeight: CGFloat = 260 + 24 + placePanelBottom
+    /// 판 아래 틈 = 썸네일 줄 자리(56 + 16) + 8. `placePanel`의 `padding(.bottom)`과 같은 수여야 한다.
+    private static let placePanelBottom: CGFloat = thumbSide + 16 + 8
 
     /// **하단 썸네일 줄** — 사진에서만(⏸ **실험이었다 → 남긴다** · 2026-08-24 사용자: *"맘에 들어"*).
     /// ⛔ **「세로에서만」이 풀렸다**(같은 날) — *"아래 사진은 가로 모두에서도 동작하게 해줘."*
