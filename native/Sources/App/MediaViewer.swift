@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import ImageIO
 import SecondBrainCore
 
 //
@@ -76,6 +77,10 @@ struct MediaViewer: View {
     @State private var deleting: Int?
     /// **지도 판이 열려 있나** — 장을 넘기면 닫는다(다른 장의 위치를 보여주면 안 되므로 `index` 변화에 접는다).
     @State private var showPlace = false
+    /// 뷰어가 차지하는 크기 — `‹` `›`를 어디까지 올릴지 계산하는 데 쓴다(§3-Z-17-4).
+    @State private var viewSize: CGSize = .zero
+    /// 지금 장의 **세로/가로 비율**(픽셀 · 방향 보정) — 사진이 화면에서 실제로 차지하는 세로를 알기 위해.
+    @State private var imageAspect: CGFloat?
 
     /// **손을 뗀 뒤 얼마나 있다 사라지나.** **5초**(2026-08-24 사용자 — 처음엔 *"3초쯤"*이었다).
     private static let stripHideAfter: Duration = .seconds(5)
@@ -211,6 +216,10 @@ struct MediaViewer: View {
         .animation(.spring(duration: 0.3), value: fetch.timedOut)
         .onDisappear { audio.stop() }
         .onChange(of: index) { _, _ in showPlace = false }   // 다른 장의 지도를 들고 있지 않게
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { viewSize = $0 }
+        .task(id: name) {
+            imageAspect = (kind == .photo ? name.flatMap { photoURL($0) } : nil).flatMap { Self.aspect(of: $0) }
+        }
     }
 
     // MARK: 위치 보기 (2026-09-30 · 머리주석)
@@ -439,9 +448,36 @@ struct MediaViewer: View {
             // ★ **지도 판이 열려 있을 때만 위로 올린다** (2026-10-07 사용자: *"지도 판에 버튼이 반쯤 겹쳐 보여.
             //   지도 닫으면 지금처럼 버튼이 위치하도록 되돌려주고."*) — 판 높이의 절반만큼 올리면
             //   **판 위에 남는 공간의 가운데**에 온다. 닫히면 0으로 돌아온다(같은 애니메이션).
-            .offset(y: showPlace ? -Self.placePanelHeight / 2 : 0)
+            // ★★ **얼마나 올리나 = 「지도에 안 가린 사진 부분」의 세로 가운데** (2026-10-07 17:5x 사용자:
+            //   *"너무 많이 올렸다. 지도가 가리지 않은 사진 영역의 세로 중간 지점까지만 올려줘."*)
+            //   ⛔ 첫 판(`14cdc92`)은 **화면** 위쪽 공간의 가운데(판 높이의 절반 = 182pt)로 올렸다 — 기준이 틀렸다.
+            //   사진은 `scaledToFit`이라 가로 사진이면 화면 가운데 띠만 차지한다. 그 띠에서 판에 가린 아래를
+            //   뺀 나머지의 가운데가 답이다 → 사진 비율·뷰 크기로 계산한다(`arrowLift`).
+            .offset(y: arrowLift)
             .animation(Self.fade, value: showPlace)
         }
+    }
+
+    /// `‹` `›`를 올리는 양(음수 = 위). 지도 판이 닫혀 있거나 판이 사진을 안 가리면 0.
+    private var arrowLift: CGFloat {
+        guard showPlace, viewSize.height > 0, viewSize.width > 0, let a = imageAspect else { return 0 }
+        let h = viewSize.height
+        let fitted = min(h, viewSize.width * a)                 // scaledToFit이 그리는 사진 세로
+        let photoTop = (h - fitted) / 2, photoBottom = photoTop + fitted
+        let panelTop = h - Self.placePanelHeight
+        let visibleBottom = min(photoBottom, panelTop)
+        guard visibleBottom > photoTop else { return 0 }
+        return (photoTop + visibleBottom) / 2 - h / 2
+    }
+
+    /// 사진 파일의 세로/가로 비율 — 픽셀 수만 읽는다(그림을 안 푼다) · EXIF 방향 5~8이면 가로세로를 바꾼다.
+    private static func aspect(of url: URL) -> CGFloat? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? CGFloat, let hh = props[kCGImagePropertyPixelHeight] as? CGFloat,
+              w > 0, hh > 0 else { return nil }
+        let o = props[kCGImagePropertyOrientation] as? Int ?? 1
+        return (5...8).contains(o) ? w / hh : hh / w
     }
 
     /// 지도 판이 차지하는 세로 — 지도 260 + 안 여백 12×2 + 썸네일 줄 자리(56 + 16 + 8). `placePanel`과 같은 수여야 한다.
