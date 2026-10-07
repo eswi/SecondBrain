@@ -220,12 +220,10 @@ struct MediaViewer: View {
         .animation(.spring(duration: 0.3), value: fetch.state)
         .animation(.spring(duration: 0.3), value: fetch.timedOut)
         .onDisappear { audio.stop() }
-        // ★ 장을 넘겨도 **새 장에 위치가 있으면 지도 판을 둔다**(새 좌표로 옮겨 간다) · 없으면 접는다
-        //   (2026-10-07 19:2x 사용자: *"그 사진에 위치 정보가 있다면 지도 판을 없애지 말자. 만일 위치 정보가 없다면 그 때는 지금처럼"*).
-        //   *(옛 · `a3dd79e`~`6299881`: 넘기면 무조건 접었다 — "다른 장의 지도를 들고 있지 않게")*
-        .onChange(of: index) { _, _ in
-            if currentCoordinate == nil { withAnimation(Self.fade) { showPlace = false } }
-        }
+        // ★★ **지도 보기 모드는 장을 넘겨도 끝나지 않는다 — 우상단 단추로만 끝난다** (2026-10-07 19:3x 사용자:
+        //   *"지도 보기 모드로 움직이기 시작했으면 우측 상단 버튼을 눌러서 취소하지 않는 한 지도 보기 모드를 유지하고 싶어"*).
+        //   위치 없는 장에서는 지도 대신 **같은 크기의 네모에 「위치 정보가 없습니다」**(사용자가 정한 문구 · `noPlaceBox`).
+        //   *(옛 ② · `f71f6db`: 새 장에 위치가 없으면 접었다 · 옛 ① · `a3dd79e`~`6299881`: 넘기면 무조건 접었다)*
         .onGeometryChange(for: CGSize.self) { $0.size } action: { viewSize = $0 }
         .task(id: name) {
             imageAspect = (kind == .photo ? name.flatMap { photoURL($0) } : nil).flatMap { Self.aspect(of: $0) }
@@ -243,19 +241,20 @@ struct MediaViewer: View {
     /// **우상단 핀 단추.** 위치가 있으면 흰색·눌린다, 없으면 회색·안 눌린다(§3-5의 「회색」).
     @ViewBuilder private var placeButton: some View {
         if kind == .photo, !names.isEmpty {
-            let has = currentCoordinate != nil
+            // 위치가 있거나 **이미 지도 보기 모드면** 눌린다(모드를 끝내는 길이 이 단추뿐이므로 위치 없는 장에서도 살아 있어야 한다).
+            let on = currentCoordinate != nil || showPlace
             VStack {
                 HStack {
                     Spacer()
                     Button { withAnimation(Self.fade) { showPlace.toggle() } } label: {
                         Image(systemName: showPlace ? "mappin.slash" : "mappin.and.ellipse")
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(has ? .white : .white.opacity(0.3))
+                            .foregroundStyle(on ? .white : .white.opacity(0.3))
                             .padding(12)
-                            .background(Circle().fill(.black.opacity(has ? 0.45 : 0.2)))
+                            .background(Circle().fill(.black.opacity(on ? 0.45 : 0.2)))
                     }
                     .buttonStyle(.plain)
-                    .disabled(!has)
+                    .disabled(!on)
                 }
                 Spacer()
             }
@@ -265,11 +264,17 @@ struct MediaViewer: View {
 
     /// **지도 판** — 화면 아래쪽, 썸네일 줄 바로 위. 배경을 눌러도 닫히지 않는다(지도를 손으로 움직이므로).
     @ViewBuilder private var placePanel: some View {
-        if showPlace, let c = currentCoordinate {
+        if showPlace {
             VStack {
                 Spacer()
-                PhotoPlaceMap(coord: c, height: 260, interactive: true)
-                    .id(name)                                   // 장이 바뀌면 지도를 새 좌표로 다시 놓는다(`initialPosition`은 안 따라간다)
+                Group {
+                    if let c = currentCoordinate {
+                        PhotoPlaceMap(coord: c, height: 260, interactive: true)
+                            .id(name)                           // 장이 바뀌면 지도를 새 좌표로 다시 놓는다(`initialPosition`은 안 따라간다)
+                    } else {
+                        noPlaceBox
+                    }
+                }
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.black.opacity(0.75)))
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPanelHeight = $0 }
@@ -518,6 +523,22 @@ struct MediaViewer: View {
     }
 
     /// 지도 판이 차지하는 세로 — 지도 260 + 안 여백 12×2 + 썸네일 줄 자리(56 + 16 + 8). `placePanel`과 같은 수여야 한다.
+    /// **위치 없는 장의 판** — 지도 판과 **같은 구조**(지도 자리 260 + 틈 6 + 「지도 앱에서 열기」 줄 자리)라 높이가 저절로 같다.
+    /// 바탕은 판(검정 75%)과 비슷한 어두운 색 · 글은 **사용자가 정한 문구**(2026-10-07 19:3x: *"'위치 정보가 없습니다' 메시지를 띄워줘"*).
+    private var noPlaceBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(0.08))
+                Text("위치 정보가 없습니다")
+                    .font(.body).foregroundStyle(.white.opacity(0.7))
+            }
+            .frame(height: 260)
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border))
+            Label("지도 앱에서 열기", systemImage: "map").font(.caption)
+                .hidden()                                       // 자리만 차지한다 — 지도 판의 그 줄과 같은 높이
+        }
+    }
+
     private static let placePanelHeight: CGFloat = 260 + 24 + placePanelBottom
     /// 판 아래 틈 = 썸네일 줄 자리(56 + 16) + 8. `placePanel`의 `padding(.bottom)`과 같은 수여야 한다.
     private static let placePanelBottom: CGFloat = thumbSide + 16 + 8
