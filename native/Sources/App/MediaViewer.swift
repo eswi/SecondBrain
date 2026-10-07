@@ -159,6 +159,8 @@ struct MediaViewer: View {
         ZStack {
             Color.black.ignoresSafeArea()
             content
+                .offset(y: photoLift)                       // 지도 판이 열리면 사진을 밀어 올린다(`photoLift`)
+                .animation(Self.fade, value: showPlace)
             closeButton
             counter
             arrows
@@ -458,16 +460,33 @@ struct MediaViewer: View {
         }
     }
 
-    /// `‹` `›`를 올리는 양(음수 = 위). 지도 판이 닫혀 있거나 판이 사진을 안 가리면 0.
-    private var arrowLift: CGFloat {
-        guard showPlace, viewSize.height > 0, viewSize.width > 0, let a = imageAspect else { return 0 }
+    /// 지도 판이 열렸을 때의 세로 자리들 — 사진 위·아래(`scaledToFit`이 그리는 대로 · 밀기 전) · 판 꼭대기. 판이 닫혀 있거나 아직 모르면 nil.
+    private var placeGeometry: (photoTop: CGFloat, photoBottom: CGFloat, panelTop: CGFloat)? {
+        guard showPlace, viewSize.height > 0, viewSize.width > 0, let a = imageAspect else { return nil }
         let h = viewSize.height
         let fitted = min(h, viewSize.width * a)                 // scaledToFit이 그리는 사진 세로
-        let photoTop = (h - fitted) / 2, photoBottom = photoTop + fitted
-        let panelTop = h - Self.placePanelHeight
-        let visibleBottom = min(photoBottom, panelTop)
-        guard visibleBottom > photoTop else { return 0 }
-        return (photoTop + visibleBottom) / 2 - h / 2
+        let top = (h - fitted) / 2
+        return (top, top + fitted, h - Self.placePanelHeight)
+    }
+
+    /// `‹` `›`를 올리는 양(음수 = 위). 지도 판이 닫혀 있거나 판이 사진을 안 가리면 0.
+    /// ⚠️ **밀기 전 사진 자리로 센다**(`photoLift`를 안 본다) — 2026-10-07 19:1x 사용자: *"< > 기호는 더 이상 바꾸지 말아봐. 다 보고 다시 조절하자."*
+    private var arrowLift: CGFloat {
+        guard let g = placeGeometry else { return 0 }
+        let visibleBottom = min(g.photoBottom, g.panelTop)
+        guard visibleBottom > g.photoTop else { return 0 }
+        return (g.photoTop + visibleBottom) / 2 - viewSize.height / 2
+    }
+
+    /// ★ **사진을 밀어 올리는 양**(음수 = 위) — 2026-10-07 19:1x 사용자: *"사진 윗쪽에 공간이 있으면 사진을 좀 위로
+    /// 밀어올려도 되지 않을까? 가로 사진은 공간이 많이 남고 세로 사진도 공간이 좀 있는 것 같아."*
+    /// 판에 가린 만큼 올리되 **사진 위쪽에 남은 공간 이상은 안 올린다**(사진 꼭대기가 화면 위를 넘지 않게).
+    /// 가로 사진은 대개 전부 드러나고, 세로 사진은 위에 붙은 뒤에도 아래가 조금 가릴 수 있다. 판이 닫히면 0.
+    private var photoLift: CGFloat {
+        guard let g = placeGeometry else { return 0 }
+        let hidden = g.photoBottom - g.panelTop
+        guard hidden > 0 else { return 0 }
+        return -min(hidden, max(0, g.photoTop))
     }
 
     /// 사진 파일의 세로/가로 비율 — 픽셀 수만 읽는다(그림을 안 푼다) · EXIF 방향 5~8이면 가로세로를 바꾼다.
